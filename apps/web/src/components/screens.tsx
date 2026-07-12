@@ -37,6 +37,7 @@ import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { DemoSite } from "@/components/demo-site";
 import { ComparisonWorkspace } from "@/components/comparison-workspace";
+import { GitHubSignIn } from "@/components/github-sign-in";
 import { cn } from "@/lib/cn";
 
 function AppPreview() {
@@ -81,7 +82,7 @@ export function SignInScreen() {
       <header><Link className="wordmark" href="/">UI<span>RIFT</span></Link><span>Visual regression workspace</span><Link href="/">Back to home</Link></header>
       <section className="auth-panel">
         <div className="auth-context"><span className="eyebrow">PORTFOLIO DEMO</span><h1>Sign in to create your workspace</h1><p>Use GitHub to save projects and run live visual comparisons.</p><div className="auth-heatmap"><i /><i /><i /><i /><i /></div><ul><li><Folder />Projects <b>2 maximum</b></li><li><Gauge />Live comparisons <b>3 per day</b></li><li><Clock3 />Artifact retention <b>7 days</b></li></ul></div>
-        <div className="auth-action"><h2>Continue to UIRift</h2><p>GitHub is used only for identity in this portfolio release.</p><Link href="/app/projects" className="github-button"><Github /> Continue with GitHub</Link><div className="auth-separator"><span>or</span></div><Link className="demo-link" href="/demo"><Eye /> Open the seeded demo without signing in <ArrowRight /></Link><div className="auth-security"><ShieldCheck /><span><b>Managed with Better Auth</b><small>Sessions remain in UIRift&apos;s Cloudflare D1 database.</small></span></div><small className="auth-terms">By continuing, you agree to the demonstration&apos;s acceptable-use and retention limits.</small></div>
+        <div className="auth-action"><h2>Continue to UIRift</h2><p>GitHub is used only for identity in this portfolio release.</p><GitHubSignIn /><div className="auth-separator"><span>or</span></div><Link className="demo-link" href="/demo"><Eye /> Open the seeded demo without signing in <ArrowRight /></Link><div className="auth-security"><ShieldCheck /><span><b>Managed with Better Auth</b><small>Sessions remain in UIRift&apos;s Cloudflare D1 database.</small></span></div><small className="auth-terms">By continuing, you agree to the demonstration&apos;s acceptable-use and retention limits.</small></div>
       </section>
     </main>
   );

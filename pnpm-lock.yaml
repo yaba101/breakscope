@@ -95,6 +95,9 @@ importers:
       '@axe-core/playwright':
         specifier: ^4.11.0
         version: 4.12.1(playwright-core@1.61.1)
+      '@cloudflare/workers-types':
+        specifier: ^5.20260712.1
+        version: 5.20260712.1
       '@playwright/test':
         specifier: ^1.58.2
         version: 1.61.1
