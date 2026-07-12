@@ -1,0 +1,16 @@
+{
+  "name": "uirift",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.6.0",
+  "scripts": {
+    "dev": "pnpm --filter @uirift/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @uirift/web test:e2e",
+    "preview": "pnpm --filter @uirift/web preview",
+    "deploy": "pnpm --filter @uirift/web deploy"
+  }
+}

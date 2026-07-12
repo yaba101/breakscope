@@ -1,0 +1,22 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "uirift-capture",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-13",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "browser": { "binding": "BROWSER" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "uirift-db", "database_id": "REPLACE_AFTER_PROVISIONING" }
+  ],
+  "r2_buckets": [
+    { "binding": "IMAGES", "bucket_name": "uirift-images" }
+  ],
+  "queues": {
+    "consumers": [
+      { "queue": "uirift-capture-jobs", "max_batch_size": 1, "max_retries": 2 }
+    ]
+  },
+  "triggers": { "crons": ["17 3 * * *"] },
+  "upload_source_maps": true
+}

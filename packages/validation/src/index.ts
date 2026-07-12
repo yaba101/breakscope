@@ -1,0 +1,30 @@
+import { z } from "zod";
+
+const approvedSuffixes = ["pages.dev", "vercel.app", "netlify.app", "workers.dev"];
+
+function isIpLiteral(hostname: string) {
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(":");
+}
+
+export function isApprovedPublicUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password) return false;
+    const host = url.hostname.toLowerCase();
+    if (host === "localhost" || host.endsWith(".localhost") || isIpLiteral(host)) return false;
+    return approvedSuffixes.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+  } catch {
+    return false;
+  }
+}
+
+export const projectInputSchema = z.object({
+  name: z.string().trim().min(2).max(60),
+  baselineUrl: z.string().url().refine(isApprovedPublicUrl, "Use an approved public HTTPS preview URL"),
+  candidateUrl: z.string().url().refine(isApprovedPublicUrl, "Use an approved public HTTPS preview URL"),
+});
+
+export const runInputSchema = z.object({
+  routePath: z.string().startsWith("/").max(180),
+  viewport: z.enum(["desktop", "mobile"]),
+});
