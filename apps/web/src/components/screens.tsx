@@ -33,6 +33,7 @@ import {
   viewportProfiles,
   type RunSummary,
 } from "@uirift/shared";
+import { comparePageSnapshots } from "@uirift/comparison-engine";
 import { isCaptureUrl } from "@uirift/validation";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
@@ -931,7 +932,8 @@ export function CaptureScreen({ runId }: { runId: string }) {
           label: `Changed region ${index + 1}`,
           severity: (region.pixelCount > 500 ? "high" : region.pixelCount > 100 ? "medium" : "low") as "high" | "medium" | "low",
         }));
-        appendEvent({ stage: "diff", status: "success", label: "Comparison complete", detail: `${result.changedPixels.toLocaleString()} changed pixels · ${regions.length} regions` });
+        const semantic = comparePageSnapshots(baseline.snapshot, candidate.snapshot, { changedRatio: result.changedRatio });
+        appendEvent({ stage: "diff", status: "success", label: "Comparison complete", detail: `${semantic.summary.title} · ${semantic.findings.length} meaningful findings · ${result.changedPixels.toLocaleString()} changed pixels` });
         await updateLocalRun(runId, {
           status: "ready",
           baselineImage,
@@ -942,6 +944,8 @@ export function CaptureScreen({ runId }: { runId: string }) {
           changedPixels: result.changedPixels,
           changedRatio: result.changedRatio,
           regions,
+          semanticFindings: semantic.findings,
+          semanticSummary: semantic.summary,
           completedAt: Date.now(),
           events: currentEvents,
         });

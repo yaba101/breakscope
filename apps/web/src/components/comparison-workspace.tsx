@@ -18,7 +18,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { changedRegions, viewportProfiles, type ChangedRegion, type Decision, type ViewportProfile } from "@uirift/shared";
+import { changedRegions, demoSemanticFindings, demoSemanticSummary, viewportProfiles, type ChangedRegion, type Decision, type ElementRect, type SemanticFinding, type SemanticSummary, type ViewportProfile } from "@uirift/shared";
 import { Button } from "@/components/ui/button";
 import { DemoSite } from "@/components/demo-site";
 import { cn } from "@/lib/cn";
@@ -106,6 +106,10 @@ function DiffInspector({
   candidateLabel,
   pixelInspection,
   snapshotSummary,
+  semanticFindings = [],
+  semanticSummary,
+  activeSemanticId,
+  onSemanticFinding,
 }: {
   activeRegion: number;
   onRegion: (id: number) => void;
@@ -118,8 +122,15 @@ function DiffInspector({
   candidateLabel: string;
   pixelInspection?: PixelInspection;
   snapshotSummary?: SnapshotSummary;
+  semanticFindings?: SemanticFinding[];
+  semanticSummary?: SemanticSummary;
+  activeSemanticId?: string;
+  onSemanticFinding: (finding: SemanticFinding) => void;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [findingFilter, setFindingFilter] = useState<"all" | SemanticFinding["category"]>("all");
+  const filteredFindings = findingFilter === "all" ? semanticFindings : semanticFindings.filter((finding) => finding.category === findingFilter);
+  const findingCount = semanticFindings.length || regions.length;
   return (
     <aside className={cn("diff-inspector", mobileOpen && "open")}>
       <button
@@ -141,6 +152,15 @@ function DiffInspector({
             <small>SELECTION</small>
             <p>{routePath} / {viewport.label}</p>
           </section>
+          {semanticSummary && (
+            <section className={cn("semantic-summary", `level-${semanticSummary.level}`)}>
+              <div><small>SEMANTIC ANALYSIS</small><b>{semanticSummary.level}</b></div>
+              <h3>{semanticSummary.title}</h3>
+              <p>{semanticSummary.description}</p>
+              <div className="risk-meter"><i style={{ width: `${semanticSummary.riskScore}%` }} /></div>
+              <span>{semanticSummary.riskScore}/100 risk · {Math.round(semanticSummary.matchRate * 100)}% elements matched</span>
+            </section>
+          )}
           {pixelInspection && (
             <section className="inspector-section pixel-inspector" aria-live="polite">
               <small>PIXEL INSPECTOR · X {pixelInspection.x} Y {pixelInspection.y}</small>
@@ -162,8 +182,8 @@ function DiffInspector({
               <strong>{(changedRatio * 100).toFixed(2)}%</strong>
             </div>
             <div>
-              <small>Region</small>
-              <strong>{regions.length ? `${activeRegion} of ${regions.length}` : "None"}</strong>
+              <small>Findings</small>
+              <strong>{findingCount || "None"}</strong>
             </div>
           </section>
           <section className="inspector-section">
@@ -176,10 +196,39 @@ function DiffInspector({
           </section>
           <section className="inspector-section findings">
             <div className="section-title">
-              FINDINGS <span>{regions.length}</span>
+              FINDINGS <span>{findingCount}</span>
             </div>
-            {!regions.length && <p className="empty-findings">No changed regions detected.</p>}
-            {regions.map((region) => (
+            {semanticFindings.length > 0 && (
+              <div className="finding-filters" aria-label="Finding filters">
+                {(["all", "content", "navigation", "layout", "style", "visibility", "page"] as const).map((filter) => (
+                  <button type="button" key={filter} className={findingFilter === filter ? "active" : ""} aria-pressed={findingFilter === filter} onClick={() => setFindingFilter(filter)}>{filter}</button>
+                ))}
+              </div>
+            )}
+            {!findingCount && <p className="empty-findings">No meaningful changes detected.</p>}
+            {filteredFindings.map((finding, index) => (
+              <div className="semantic-finding" key={finding.id}>
+                <button
+                  type="button"
+                  onClick={() => onSemanticFinding(finding)}
+                  className={cn(activeSemanticId === finding.id && "active")}
+                >
+                  <i className={finding.severity} />
+                  <em>{index + 1}</em>
+                  <span>{finding.title}</span>
+                  <b>{finding.severity}</b>
+                  <ChevronRight size={13} />
+                </button>
+                {activeSemanticId === finding.id && (
+                  <div className="finding-explanation">
+                    <p>{finding.description}</p>
+                    <small>{finding.impact}</small>
+                    <span>{finding.category} · {Math.round(finding.confidence * 100)}% confidence</span>
+                  </div>
+                )}
+              </div>
+            ))}
+            {!semanticFindings.length && regions.map((region) => (
               <button
                 type="button"
                 key={region.id}
@@ -245,20 +294,27 @@ function FrameLabel({ candidate = false, label, routePath, viewport }: { candida
   );
 }
 
-function RegionOverlay({ activeRegion, regions }: { activeRegion: number; regions: ChangedRegion[] }) {
+function RegionOverlay({ activeRegion, regions, focusRect, viewport, focusLabel }: { activeRegion: number; regions: ChangedRegion[]; focusRect?: ElementRect; viewport: ViewportProfile; focusLabel?: string }) {
   const region = regions[activeRegion - 1] ?? regions[0];
-  if (!region) return null;
+  if (!region && !focusRect) return null;
+  const bounds = focusRect ? {
+    x: (focusRect.x / viewport.width) * 100,
+    y: (focusRect.y / viewport.height) * 100,
+    width: (focusRect.width / viewport.width) * 100,
+    height: (focusRect.height / viewport.height) * 100,
+  } : region;
+  if (!bounds) return null;
   return (
     <div
       className="region-overlay"
       style={{
-        left: `${region.x}%`,
-        top: `${region.y}%`,
-        width: `${region.width}%`,
-        height: `${region.height}%`,
+        left: `${bounds.x}%`,
+        top: `${bounds.y}%`,
+        width: `${bounds.width}%`,
+        height: `${bounds.height}%`,
       }}
     >
-      <span>{activeRegion}</span>
+      <span>{focusLabel ?? activeRegion}</span>
     </div>
   );
 }
@@ -304,6 +360,8 @@ export function ComparisonWorkspace({
   candidateLabel = "d4e5f6g",
   layers,
   snapshotSummary,
+  semanticFindings: suppliedSemanticFindings,
+  semanticSummary: suppliedSemanticSummary,
 }: {
   publicMode?: boolean;
   reportMode?: boolean;
@@ -323,7 +381,11 @@ export function ComparisonWorkspace({
   candidateLabel?: string;
   layers?: ComparisonLayer[];
   snapshotSummary?: SnapshotSummary;
+  semanticFindings?: SemanticFinding[];
+  semanticSummary?: SemanticSummary;
 }) {
+  const semanticFindings = suppliedSemanticFindings ?? (publicMode ? demoSemanticFindings : []);
+  const semanticSummary = suppliedSemanticSummary ?? (publicMode ? demoSemanticSummary : undefined);
   const { tool, regionsVisible, setTool } = useComparisonTools();
   const [mode, setMode] = useState<CompareMode>("side-by-side");
   const [zoom, setZoom] = useState(100);
@@ -338,6 +400,7 @@ export function ComparisonWorkspace({
   const framePaperRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; panX: number; panY: number } | undefined>(undefined);
   const [activeRegion, setActiveRegion] = useState(1);
+  const [activeSemanticId, setActiveSemanticId] = useState(semanticFindings[0]?.id);
   const [decision, setDecision] = useState<"pending" | "accepted" | "rejected">(
     initialDecision,
   );
@@ -488,6 +551,29 @@ export function ComparisonWorkspace({
   const minimapHeight = Math.max(18, Math.min(100, minimapWidth * 0.72));
   const minimapLeft = Math.max(0, Math.min(100 - minimapWidth, 50 - minimapWidth / 2 - (pan.x / canvasSize.width) * 100));
   const minimapTop = Math.max(0, Math.min(100 - minimapHeight, 50 - minimapHeight / 2 - (pan.y / canvasSize.height) * 100));
+  const effectiveSemanticId = semanticFindings.some((finding) => finding.id === activeSemanticId) ? activeSemanticId : semanticFindings[0]?.id;
+  const activeSemanticFinding = semanticFindings.find((finding) => finding.id === effectiveSemanticId);
+  const activeSemanticEvidence = activeSemanticFinding?.candidate ?? activeSemanticFinding?.baseline;
+  const semanticFocusRect = activeSemanticEvidence?.inViewport ? activeSemanticEvidence.rect : undefined;
+
+  function focusSemanticFinding(finding: SemanticFinding) {
+    setActiveSemanticId(finding.id);
+    setTool("select");
+    const selected = finding.candidate ?? finding.baseline;
+    const paper = framePaperRef.current;
+    if (!selected?.inViewport || !paper) return;
+    const basePaperWidth = paper.getBoundingClientRect().width / (zoom / 100);
+    const targetZoom = Math.min(190, Math.max(115, 100 * Math.min(
+      viewport.width / Math.max(260, selected.rect.width * 2.6),
+      viewport.height / Math.max(180, selected.rect.height * 2.6),
+    )));
+    const scale = (basePaperWidth / viewport.width) * (targetZoom / 100);
+    setZoom(targetZoom);
+    setPan({
+      x: (viewport.width / 2 - selected.rect.x - selected.rect.width / 2) * scale,
+      y: (viewport.height / 2 - selected.rect.y - selected.rect.height / 2) * scale,
+    });
+  }
 
   function selectRegionAt(event: React.MouseEvent<HTMLDivElement>) {
     if (tool !== "select" || !regions.length) return;
@@ -555,7 +641,7 @@ export function ComparisonWorkspace({
                 <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
                 <div className="frame-paper" onClick={interactWithFrame}>
                   <CapturedView src={candidateSrc} candidate allowFixture={publicMode} />
-                  {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} />}
+                  {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} focusRect={semanticFocusRect} viewport={viewport} focusLabel={activeSemanticFinding ? String(semanticFindings.indexOf(activeSemanticFinding) + 1) : undefined} />}
                 </div>
               </div>
             </>
@@ -579,7 +665,7 @@ export function ComparisonWorkspace({
                   <i>↔</i>
                 </div>
                 <input className="slider-input" aria-label="Comparison slider position" type="range" min="0" max="100" value={slider} onChange={(event) => setSlider(Number(event.target.value))} />
-                {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} />}
+                {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} focusRect={semanticFocusRect} viewport={viewport} focusLabel={activeSemanticFinding ? String(semanticFindings.indexOf(activeSemanticFinding) + 1) : undefined} />}
               </div>
             </div>
           )}
@@ -594,7 +680,7 @@ export function ComparisonWorkspace({
                 <div className="overlay-candidate" style={{ opacity: overlayOpacity / 100 }}>
                   <CapturedView src={candidateSrc} candidate allowFixture={publicMode} />
                 </div>
-                {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} />}
+                {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} focusRect={semanticFocusRect} viewport={viewport} focusLabel={activeSemanticFinding ? String(semanticFindings.indexOf(activeSemanticFinding) + 1) : undefined} />}
               </div>
             </div>
           )}
@@ -604,7 +690,7 @@ export function ComparisonWorkspace({
               <div ref={framePaperRef} className="frame-paper" onClick={interactWithFrame}>
                 <CapturedView src={diffSrc ?? candidateSrc} candidate allowFixture={publicMode} />
                 {!diffSrc && <div className="diff-film"><span /><span /><span /><span /><span /></div>}
-                {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} />}
+                {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} focusRect={semanticFocusRect} viewport={viewport} focusLabel={activeSemanticFinding ? String(semanticFindings.indexOf(activeSemanticFinding) + 1) : undefined} />}
               </div>
             </div>
           )}
@@ -661,7 +747,7 @@ export function ComparisonWorkspace({
         </div>
       </section>
       {!reportMode && (
-        <DiffInspector activeRegion={activeRegion} onRegion={(id) => { setActiveRegion(id); setTool("select"); }} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} routePath={routePath} viewport={viewport} baselineLabel={baselineLabel} candidateLabel={candidateLabel} pixelInspection={pixelInspection} snapshotSummary={snapshotSummary} />
+        <DiffInspector activeRegion={activeRegion} onRegion={(id) => { setActiveRegion(id); setTool("select"); }} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} routePath={routePath} viewport={viewport} baselineLabel={baselineLabel} candidateLabel={candidateLabel} pixelInspection={pixelInspection} snapshotSummary={snapshotSummary} semanticFindings={semanticFindings} semanticSummary={semanticSummary} activeSemanticId={effectiveSemanticId} onSemanticFinding={focusSemanticFinding} />
       )}
       {!publicMode && !reportMode && (
         <footer className="decision-bar">

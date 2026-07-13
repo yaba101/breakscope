@@ -73,6 +73,8 @@ export function LocalRunComparison({ runId }: { runId: string }) {
       baselineLabel={new URL(loaded.project.baselineUrl).host}
       candidateLabel={new URL(loaded.project.candidateUrl).host}
       layers={loaded.layers}
+      semanticFindings={loaded.run.semanticFindings ?? []}
+      semanticSummary={loaded.run.semanticSummary}
       snapshotSummary={loaded.run.baselineSnapshot && loaded.run.candidateSnapshot ? {
         baselineElements: loaded.run.baselineSnapshot.elements.length,
         candidateElements: loaded.run.candidateSnapshot.elements.length,

@@ -1,4 +1,4 @@
-import type { ChangedRegion, Decision, PageSnapshot, RunStatus, ViewportId } from "@uirift/shared";
+import type { ChangedRegion, Decision, PageSnapshot, RunStatus, SemanticFinding, SemanticSummary, ViewportId } from "@uirift/shared";
 
 const databaseName = "uirift-local-workspace";
 const databaseVersion = 1;
@@ -32,6 +32,8 @@ export interface LocalRun {
   diffImage?: ArrayBuffer;
   baselineSnapshot?: PageSnapshot;
   candidateSnapshot?: PageSnapshot;
+  semanticFindings?: SemanticFinding[];
+  semanticSummary?: SemanticSummary;
   events?: CaptureEvent[];
   baselineDurationMs?: number;
   candidateDurationMs?: number;

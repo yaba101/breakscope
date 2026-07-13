@@ -1,5 +1,7 @@
 import pixelmatch from "pixelmatch";
 
+export { comparePageSnapshots } from "./semantic";
+
 export interface PixelRegion {
   x: number;
   y: number;

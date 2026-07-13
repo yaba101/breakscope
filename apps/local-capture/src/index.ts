@@ -107,13 +107,20 @@ async function capture(url: string, viewport: ViewportId) {
     const contentType = navigation.headers()["content-type"] ?? "";
     if (!contentType.includes("text/html")) throw new Error("URL did not return an HTML page");
     await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
-    await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(300);
-    // tsx preserves helper function names with an injected __name call. Defining
-    // the no-op helper in the browser context keeps nested snapshot utilities
-    // serializable when Playwright evaluates them in the captured page.
-    await page.evaluate("globalThis.__name = (target) => target");
-    const snapshotData = await page.evaluate(({ viewportWidth, viewportHeight }) => {
+    let snapshotData: Omit<PageSnapshot, "url" | "capturedAt"> | undefined;
+    for (let attempt = 0; attempt < 3 && !snapshotData; attempt += 1) {
+      try {
+        // Some applications perform a client-side redirect after the initial
+        // load event. Re-enter the settled document instead of failing a whole
+        // comparison when that redirect replaces Playwright's execution context.
+        await page.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => undefined);
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(300);
+        // tsx preserves helper function names with an injected __name call. Defining
+        // the no-op helper in the browser context keeps nested snapshot utilities
+        // serializable when Playwright evaluates them in the captured page.
+        await page.evaluate("globalThis.__name = (target) => target");
+        snapshotData = await page.evaluate(({ viewportWidth, viewportHeight }) => {
       const normalized = (value: string | null | undefined, limit = 240) =>
         (value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
       const implicitRole = (element: Element) => {
@@ -168,7 +175,7 @@ async function capture(url: string, viewport: ViewportId) {
         );
       };
       const candidates = Array.from(document.querySelectorAll(
-        "h1,h2,h3,h4,h5,h6,a,button,input,select,textarea,img,nav,main,header,footer,aside,section,article,[role],[data-testid]",
+        "h1,h2,h3,h4,h5,h6,p,li,label,a,button,input,select,textarea,img,nav,main,header,footer,aside,section,article,[role],[data-testid]",
       )).slice(0, 500);
       const keyCounts = new Map<string, number>();
       const elements = candidates.map((element, order) => {
@@ -231,7 +238,14 @@ async function capture(url: string, viewport: ViewportId) {
         documentHeight: Math.max(root.scrollHeight, document.body?.scrollHeight ?? 0),
         elements,
       };
-    }, { viewportWidth: profile.width, viewportHeight: profile.height });
+        }, { viewportWidth: profile.width, viewportHeight: profile.height });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/Execution context was destroyed|navigation/i.test(message) || attempt === 2) throw error;
+        await page.waitForTimeout(250);
+      }
+    }
+    if (!snapshotData) throw new Error("Unable to read the settled page snapshot");
     const png = await page.screenshot({ fullPage: false, animations: "disabled", type: "png" });
     const finalUrl = page.url();
     const snapshot: PageSnapshot = {

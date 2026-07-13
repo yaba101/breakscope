@@ -10,6 +10,9 @@
     "lint": "tsc --noEmit",
     "test": "vitest run"
   },
-  "dependencies": { "pixelmatch": "^7.1.0" },
+  "dependencies": {
+    "@uirift/shared": "workspace:*",
+    "pixelmatch": "^7.1.0"
+  },
   "devDependencies": { "@types/pixelmatch": "^5.2.6", "typescript": "^5.9.3", "vitest": "^4.0.18" }
 }
