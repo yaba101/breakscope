@@ -6,7 +6,7 @@ import { ArrowDownLeft, Code2, Database, Folder, Hand, Layers3, MousePointer2, P
 import { useEffect, useState } from "react";
 import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/cn";
-import { listLocalRuns } from "@/lib/local-workspace";
+import { listLocalRuns, subscribeToWorkspace } from "@/lib/local-workspace";
 
 const nav = [
   { label: "Projects", href: "/app/projects", icon: Folder },
@@ -46,10 +46,12 @@ function GlobalToolbar({ breadcrumb = "Local workspace" }: { breadcrumb?: string
 function useNavigation() {
   const [compareHref, setCompareHref] = useState("/app/runs");
   useEffect(() => {
-    void listLocalRuns().then((runs) => {
+    const refresh = () => void listLocalRuns().then((runs) => {
       const latest = runs.find((run) => run.status === "ready" && run.baselineImage && run.candidateImage);
-      if (latest) setCompareHref(`/app/runs/${latest.id}`);
+      setCompareHref(latest ? `/app/runs/${latest.id}` : "/app/runs");
     });
+    refresh();
+    return subscribeToWorkspace(refresh);
   }, []);
   return nav.map((item) => item.label === "Compare" ? { ...item, href: compareHref } : item);
 }

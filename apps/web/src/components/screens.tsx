@@ -61,7 +61,7 @@ function AppPreview() {
     >
       <div className="preview-toolbar">
         <b>UIRIFT</b>
-        <span>Acme Cloud / Run #1247 / Pricing</span>
+        <span>Seeded example / Pricing</span>
         <i />
         <i />
         <i />
@@ -305,6 +305,8 @@ function HealthBars({ values }: { values: number[] }) {
 }
 
 export function ProjectsScreen() {
+  const [projectFilter, setProjectFilter] = useState<"all" | "review" | "approved">("all");
+  const [projectSearch, setProjectSearch] = useState("");
   const workspaceQuery = useQuery({
     queryKey: ["local-workspace"],
     queryFn: async () => {
@@ -327,6 +329,13 @@ export function ProjectsScreen() {
   });
   const projectRows = workspaceQuery.data?.projects ?? [];
   const recentRuns = workspaceQuery.data?.runs.slice(0, 3) ?? [];
+  const visibleProjects = projectRows.filter((project) => {
+    const matchesFilter = projectFilter === "all" || project.status === projectFilter;
+    const matchesSearch = project.name.toLowerCase().includes(projectSearch.trim().toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
+  const reviewCount = projectRows.filter((project) => project.status === "review").length;
+  const approvedCount = projectRows.filter((project) => project.status === "approved").length;
 
   return (
     <AppShell breadcrumb="Projects">
@@ -336,12 +345,12 @@ export function ProjectsScreen() {
             <div>
               <span>WORKSPACE</span>
               <h1>Projects</h1>
-              <p>Two projects stored privately in this browser.</p>
+              <p>{projectRows.length} of 2 projects stored privately in this browser.</p>
             </div>
             <div className="page-actions">
               <label>
                 <Search />
-                <input placeholder="Search projects…" />
+                <input placeholder="Search projects…" value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} />
               </label>
               <Link className={cn("button-link primary", projectRows.length >= 2 && "disabled")} href="/app/projects/new" aria-disabled={projectRows.length >= 2}>
                 <Plus /> New project
@@ -349,13 +358,13 @@ export function ProjectsScreen() {
             </div>
           </header>
           <div className="filter-tabs">
-            <button type="button" className="active">
+            <button type="button" className={projectFilter === "all" ? "active" : ""} onClick={() => setProjectFilter("all")}>
               All <span>{projectRows.length}</span>
             </button>
-            <button type="button">
-              Needs review <i />
+            <button type="button" className={projectFilter === "review" ? "active" : ""} onClick={() => setProjectFilter("review")}>
+              Needs review <span>{reviewCount}</span>
             </button>
-            <button type="button">Approved</button>
+            <button type="button" className={projectFilter === "approved" ? "active" : ""} onClick={() => setProjectFilter("approved")}>Approved <span>{approvedCount}</span></button>
           </div>
           <div className="project-table">
             <div className="project-table-head">
@@ -367,7 +376,7 @@ export function ProjectsScreen() {
               <span>HEALTH</span>
               <span>STATUS</span>
             </div>
-            {projectRows.map((project) => (
+            {visibleProjects.map((project) => (
               <Link
                 href={`/app/projects/${project.id}`}
                 className="project-row"
@@ -460,6 +469,8 @@ export function ProjectSetupScreen({
   existing?: boolean;
   projectId?: string;
 }) {
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
   const projectQuery = useQuery({
     queryKey: ["project", projectId],
     queryFn: async () => {
@@ -470,12 +481,12 @@ export function ProjectSetupScreen({
     enabled: existing && Boolean(projectId),
     retry: false,
   });
-  if (existing && projectQuery.isPending) {
+  if (!hydrated || (existing && projectQuery.isPending)) {
     return (
       <AppShell breadcrumb="Loading project…" dock={false}>
         <div className="report-state">
           <LoaderCircle />
-          <p>Loading comparison settings…</p>
+          <p>{hydrated ? "Loading comparison settings…" : "Preparing local workspace…"}</p>
         </div>
       </AppShell>
     );
@@ -1029,6 +1040,11 @@ export function RunsScreen() {
     },
   });
   const runRows = runsQuery.data ?? [];
+  const today = new Date().toDateString();
+  const runsToday = runRows.filter((run) => new Date(run.createdAt).toDateString() === today).length;
+  const changedRuns = runRows.filter((run) => run.changedRegions > 0).length;
+  const acceptedRuns = runRows.filter((run) => run.decision === "accepted").length;
+  const failedRuns = runRows.filter((run) => run.status === "failed").length;
 
   return (
     <AppShell breadcrumb="Runs">
@@ -1053,19 +1069,19 @@ export function RunsScreen() {
           <div className="run-summary-strip">
             <div>
               <small>Runs today</small>
-              <b>2</b>
+              <b>{runsToday}</b>
             </div>
             <div>
               <small>Changed</small>
-              <b className="pink">3</b>
+              <b className="pink">{changedRuns}</b>
             </div>
             <div>
               <small>Accepted</small>
-              <b className="green">1</b>
+              <b className="green">{acceptedRuns}</b>
             </div>
             <div>
-              <small>Daily attempts</small>
-              <b>2 / 3</b>
+              <small>Failed</small>
+              <b>{failedRuns}</b>
             </div>
           </div>
           <div className="runs-table">
