@@ -48,6 +48,9 @@ export interface ComparisonLayer {
   routePath: string;
   viewport: ViewportProfile;
   regionCount: number;
+  riskScore?: number;
+  level?: SemanticSummary["level"];
+  aiVerdict?: AiAnalysis["verdict"];
 }
 
 function LayerPanel({ projectName, runId, layers }: {
@@ -75,16 +78,16 @@ function LayerPanel({ projectName, runId, layers }: {
               <Link href={`/app/runs/${layer.id}`} className={cn("layer-row", layer.id === runId && "selected")} role="treeitem" aria-label={`Open ${layer.routePath} ${layer.viewport.label} comparison`} aria-selected={layer.id === runId}>
                 {layer.viewport.id === "desktop" ? <Monitor size={13} /> : <Smartphone size={13} />}
                 <span>{layer.viewport.label}</span>
-                <i className={layer.regionCount ? "changed" : "passed"} />
-                <em>{layer.regionCount}</em>
+                <i className={(layer.riskScore ?? layer.regionCount) ? "changed" : "passed"} />
+                <em title={layer.riskScore === undefined ? `${layer.regionCount} changed regions` : `${layer.riskScore}/100 semantic risk`}>{layer.riskScore ?? layer.regionCount}</em>
                 <Eye size={12} />
               </Link>
             ) : (
               <div className="layer-row selected" role="treeitem" aria-label={`${layer.routePath} ${layer.viewport.label} comparison`} aria-selected="true">
                 {layer.viewport.id === "desktop" ? <Monitor size={13} /> : <Smartphone size={13} />}
                 <span>{layer.viewport.label}</span>
-                <i className={layer.regionCount ? "changed" : "passed"} />
-                <em>{layer.regionCount}</em>
+                <i className={(layer.riskScore ?? layer.regionCount) ? "changed" : "passed"} />
+                <em title={layer.riskScore === undefined ? `${layer.regionCount} changed regions` : `${layer.riskScore}/100 semantic risk`}>{layer.riskScore ?? layer.regionCount}</em>
                 <Eye size={12} />
               </div>
             )}

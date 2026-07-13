@@ -31,7 +31,6 @@ import {
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   viewportProfiles,
-  type RunSummary,
 } from "@uirift/shared";
 import { comparePageSnapshots } from "@uirift/comparison-engine";
 import { isCaptureUrl } from "@uirift/validation";
@@ -1108,9 +1107,10 @@ export function CaptureScreen({ runId }: { runId: string }) {
 export function RunsScreen() {
   const runsQuery = useQuery({
     queryKey: ["local-runs"],
-    queryFn: async (): Promise<RunSummary[]> => {
-      const localRuns = await listLocalRuns();
-      return localRuns.map((run) => ({
+    queryFn: listLocalRuns,
+  });
+  const localRuns = runsQuery.data ?? [];
+  const runRows = localRuns.map((run) => ({
         id: run.id,
         projectId: run.projectId,
         projectName: run.projectName,
@@ -1126,9 +1126,25 @@ export function RunsScreen() {
           ? `${Math.max(1, Math.round((run.completedAt - run.createdAt) / 1_000))}s`
           : "—",
       }));
-    },
-  });
-  const runRows = runsQuery.data ?? [];
+  const batches = Array.from(localRuns.reduce((groups, run) => {
+    const id = run.batchId ?? run.id;
+    const group = groups.get(id) ?? [];
+    group.push(run);
+    groups.set(id, group);
+    return groups;
+  }, new Map<string, LocalRun[]>()).entries())
+    .map(([id, items]) => ({ id, items: items.sort((a, b) => (a.batchIndex ?? 0) - (b.batchIndex ?? 0)) }))
+    .sort((a, b) => (b.items[0]?.createdAt ?? 0) - (a.items[0]?.createdAt ?? 0));
+  const latestBatch = batches[0];
+  const latestRoutes = latestBatch?.items ?? [];
+  const changedRouteCount = latestRoutes.filter((run) => run.changedPixels > 0 || (run.semanticFindings?.length ?? 0) > 0).length;
+  const failedRouteCount = latestRoutes.filter((run) => run.status === "failed").length;
+  const highestRisk = Math.max(0, ...latestRoutes.map((run) => run.aiAnalysis?.riskScore ?? run.semanticSummary?.riskScore ?? 0));
+  const releaseVerdict = latestRoutes.some((run) => run.aiAnalysis?.verdict === "block" || run.semanticSummary?.level === "major")
+    ? "block"
+    : changedRouteCount > 0 || failedRouteCount > 0
+      ? "review"
+      : "safe";
   const today = new Date().toDateString();
   const runsToday = runRows.filter((run) => new Date(run.createdAt).toDateString() === today).length;
   const changedRuns = runRows.filter((run) => run.changedRegions > 0).length;
@@ -1173,6 +1189,37 @@ export function RunsScreen() {
               <b>{failedRuns}</b>
             </div>
           </div>
+          {latestBatch && (
+            <section className={cn("batch-report", `verdict-${releaseVerdict}`)} aria-labelledby="latest-route-report">
+              <header>
+                <div><span>LATEST ROUTE REPORT</span><h2 id="latest-route-report">{latestRoutes[0]?.projectName}</h2></div>
+                <b>{releaseVerdict}</b>
+              </header>
+              <p>{releaseVerdict === "block"
+                ? `${changedRouteCount} of ${latestRoutes.length} routes changed, including a major or AI-blocking regression. Do not promote this candidate without review.`
+                : releaseVerdict === "review"
+                  ? `${changedRouteCount} of ${latestRoutes.length} routes changed. Review the affected journeys before accepting this candidate.`
+                  : `All ${latestRoutes.length} captured routes match closely enough to continue.`}</p>
+              <div className="batch-metrics">
+                <div><small>Routes checked</small><strong>{latestRoutes.length}</strong></div>
+                <div><small>Changed</small><strong>{changedRouteCount}</strong></div>
+                <div><small>Highest risk</small><strong>{highestRisk}/100</strong></div>
+                <div><small>Failed</small><strong>{failedRouteCount}</strong></div>
+              </div>
+              <div className="route-matrix" role="list" aria-label="Route comparison results">
+                {latestRoutes.map((run) => {
+                  const risk = run.aiAnalysis?.riskScore ?? run.semanticSummary?.riskScore ?? 0;
+                  const state = run.status === "failed" ? "failed" : run.aiAnalysis?.verdict ?? run.semanticSummary?.level ?? "unchanged";
+                  return <Link key={run.id} role="listitem" href={run.status === "failed" ? `/app/projects/${run.projectId}` : `/app/runs/${run.id}`}>
+                    <span><b>{run.routePath}</b><small>{viewportProfiles[run.viewport].label} · {run.semanticFindings?.length ?? run.regions.length} findings</small></span>
+                    <em className={state}>{state}</em>
+                    <strong>{risk}</strong>
+                    <ChevronRight size={14} />
+                  </Link>;
+                })}
+              </div>
+            </section>
+          )}
           <div className="runs-table">
             <div className="runs-table-head">
               <span>RUN</span>

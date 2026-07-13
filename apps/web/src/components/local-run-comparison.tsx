@@ -44,6 +44,9 @@ export function LocalRunComparison({ runId }: { runId: string }) {
           routePath: item.routePath,
           viewport: viewportProfiles[item.viewport],
           regionCount: item.regions.length,
+          riskScore: item.aiAnalysis?.riskScore ?? item.semanticSummary?.riskScore,
+          level: item.semanticSummary?.level,
+          aiVerdict: item.aiAnalysis?.verdict,
         }));
       const baselineSrc = URL.createObjectURL(new Blob([run.baselineImage], { type: "image/png" }));
       const candidateSrc = URL.createObjectURL(new Blob([run.candidateImage], { type: "image/png" }));

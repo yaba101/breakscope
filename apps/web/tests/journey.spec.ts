@@ -113,6 +113,10 @@ test("discovered routes can run as a comparison batch", async ({ page }, testInf
   await expect(page.getByRole("treeitem", { name: "Open /demo Desktop comparison" })).toBeVisible();
   await page.getByRole("treeitem", { name: "Open /demo Desktop comparison" }).click();
   await expect(page.getByText("/demo / Desktop", { exact: true })).toBeVisible();
+  await page.goto("/app/runs");
+  await expect(page.getByRole("heading", { name: "Route batch" })).toBeVisible();
+  await expect(page.getByText("All 2 captured routes", { exact: false })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Route comparison results" }).getByText("/demo", { exact: true })).toBeVisible();
 });
 
 test("project flow exposes the two-project guardrail", async ({ page }) => {
