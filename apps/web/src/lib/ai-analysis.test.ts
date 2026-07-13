@@ -21,4 +21,13 @@ describe("parseAiJson", () => {
   it("rejects an unbounded risk score", () => {
     expect(() => parseAiJson(JSON.stringify({ ...valid, riskScore: 140 }))).toThrow();
   });
+
+  it("keeps the most important regressions when the model returns too many", () => {
+    const regressions = Array.from({ length: 10 }, (_, index) => ({
+      title: `Regression ${index + 1}`,
+      explanation: `Explanation for regression ${index + 1}.`,
+      severity: "medium",
+    }));
+    expect(parseAiJson(JSON.stringify({ ...valid, regressions })).regressions).toHaveLength(8);
+  });
 });

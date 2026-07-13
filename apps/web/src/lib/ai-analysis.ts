@@ -19,5 +19,15 @@ export const aiResultSchema = z.object({
 export function parseAiJson(content: string) {
   const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
   const candidate = fenced ?? content.slice(content.indexOf("{"), content.lastIndexOf("}") + 1);
-  return aiResultSchema.parse(JSON.parse(candidate));
+  const raw = JSON.parse(candidate) as unknown;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("NVIDIA returned an invalid analysis object");
+  }
+  const result = raw as Record<string, unknown>;
+  return aiResultSchema.parse({
+    ...result,
+    userImpacts: Array.isArray(result.userImpacts) ? result.userImpacts.slice(0, 6) : result.userImpacts,
+    regressions: Array.isArray(result.regressions) ? result.regressions.slice(0, 8) : result.regressions,
+    recommendations: Array.isArray(result.recommendations) ? result.recommendations.slice(0, 6) : result.recommendations,
+  });
 }

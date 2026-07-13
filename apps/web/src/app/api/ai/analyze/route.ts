@@ -14,7 +14,7 @@ const requestSchema = z.object({
   deterministicFindings: z.array(z.unknown()).max(30),
 });
 
-const systemPrompt = `You are a senior frontend QA and product design reviewer. Compare the baseline and candidate screenshots using the deterministic evidence supplied. Explain user-visible meaning, not pixel noise. Never invent interactions or hidden content. Return only one JSON object with: executiveSummary, beforePurpose, afterPurpose, verdict (safe|review|block), confidence (0..1), riskScore (0..100), userImpacts (string array), regressions ({title, explanation, severity} array), recommendations (string array). A block verdict requires a likely broken critical task, missing content, or serious accessibility/usability regression.`;
+const systemPrompt = `You are a senior frontend QA and product design reviewer. Compare the baseline and candidate screenshots using the deterministic evidence supplied. Explain user-visible meaning, not pixel noise. Never invent interactions or hidden content. Return only one JSON object with: executiveSummary, beforePurpose, afterPurpose, verdict (safe|review|block), confidence (0..1), riskScore (0..100), userImpacts (maximum 6 strings), regressions (maximum 8 objects with title, explanation, severity), recommendations (maximum 6 strings). Put the highest-severity and most actionable items first. A block verdict requires a likely broken critical task, missing content, or serious accessibility/usability regression.`;
 
 export async function POST(request: Request) {
   const key = process.env.NVIDIA_API_KEY?.trim();
@@ -63,7 +63,11 @@ export async function POST(request: Request) {
     const analysis = parseAiJson(content);
     return NextResponse.json({ analysis: { ...analysis, model, generatedAt: Date.now() } });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to analyze this comparison";
+    const message = error instanceof SyntaxError
+      ? "NVIDIA returned an unreadable report. Please try the analysis again."
+      : error instanceof Error && error.name === "ZodError"
+        ? "NVIDIA returned an incomplete report. Please try the analysis again."
+        : error instanceof Error ? error.message : "Unable to analyze this comparison";
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }
