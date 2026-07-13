@@ -550,6 +550,7 @@ function ProjectSetupForm({
   });
   const discoveredRoutes = routeQuery.data?.routes ?? [];
   const routeOptions = discoveredRoutes.includes("/") ? discoveredRoutes : ["/", ...discoveredRoutes];
+  const selectedRouteSet = new Set(selectedRoutes);
 
   function toggleRoute(route: string) {
     setSelectedRoutes((current) => current.includes(route) ? current.filter((item) => item !== route) : [...current, route]);
@@ -570,15 +571,14 @@ function ProjectSetupForm({
         const project = await getLocalProject(projectId);
         if (!project) throw new Error("This project was not found on this device");
         const batchId = selectedRoutes.length > 1 ? crypto.randomUUID() : undefined;
-        const runs = [];
-        for (const [index, selectedRoute] of selectedRoutes.entries()) {
-          runs.push(await createLocalRun(
+        const runs = await Promise.all(selectedRoutes.map((selectedRoute, index) =>
+          createLocalRun(
             project,
             selectedRoute,
             viewport,
             batchId ? { id: batchId, index, total: selectedRoutes.length } : undefined,
-          ));
-        }
+          ),
+        ));
         const firstRun = runs[0];
         if (!firstRun) throw new Error("Select at least one route to compare");
         router.push(`/app/runs/${firstRun.id}/capture`);
@@ -680,7 +680,7 @@ function ProjectSetupForm({
                 </p>
                 <div className="route-options" aria-label="Discovered routes">
                   {routeOptions.map((route) => (
-                    <button type="button" aria-pressed={selectedRoutes.includes(route)} className={selectedRoutes.includes(route) ? "active" : ""} onClick={() => toggleRoute(route)} key={route}>
+                    <button type="button" aria-pressed={selectedRouteSet.has(route)} className={selectedRouteSet.has(route) ? "active" : ""} onClick={() => toggleRoute(route)} key={route}>
                       {route === "/" ? "Home /" : route}
                     </button>
                   ))}
@@ -812,6 +812,8 @@ async function batchDestination(run: LocalRun) {
   const firstReady = batchRuns.find((item) => item.status === "ready");
   return `/app/runs/${firstReady?.id ?? run.id}`;
 }
+
+const captureStageOrder = ["baseline", "candidate", "diff"] as const;
 
 export function CaptureScreen({ runId }: { runId: string }) {
   const router = useRouter();
@@ -964,11 +966,10 @@ export function CaptureScreen({ runId }: { runId: string }) {
     return () => objectUrls.forEach((url) => URL.revokeObjectURL(url));
   }, [router, runId, retryKey]);
 
-  const stageOrder = ["baseline", "candidate", "diff"] as const;
-  const currentIndex = stageOrder.indexOf(phase === "starting" || phase === "ready" || phase === "failed" ? "baseline" : phase);
-  const localStages = stageOrder.map((stage, index) => {
+  const currentIndex = captureStageOrder.indexOf(phase === "starting" || phase === "ready" || phase === "failed" ? "baseline" : phase);
+  const localStages = captureStageOrder.map((stage, index) => {
     const isFailed = phase === "failed" && failedStage === stage;
-    const done = phase === "ready" || (!isFailed && (currentIndex > index || (phase === "failed" && stageOrder.indexOf(failedStage ?? "baseline") > index)));
+    const done = phase === "ready" || (!isFailed && (currentIndex > index || (phase === "failed" && captureStageOrder.indexOf(failedStage ?? "baseline") > index)));
     const running = phase === stage;
     return {
       name: stage === "diff" ? "Visual diff" : `${stage[0]?.toUpperCase()}${stage.slice(1)}`,
@@ -1092,7 +1093,7 @@ export function CaptureScreen({ runId }: { runId: string }) {
           </header>
           {events.map((event) => (
             <div key={event.id}>
-              <small>{new Date(event.time).toLocaleTimeString([], { hour12: false })}</small>
+              <small>{new Date(event.time).toLocaleTimeString("en-GB", { hour12: false, timeZone: "UTC" })}</small>
               {event.status === "error" ? <XCircle /> : event.status === "running" ? <LoaderCircle /> : <CheckCircle2 />}
               <b>{event.label}</b>
               <span>{event.detail}</span>
@@ -1121,7 +1122,7 @@ export function RunsScreen() {
         changedPixels: run.changedPixels,
         changedRatio: run.changedRatio * 100,
         changedRegions: run.regions.length,
-        createdAt: new Date(run.createdAt).toLocaleString(),
+        createdAt: new Date(run.createdAt).toLocaleString("en-US", { timeZone: "UTC" }),
         duration: run.completedAt
           ? `${Math.max(1, Math.round((run.completedAt - run.createdAt) / 1_000))}s`
           : "—",
@@ -1206,18 +1207,18 @@ export function RunsScreen() {
                 <div><small>Highest risk</small><strong>{highestRisk}/100</strong></div>
                 <div><small>Failed</small><strong>{failedRouteCount}</strong></div>
               </div>
-              <div className="route-matrix" role="list" aria-label="Route comparison results">
+              <ul className="route-matrix" aria-label="Route comparison results">
                 {latestRoutes.map((run) => {
                   const risk = run.aiAnalysis?.riskScore ?? run.semanticSummary?.riskScore ?? 0;
                   const state = run.status === "failed" ? "failed" : run.aiAnalysis?.verdict ?? run.semanticSummary?.level ?? "unchanged";
-                  return <Link key={run.id} role="listitem" href={run.status === "failed" ? `/app/projects/${run.projectId}` : `/app/runs/${run.id}`}>
-                    <span><b>{run.routePath}</b><small>{viewportProfiles[run.viewport].label} · {run.semanticFindings?.length ?? run.regions.length} findings</small></span>
-                    <em className={state}>{state}</em>
-                    <strong>{risk}</strong>
-                    <ChevronRight size={14} />
-                  </Link>;
+                  return <li key={run.id}><Link href={run.status === "failed" ? `/app/projects/${run.projectId}` : `/app/runs/${run.id}`}>
+                      <span><b>{run.routePath}</b><small>{viewportProfiles[run.viewport].label} · {run.semanticFindings?.length ?? run.regions.length} findings</small></span>
+                      <em className={state}>{state}</em>
+                      <strong>{risk}</strong>
+                      <ChevronRight size={14} />
+                    </Link></li>;
                 })}
-              </div>
+              </ul>
             </section>
           )}
           <div className="runs-table">

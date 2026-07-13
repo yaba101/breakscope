@@ -2924,8 +2924,11 @@ button {
 .route-matrix {
   border: 1px solid var(--ui-border-subtle);
   border-top: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
-.route-matrix > a {
+.route-matrix > li > a {
   align-items: center;
   border-top: 1px solid var(--ui-border-subtle);
   display: grid;
@@ -2934,13 +2937,13 @@ button {
   min-height: 50px;
   padding: 7px 11px;
 }
-.route-matrix > a:first-child {
+.route-matrix > li:first-child > a {
   border-top: 0;
 }
-.route-matrix > a:hover {
+.route-matrix > li > a:hover {
   background: rgba(255, 255, 255, .025);
 }
-.route-matrix > a > span {
+.route-matrix > li > a > span {
   display: grid;
   gap: 3px;
 }
@@ -2964,7 +2967,7 @@ button {
   border-color: color-mix(in srgb, var(--ui-success) 45%, transparent);
   color: var(--ui-success);
 }
-.route-matrix > a > strong {
+.route-matrix > li > a > strong {
   text-align: right;
 }
 .pink {
@@ -3667,10 +3670,10 @@ button {
   .batch-metrics > div:nth-child(-n+2) {
     border-bottom: 1px solid var(--ui-border-subtle);
   }
-  .route-matrix > a {
+  .route-matrix > li > a {
     grid-template-columns: 1fr auto 14px;
   }
-  .route-matrix > a > strong {
+  .route-matrix > li > a > strong {
     display: none;
   }
   .runs-table-head {
