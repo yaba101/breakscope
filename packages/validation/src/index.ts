@@ -18,6 +18,24 @@ export function isApprovedPublicUrl(value: string) {
   }
 }
 
+export function isLocalPreviewUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return (
+      !url.username &&
+      !url.password &&
+      url.protocol === "http:" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isCaptureUrl(value: string) {
+  return isApprovedPublicUrl(value) || isLocalPreviewUrl(value);
+}
+
 export const projectInputSchema = z.object({
   name: z.string().trim().min(2).max(60),
   baselineUrl: z.string().url().refine(isApprovedPublicUrl, "Use an approved public HTTPS preview URL"),

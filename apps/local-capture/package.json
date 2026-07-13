@@ -1,0 +1,25 @@
+{
+  "name": "@uirift/local-capture",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.58.2",
+    "@uirift/shared": "workspace:*",
+    "@uirift/validation": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "^4.20.6",
+    "typescript": "^5",
+    "vitest": "^4.0.18"
+  }
+}
