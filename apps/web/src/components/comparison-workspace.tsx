@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Eye,
   FolderOpen,
+  LocateFixed,
   Maximize2,
   Minus,
   Monitor,
@@ -291,12 +292,16 @@ export function ComparisonWorkspace({
 }) {
   const { tool, regionsVisible, setTool } = useComparisonTools();
   const [mode, setMode] = useState<CompareMode>("side-by-side");
-  const [zoom, setZoom] = useState(72);
+  const [zoom, setZoom] = useState(100);
   const [slider, setSlider] = useState(54);
   const [overlayOpacity, setOverlayOpacity] = useState(50);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [canvasSize, setCanvasSize] = useState({ width: 1, height: 1 });
   const [spacePanning, setSpacePanning] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [pixelInspection, setPixelInspection] = useState<PixelInspection>();
+  const canvasRef = useRef<HTMLElement>(null);
+  const framePaperRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; panX: number; panY: number } | undefined>(undefined);
   const [activeRegion, setActiveRegion] = useState(1);
   const [decision, setDecision] = useState<"pending" | "accepted" | "rejected">(
@@ -351,9 +356,9 @@ export function ComparisonWorkspace({
       if (event.key === "3") changeMode("overlay");
       if (event.key === "4") changeMode("diff");
       if (event.key === "+" || event.key === "=")
-        setZoom((value) => Math.min(160, value + 10));
-      if (event.key === "-") setZoom((value) => Math.max(40, value - 10));
-      if (event.key === "0") setZoom(72);
+        setZoom((value) => Math.min(400, value + 10));
+      if (event.key === "-") setZoom((value) => Math.max(25, value - 10));
+      if (event.key === "0") fitView();
       if (event.key === "]" && regions.length) setActiveRegion((value) => (value % regions.length) + 1);
       if (event.key === "[" && regions.length) setActiveRegion((value) => ((value + regions.length - 2) % regions.length) + 1);
       if (event.code === "Space") {
@@ -372,17 +377,64 @@ export function ComparisonWorkspace({
     };
   }, [changeMode, regions.length]);
 
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      setCanvasSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
+
   const canvasStyle = {
-    "--workspace-zoom": zoom / 72,
+    "--workspace-zoom": zoom / 100,
     "--workspace-pan-x": `${pan.x}px`,
     "--workspace-pan-y": `${pan.y}px`,
   } as React.CSSProperties;
   const panning = tool === "pan" || spacePanning;
 
+  function fitView() {
+    setZoom(100);
+    setPan({ x: 0, y: 0 });
+  }
+
+  function actualSize() {
+    const paperWidth = framePaperRef.current?.getBoundingClientRect().width;
+    if (!paperWidth) return;
+    setZoom((current) => Math.min(400, Math.max(25, (viewport.width / (paperWidth / (current / 100))) * 100)));
+    setPan({ x: 0, y: 0 });
+  }
+
+  function zoomAt(clientX: number, clientY: number, nextZoom: number) {
+    const bounds = canvasRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const constrained = Math.min(400, Math.max(25, nextZoom));
+    const ratio = constrained / zoom;
+    const pointerX = clientX - bounds.left - bounds.width / 2;
+    const pointerY = clientY - bounds.top - bounds.height / 2;
+    setPan((current) => ({
+      x: pointerX - (pointerX - current.x) * ratio,
+      y: pointerY - (pointerY - current.y) * ratio,
+    }));
+    setZoom(constrained);
+  }
+
+  function wheelZoom(event: React.WheelEvent<HTMLElement>) {
+    event.preventDefault();
+    const factor = Math.exp(-event.deltaY * 0.0015);
+    zoomAt(event.clientX, event.clientY, zoom * factor);
+  }
+
   function beginPan(event: React.PointerEvent<HTMLElement>) {
-    if (!panning) return;
+    const interactive = event.target instanceof Element && event.target.closest("button, input, a, [role='tab'], [role='treeitem']");
+    const middleButton = event.button === 1;
+    if (interactive || (!middleButton && (!panning || event.button !== 0))) return;
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
+    setIsDragging(true);
   }
 
   function movePan(event: React.PointerEvent<HTMLElement>) {
@@ -395,7 +447,13 @@ export function ComparisonWorkspace({
 
   function endPan() {
     drag.current = undefined;
+    setIsDragging(false);
   }
+
+  const minimapWidth = Math.max(18, Math.min(100, 10_000 / zoom));
+  const minimapHeight = Math.max(18, Math.min(100, minimapWidth * 0.72));
+  const minimapLeft = Math.max(0, Math.min(100 - minimapWidth, 50 - minimapWidth / 2 - (pan.x / canvasSize.width) * 100));
+  const minimapTop = Math.max(0, Math.min(100 - minimapHeight, 50 - minimapHeight / 2 - (pan.y / canvasSize.height) * 100));
 
   function selectRegionAt(event: React.MouseEvent<HTMLDivElement>) {
     if (tool !== "select" || !regions.length) return;
@@ -439,20 +497,23 @@ export function ComparisonWorkspace({
     >
       {!reportMode && <LayerPanel projectName={projectName} runId={runId} layers={layers ?? [{ id: runId ?? "demo", routePath, viewport, regionCount: regions.length }]} />}
       <section
-        className={cn("comparison-canvas", panning && "is-panning", tool === "inspect" && "is-inspecting")}
+        ref={canvasRef}
+        className={cn("comparison-canvas", panning && "is-panning", isDragging && "is-dragging", tool === "inspect" && "is-inspecting")}
         style={canvasStyle}
         aria-label="Visual comparison canvas"
         onPointerDown={beginPan}
         onPointerMove={movePan}
         onPointerUp={endPan}
         onPointerCancel={endPan}
+        onWheel={wheelZoom}
+        onAuxClick={(event) => event.preventDefault()}
       >
-        <div className={cn("frames", `mode-${mode}`)}>
+        <div className={cn("frames", `mode-${mode}`, isDragging && "dragging")}>
           {mode === "side-by-side" && (
             <>
               <div className="comparison-frame">
                 <FrameLabel label={baselineLabel} routePath={routePath} viewport={viewport} />
-                <div className="frame-paper" onClick={interactWithFrame}>
+                <div ref={framePaperRef} className="frame-paper" onClick={interactWithFrame}>
                   <CapturedView src={baselineSrc} allowFixture={publicMode} />
                 </div>
               </div>
@@ -471,7 +532,7 @@ export function ComparisonWorkspace({
                 <FrameLabel label={baselineLabel} routePath={routePath} viewport={viewport} />
                 <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
               </div>
-              <div className="frame-paper slider-paper" onClick={interactWithFrame}>
+              <div ref={framePaperRef} className="frame-paper slider-paper" onClick={interactWithFrame}>
                 <CapturedView src={baselineSrc} allowFixture={publicMode} />
                 <div
                   className="candidate-clip"
@@ -494,7 +555,7 @@ export function ComparisonWorkspace({
                 <FrameLabel label={baselineLabel} routePath={routePath} viewport={viewport} />
                 <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
               </div>
-              <div className="frame-paper overlay-paper" onClick={interactWithFrame}>
+              <div ref={framePaperRef} className="frame-paper overlay-paper" onClick={interactWithFrame}>
                 <CapturedView src={baselineSrc} allowFixture={publicMode} />
                 <div className="overlay-candidate" style={{ opacity: overlayOpacity / 100 }}>
                   <CapturedView src={candidateSrc} candidate allowFixture={publicMode} />
@@ -506,7 +567,7 @@ export function ComparisonWorkspace({
           {mode === "diff" && (
             <div className="comparison-frame single diff-frame">
               <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
-              <div className="frame-paper" onClick={interactWithFrame}>
+              <div ref={framePaperRef} className="frame-paper" onClick={interactWithFrame}>
                 <CapturedView src={diffSrc ?? candidateSrc} candidate allowFixture={publicMode} />
                 {!diffSrc && <div className="diff-film"><span /><span /><span /><span /><span /></div>}
                 {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} />}
@@ -514,27 +575,31 @@ export function ComparisonWorkspace({
             </div>
           )}
         </div>
+        <button type="button" className="canvas-minimap" aria-label="Reset canvas view" onClick={fitView}>
+          <span className="minimap-content"><i style={{ left: `${minimapLeft}%`, top: `${minimapTop}%`, width: `${minimapWidth}%`, height: `${minimapHeight}%` }} /></span>
+          <LocateFixed size={12} />
+        </button>
         <div className="canvas-controls">
           <div className="zoom-controls">
             <button
               type="button"
               aria-label="Zoom out"
-              onClick={() => setZoom((value) => Math.max(40, value - 10))}
+              onClick={() => setZoom((value) => Math.max(25, value - 10))}
             >
               <Minus size={13} />
             </button>
-            <span>{zoom}%</span>
+            <output aria-label="Canvas zoom">{Math.round(zoom)}%</output>
             <button
               type="button"
               aria-label="Zoom in"
-              onClick={() => setZoom((value) => Math.min(160, value + 10))}
+              onClick={() => setZoom((value) => Math.min(400, value + 10))}
             >
               <Plus size={13} />
             </button>
-            <button type="button" onClick={() => { setZoom(72); setPan({ x: 0, y: 0 }); }}>
+            <button type="button" onClick={fitView}>
               <Maximize2 size={12} /> Fit
             </button>
-            <button type="button" onClick={() => setZoom(100)}>
+            <button type="button" onClick={actualSize}>
               1:1
             </button>
           </div>

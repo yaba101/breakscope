@@ -16,4 +16,19 @@ describe("ComparisonWorkspace", () => {
     fireEvent.keyDown(window, { key: "2" });
     expect(screen.getByRole("button", { name: /slider/i })).toHaveClass("active");
   });
+
+  it("zooms from the canvas and restores the fitted view", () => {
+    render(<ComparisonWorkspace publicMode />);
+    const canvas = screen.getByRole("region", { name: "Visual comparison canvas" });
+    expect(screen.getByLabelText("Canvas zoom")).toHaveTextContent("100%");
+    fireEvent.wheel(canvas, { deltaY: -120, clientX: 120, clientY: 80 });
+    expect(screen.getByLabelText("Canvas zoom")).not.toHaveTextContent("100%");
+    fireEvent.click(screen.getByRole("button", { name: "Fit" }));
+    expect(screen.getByLabelText("Canvas zoom")).toHaveTextContent("100%");
+  });
+
+  it("offers an always-visible canvas reset through the minimap", () => {
+    render(<ComparisonWorkspace publicMode />);
+    expect(screen.getByRole("button", { name: "Reset canvas view" })).toBeInTheDocument();
+  });
 });
