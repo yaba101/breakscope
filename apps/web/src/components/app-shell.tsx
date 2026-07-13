@@ -2,160 +2,86 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  ArrowDownLeft,
-  Check,
-  ChevronDown,
-  Code2,
-  Folder,
-  GitBranch,
-  Hand,
-  History,
-  Layers3,
-  MousePointer2,
-  Play,
-  ScanSearch,
-  Settings,
-  Share2,
-} from "lucide-react";
+import { ArrowDownLeft, Code2, Database, Folder, Hand, Layers3, MousePointer2, Play, ScanSearch, Settings } from "lucide-react";
+import { useEffect, useState } from "react";
 import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/cn";
+import { listLocalRuns } from "@/lib/local-workspace";
 
 const nav = [
   { label: "Projects", href: "/app/projects", icon: Folder },
   { label: "Runs", href: "/app/runs", icon: Play },
-  { label: "Compare", href: "/app/runs/1247", icon: ScanSearch },
+  { label: "Compare", href: "/app/runs", icon: ScanSearch },
   { label: "Settings", href: "/app/settings", icon: Settings },
 ] as const;
 
-function GlobalToolbar({
-  breadcrumb = "Acme Cloud / Run #1247 / Pricing",
-}: {
-  breadcrumb?: string;
-}) {
+function isComparisonPath(pathname: string) {
+  return /^\/app\/runs\/[^/]+$/.test(pathname);
+}
+
+function GlobalToolbar({ breadcrumb = "Local workspace" }: { breadcrumb?: string }) {
+  const comparing = isComparisonPath(usePathname());
   return (
     <header className="global-toolbar">
-      <Link href="/" className="wordmark" aria-label="UIRift home">
-        UI<span>RIFT</span>
-      </Link>
+      <Link href="/" className="wordmark" aria-label="UIRift home">UI<span>RIFT</span></Link>
       <div className="toolbar-divider" />
       <div className="breadcrumb">{breadcrumb}</div>
-      <div className="canvas-tools" aria-label="Canvas tools">
-        <IconButton icon={MousePointer2} label="Select" active />
-        <IconButton icon={Hand} label="Pan (Space)" />
-        <IconButton icon={Layers3} label="Regions" />
-        <IconButton icon={Code2} label="Inspect source" />
-      </div>
-      <div className="toolbar-meta">
-        <span className="branch">
-          <GitBranch size={13} /> feat/pricing-refresh <ChevronDown size={12} />
-        </span>
-        <span className="capture-state">
-          <i /> Capture complete
-        </span>
-        <button type="button" className="share-control">
-          <Share2 size={13} /> Share
-        </button>
-        <div className="avatar-stack" aria-label="Signed in as Yeabsira">
-          <span>YM</span>
+      {comparing && (
+        <div className="canvas-tools" aria-label="Canvas tools">
+          <IconButton icon={MousePointer2} label="Select" active />
+          <IconButton icon={Hand} label="Pan (Space)" />
+          <IconButton icon={Layers3} label="Regions" />
+          <IconButton icon={Code2} label="Inspect pixels" />
         </div>
+      )}
+      <div className="toolbar-meta">
+        <span className="branch"><Database size={13} /> Local workspace</span>
+        <span className="capture-state"><i /> Stored on this device</span>
+        <div className="avatar-stack" aria-label="Local guest workspace"><span>LG</span></div>
       </div>
     </header>
   );
 }
 
-function ToolRail() {
+function useNavigation() {
+  const [compareHref, setCompareHref] = useState("/app/runs");
+  useEffect(() => {
+    void listLocalRuns().then((runs) => {
+      const latest = runs.find((run) => run.status === "ready" && run.baselineImage && run.candidateImage);
+      if (latest) setCompareHref(`/app/runs/${latest.id}`);
+    });
+  }, []);
+  return nav.map((item) => item.label === "Compare" ? { ...item, href: compareHref } : item);
+}
+
+function navigationActive(label: string, pathname: string) {
+  if (label === "Projects") return pathname.startsWith("/app/projects");
+  if (label === "Compare") return isComparisonPath(pathname);
+  if (label === "Runs") return pathname === "/app/runs" || pathname.endsWith("/capture");
+  return pathname.startsWith("/app/settings");
+}
+
+function Navigation({ mobile = false }: { mobile?: boolean }) {
   const pathname = usePathname();
+  const items = useNavigation();
+  if (mobile) {
+    return <nav className="mobile-nav" aria-label="Mobile navigation">{items.map((item) => <Link key={item.label} href={item.href}><item.icon size={18} /><span>{item.label}</span></Link>)}</nav>;
+  }
   return (
     <nav className="tool-rail" aria-label="Product navigation">
-      {nav.map((item) => {
-        const Icon = item.icon;
-        const active = pathname.startsWith(
-          item.href.split("/1247")[0] ?? item.href,
-        );
-        return (
-          <Link
-            key={item.label}
-            href={item.href}
-            className={cn("rail-link", active && "active")}
-          >
-            <Icon size={19} strokeWidth={1.55} aria-hidden="true" />
-            <span>{item.label}</span>
-          </Link>
-        );
-      })}
-      <button
-        type="button"
-        className="rail-collapse"
-        aria-label="Collapse navigation"
-      >
-        <ArrowDownLeft size={15} />
-      </button>
+      {items.map((item) => <Link key={item.label} href={item.href} className={cn("rail-link", navigationActive(item.label, pathname) && "active")}><item.icon size={19} strokeWidth={1.55} aria-hidden="true" /><span>{item.label}</span></Link>)}
+      <button type="button" className="rail-collapse" aria-label="Collapse navigation"><ArrowDownLeft size={15} /></button>
     </nav>
   );
 }
 
-export function CaptureDock({ compact = true }: { compact?: boolean }) {
-  return (
-    <section
-      className={cn("capture-dock", !compact && "expanded")}
-      aria-label="Capture log"
-    >
-      <div className="capture-title">
-        <History size={14} /> CAPTURE LOG <ChevronDown size={13} />
-      </div>
-      <div className="capture-steps">
-        {[
-          ["10:14:02", "Navigate", "/pricing"],
-          ["10:14:05", "Fonts ready", "12 fonts loaded"],
-          ["10:14:07", "Captured", "1440×900"],
-          ["10:14:10", "Compared", "3 regions"],
-        ].map(([time, label, detail], index) => (
-          <div className="capture-step" key={label}>
-            <span className="step-check">
-              <Check size={11} />
-            </span>
-            <span>
-              <small>{time}</small>
-              <b>{label}</b>
-              <small>{detail}</small>
-            </span>
-            {index < 3 && <i />}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export function AppShell({
-  children,
-  breadcrumb,
-  dock = true,
-}: {
-  children: React.ReactNode;
-  breadcrumb?: string;
-  dock?: boolean;
-}) {
+export function AppShell({ children, breadcrumb }: { children: React.ReactNode; breadcrumb?: string; dock?: boolean }) {
   return (
     <div className="app-root">
       <GlobalToolbar breadcrumb={breadcrumb} />
-      <ToolRail />
-      <main
-        id="main-content"
-        className={cn("app-main", !dock && "without-dock")}
-      >
-        {children}
-      </main>
-      {dock && <CaptureDock />}
-      <nav className="mobile-nav" aria-label="Mobile navigation">
-        {nav.map((item) => (
-          <Link key={item.label} href={item.href}>
-            <item.icon size={18} />
-            <span>{item.label}</span>
-          </Link>
-        ))}
-      </nav>
+      <Navigation />
+      <main id="main-content" className="app-main without-dock">{children}</main>
+      <Navigation mobile />
     </div>
   );
 }
