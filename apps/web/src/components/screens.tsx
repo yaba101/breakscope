@@ -530,7 +530,7 @@ function ProjectSetupForm({
     initialCandidate ?? "",
   );
   const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
-  const [routePath, setRoutePath] = useState("/pricing");
+  const [routePath, setRoutePath] = useState("/");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(initialError);
   const baselineValid = isCaptureUrl(baseline);
