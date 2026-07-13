@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
   Check,
@@ -26,8 +28,15 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
-import { projects, runs } from "@uirift/shared";
+import { useRef, useState } from "react";
+import {
+  projects,
+  runs,
+  viewportProfiles,
+  type RunSummary,
+  type RunStatus,
+  type Decision,
+} from "@uirift/shared";
 import { isApprovedPublicUrl } from "@uirift/validation";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
@@ -35,6 +44,7 @@ import { DemoSite } from "@/components/demo-site";
 import { ComparisonWorkspace } from "@/components/comparison-workspace";
 import { GitHubSignIn } from "@/components/github-sign-in";
 import { cn } from "@/lib/cn";
+import { createVisualDiff, uploadVisualDiff } from "@/lib/diff-client";
 
 const captureStages = [
   {
@@ -316,6 +326,40 @@ function HealthBars({ values }: { values: number[] }) {
 }
 
 export function ProjectsScreen() {
+  const projectQuery = useQuery({
+    queryKey: ["projects"],
+    queryFn: async ({ signal }) => {
+      const response = await fetch("/api/projects", {
+        cache: "no-store",
+        signal,
+      });
+      if (!response.ok) throw new Error("fixture fallback");
+      const payload = (await response.json()) as {
+        projects: Array<{
+          id: string;
+          name: string;
+          baseline_origin: string;
+          candidate_origin: string;
+          updated_at: number;
+        }>;
+      };
+      return payload.projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        origin: new URL(project.baseline_origin).hostname,
+        baselineUrl: project.baseline_origin,
+        candidateUrl: project.candidate_origin,
+        lastRunId: "—",
+        updatedAt: new Date(project.updated_at).toLocaleDateString(),
+        changedRegions: 0,
+        health: [2, 4, 3, 5, 4],
+        status: "approved" as const,
+      }));
+    },
+    retry: false,
+  });
+  const projectRows = projectQuery.data ?? projects;
+
   return (
     <AppShell breadcrumb="Projects">
       <div className="projects-layout">
@@ -338,7 +382,7 @@ export function ProjectsScreen() {
           </header>
           <div className="filter-tabs">
             <button type="button" className="active">
-              All <span>2</span>
+              All <span>{projectRows.length}</span>
             </button>
             <button type="button">
               Needs review <i />
@@ -355,7 +399,7 @@ export function ProjectsScreen() {
               <span>HEALTH</span>
               <span>STATUS</span>
             </div>
-            {projects.map((project) => (
+            {projectRows.map((project) => (
               <Link
                 href={`/app/projects/${project.id}`}
                 className="project-row"
@@ -445,18 +489,123 @@ export function ProjectsScreen() {
 
 export function ProjectSetupScreen({
   existing = false,
+  projectId,
 }: {
   existing?: boolean;
+  projectId?: string;
 }) {
+  const projectQuery = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`/api/projects/${projectId}`, { signal });
+      if (!response.ok) throw new Error("Unable to load this project");
+      const payload = (await response.json()) as {
+        project: {
+          name: string;
+          baseline_origin: string;
+          candidate_origin: string;
+        };
+      };
+      return payload.project;
+    },
+    enabled: existing && Boolean(projectId),
+    retry: false,
+  });
+  if (existing && projectQuery.isPending) {
+    return (
+      <AppShell breadcrumb="Loading project…" dock={false}>
+        <div className="report-state">
+          <LoaderCircle />
+          <p>Loading comparison settings…</p>
+        </div>
+      </AppShell>
+    );
+  }
+  return (
+    <ProjectSetupForm
+      key={projectId ?? "new"}
+      existing={existing}
+      projectId={projectId}
+      initialName={projectQuery.data?.name}
+      initialBaseline={projectQuery.data?.baseline_origin}
+      initialCandidate={projectQuery.data?.candidate_origin}
+      initialError={
+        projectQuery.error instanceof Error ? projectQuery.error.message : ""
+      }
+    />
+  );
+}
+
+function ProjectSetupForm({
+  existing,
+  projectId,
+  initialName,
+  initialBaseline,
+  initialCandidate,
+  initialError,
+}: {
+  existing: boolean;
+  projectId?: string;
+  initialName?: string;
+  initialBaseline?: string;
+  initialCandidate?: string;
+  initialError: string;
+}) {
+  const router = useRouter();
+  const [name, setName] = useState(initialName ?? "Acme Cloud");
   const [baseline, setBaseline] = useState(
-    existing ? "https://acme-demo.pages.dev" : "",
+    initialBaseline ?? (existing ? "https://acme-demo.pages.dev" : ""),
   );
   const [candidate, setCandidate] = useState(
-    existing ? "https://acme-preview.vercel.app" : "",
+    initialCandidate ?? (existing ? "https://acme-preview.vercel.app" : ""),
   );
   const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
+  const [routePath, setRoutePath] = useState("/pricing");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(initialError);
   const baselineValid = isApprovedPublicUrl(baseline);
   const candidateValid = isApprovedPublicUrl(candidate);
+
+  async function submit() {
+    if (!baselineValid || !candidateValid || submitting) return;
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const response =
+        existing && projectId
+          ? await fetch(`/api/projects/${projectId}/runs`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ routePath, viewport }),
+            })
+          : await fetch("/api/projects", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name,
+                baselineUrl: baseline,
+                candidateUrl: candidate,
+              }),
+            });
+      const payload = (await response.json()) as {
+        project?: { id: string };
+        run?: { id: string };
+        error?: { message?: string };
+      };
+      if (!response.ok)
+        throw new Error(
+          payload.error?.message ?? "Unable to save your changes",
+        );
+      if (payload.run) router.push(`/app/runs/${payload.run.id}/capture`);
+      else if (payload.project)
+        router.push(`/app/projects/${payload.project.id}`);
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : "Unable to save your changes",
+      );
+      setSubmitting(false);
+    }
+  }
   return (
     <AppShell
       breadcrumb={
@@ -499,7 +648,10 @@ export function ProjectSetupScreen({
           </header>
           {!existing && (
             <FormField label="Project name">
-              <input defaultValue="Acme Cloud" />
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
             </FormField>
           )}
           <FormField label="Baseline URL">
@@ -521,7 +673,10 @@ export function ProjectSetupScreen({
           {existing && (
             <>
               <FormField label="Route path">
-                <input defaultValue="/pricing" />
+                <input
+                  value={routePath}
+                  onChange={(event) => setRoutePath(event.target.value)}
+                />
               </FormField>
               <div className="viewport-choice">
                 <span>Viewport</span>
@@ -560,6 +715,7 @@ export function ProjectSetupScreen({
               </small>
             </p>
           </div>
+          {submitError && <p className="validation-line">{submitError}</p>}
         </section>
         <aside className="url-preview">
           <div className="panel-heading">
@@ -595,28 +751,13 @@ export function ProjectSetupScreen({
           <Link href="/app/projects">Cancel</Link>
           <div>
             <Button>Save draft</Button>
-            {existing ? (
-              <Link
-                className="button-link primary"
-                href="/app/runs/1247/capture"
-              >
-                Save and run
-              </Link>
-            ) : (
-              <Link
-                className={cn(
-                  "button-link primary",
-                  (!baselineValid || !candidateValid) && "disabled",
-                )}
-                href={
-                  baselineValid && candidateValid
-                    ? "/app/projects/acme-cloud"
-                    : "#"
-                }
-              >
-                Continue
-              </Link>
-            )}
+            <Button
+              variant="primary"
+              disabled={!baselineValid || !candidateValid || submitting}
+              onClick={submit}
+            >
+              {submitting ? "Saving…" : existing ? "Save and run" : "Continue"}
+            </Button>
           </div>
         </footer>
       </div>
@@ -649,12 +790,57 @@ function ValidationLine({ valid }: { valid: boolean }) {
   );
 }
 
-export function CaptureScreen() {
+export function CaptureScreen({ runId }: { runId: string }) {
+  const router = useRouter();
+  const diffStarted = useRef(false);
+  const statusQuery = useQuery({
+    queryKey: ["run-status", runId],
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`/api/runs/${runId}`, {
+        cache: "no-store",
+        signal,
+      });
+      const payload = (await response.json()) as {
+        run?: { status: string };
+        error?: { message?: string };
+      };
+      if (!response.ok || !payload.run)
+        throw new Error(payload.error?.message ?? "Unable to read run status");
+      if (payload.run.status === "ready") router.replace(`/app/runs/${runId}`);
+      if (payload.run.status === "processing" && !diffStarted.current) {
+        diffStarted.current = true;
+        try {
+          const result = await createVisualDiff(
+            `/api/runs/${runId}/artifacts/baseline`,
+            `/api/runs/${runId}/artifacts/candidate`,
+          );
+          await uploadVisualDiff(runId, result);
+          router.replace(`/app/runs/${runId}`);
+          return "ready";
+        } catch (error) {
+          diffStarted.current = false;
+          throw error;
+        }
+      }
+      return payload.run.status;
+    },
+    refetchInterval: (query) =>
+      ["ready", "failed"].includes(query.state.data ?? "") ? false : 1_500,
+    retry: 2,
+  });
+  const liveStatus = statusQuery.data ?? "queued";
+  const captureError =
+    liveStatus === "failed"
+      ? "The browser capture failed. You can return to the project and try again."
+      : statusQuery.error instanceof Error
+        ? statusQuery.error.message
+        : "";
+
   return (
-    <AppShell breadcrumb="Acme Cloud / Run #1247" dock={false}>
+    <AppShell breadcrumb={`Acme Cloud / Run #${runId}`} dock={false}>
       <div className="capture-screen">
         <aside className="capture-context">
-          <span>RUN #1247</span>
+          <span>RUN #{runId.slice(0, 8)}</span>
           <h2>Pricing</h2>
           <p>/pricing · Desktop 1440</p>
           <div>
@@ -670,14 +856,23 @@ export function CaptureScreen() {
           <header>
             <div>
               <span>RUN PROGRESS</span>
-              <h1>Capture in progress</h1>
-              <p>2 of 3 stages complete</p>
+              <h1>
+                {liveStatus === "processing"
+                  ? "Calculating visual diff"
+                  : "Capture in progress"}
+              </h1>
+              <p>
+                {liveStatus === "processing"
+                  ? "Screenshots ready · processing on this device"
+                  : "Browser job is running"}
+              </p>
             </div>
             <b>ETA 00:18</b>
           </header>
           <div className="progress-track">
             <i />
           </div>
+          {captureError && <p className="validation-line">{captureError}</p>}
           <div className="capture-stage-list">
             {captureStages.map((stage, index) => (
               <article className={stage.status} key={stage.name}>
@@ -769,6 +964,48 @@ export function CaptureScreen() {
 }
 
 export function RunsScreen() {
+  const runsQuery = useQuery({
+    queryKey: ["runs"],
+    queryFn: async ({ signal }): Promise<RunSummary[]> => {
+      const response = await fetch("/api/runs", { cache: "no-store", signal });
+      if (!response.ok) throw new Error("fixture fallback");
+      const payload = (await response.json()) as {
+        runs: Array<{
+          id: string;
+          project_id: string;
+          project_name: string;
+          route_path: string;
+          viewport_id: "desktop" | "mobile";
+          status: RunStatus;
+          decision: Decision;
+          changed_pixels: number;
+          changed_ratio: number;
+          changed_regions: number;
+          created_at: number;
+          completed_at: number | null;
+        }>;
+      };
+      return payload.runs.map((run) => ({
+        id: run.id,
+        projectId: run.project_id,
+        projectName: run.project_name,
+        routePath: run.route_path,
+        viewport: viewportProfiles[run.viewport_id],
+        status: run.status,
+        decision: run.decision,
+        changedPixels: run.changed_pixels,
+        changedRatio: run.changed_ratio * 100,
+        changedRegions: run.changed_regions,
+        createdAt: new Date(run.created_at).toLocaleString(),
+        duration: run.completed_at
+          ? `${Math.max(1, Math.round((run.completed_at - run.created_at) / 1_000))}s`
+          : "—",
+      }));
+    },
+    retry: false,
+  });
+  const runRows = runsQuery.data ?? runs;
+
   return (
     <AppShell breadcrumb="Runs">
       <div className="runs-screen">
@@ -784,10 +1021,7 @@ export function RunsScreen() {
                 <Search />
                 <input placeholder="Search runs…" />
               </label>
-              <Link
-                className="button-link primary"
-                href="/app/projects/acme-cloud"
-              >
+              <Link className="button-link primary" href="/app/projects">
                 New comparison
               </Link>
             </div>
@@ -820,11 +1054,11 @@ export function RunsScreen() {
               <span>DECISION</span>
               <span />
             </div>
-            {runs.map((run) => (
+            {runRows.map((run) => (
               <Link
                 href={
                   run.status === "failed"
-                    ? "/app/projects/acme-cloud"
+                    ? `/app/projects/${run.projectId}`
                     : `/app/runs/${run.id}`
                 }
                 className="run-row"
@@ -896,7 +1130,52 @@ export function RunsScreen() {
   );
 }
 
-export function SharedReportScreen() {
+export function SharedReportScreen({ token }: { token: string }) {
+  const reportQuery = useQuery({
+    queryKey: ["shared-report", token],
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`/api/public/reports/${token}`, {
+        cache: "no-store",
+        signal,
+      });
+      if (!response.ok) throw new Error("expired");
+      return response.json();
+    },
+    retry: false,
+  });
+  const reportState = reportQuery.isPending
+    ? "loading"
+    : reportQuery.isError
+      ? "expired"
+      : "ready";
+
+  if (reportState !== "ready") {
+    return (
+      <main className="report-state">
+        <Link className="wordmark" href="/">
+          UI<span>RIFT</span>
+        </Link>
+        <div>
+          <LockKeyhole />
+          <h1>
+            {reportState === "loading"
+              ? "Opening shared report…"
+              : "This shared report has expired"}
+          </h1>
+          <p>
+            {reportState === "loading"
+              ? "Verifying the read-only link."
+              : "Ask the owner to create a new seven-day link."}
+          </p>
+          {reportState === "expired" && (
+            <Link className="button-link primary" href="/demo">
+              Open the seeded demo
+            </Link>
+          )}
+        </div>
+      </main>
+    );
+  }
   return (
     <main className="shared-page">
       <header>
@@ -967,7 +1246,12 @@ export function SharedReportScreen() {
             </button>
           ))}
         </aside>
-        <ComparisonWorkspace publicMode reportMode />
+        <ComparisonWorkspace
+          publicMode
+          reportMode
+          baselineSrc={`/api/public/reports/${token}/artifacts/baseline`}
+          candidateSrc={`/api/public/reports/${token}/artifacts/candidate`}
+        />
         <aside className="report-evidence">
           <span>EVIDENCE</span>
           <article>

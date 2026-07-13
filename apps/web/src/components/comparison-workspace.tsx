@@ -1,6 +1,7 @@
 "use client";
 
 import * as Tabs from "@radix-ui/react-tabs";
+import Image from "next/image";
 import {
   Check,
   ChevronDown,
@@ -229,12 +230,38 @@ function RegionOverlay({ activeRegion }: { activeRegion: number }) {
   );
 }
 
+function CapturedView({
+  src,
+  candidate = false,
+}: {
+  src?: string;
+  candidate?: boolean;
+}) {
+  if (!src) return <DemoSite candidate={candidate} />;
+  return (
+    <Image
+      className="capture-image"
+      src={src}
+      alt={candidate ? "Candidate capture" : "Baseline capture"}
+      fill
+      sizes="(max-width: 767px) 100vw, 760px"
+      unoptimized
+    />
+  );
+}
+
 export function ComparisonWorkspace({
   publicMode = false,
   reportMode = false,
+  baselineSrc,
+  candidateSrc,
+  runId,
 }: {
   publicMode?: boolean;
   reportMode?: boolean;
+  baselineSrc?: string;
+  candidateSrc?: string;
+  runId?: string;
 }) {
   const [mode, setMode] = useState<CompareMode>("side-by-side");
   const [zoom, setZoom] = useState(72);
@@ -243,6 +270,33 @@ export function ComparisonWorkspace({
   const [decision, setDecision] = useState<"pending" | "accepted" | "rejected">(
     "pending",
   );
+  const [shareLabel, setShareLabel] = useState("Share");
+
+  async function recordDecision(next: "accepted" | "rejected") {
+    setDecision(next);
+    if (!runId) return;
+    const response = await fetch(`/api/runs/${runId}/decision`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision: next }),
+    });
+    if (!response.ok) setDecision("pending");
+  }
+
+  async function shareRun() {
+    if (!runId) return;
+    setShareLabel("Creating…");
+    const response = await fetch(`/api/runs/${runId}/share`, {
+      method: "POST",
+    });
+    const payload = (await response.json()) as { url?: string };
+    if (!response.ok || !payload.url) {
+      setShareLabel("Try again");
+      return;
+    }
+    await navigator.clipboard.writeText(payload.url);
+    setShareLabel("Copied");
+  }
 
   const changeMode = useCallback((next: CompareMode) => setMode(next), []);
   useEffect(() => {
@@ -289,13 +343,13 @@ export function ComparisonWorkspace({
               <div className="comparison-frame">
                 <FrameLabel />
                 <div className="frame-paper">
-                  <DemoSite />
+                  <CapturedView src={baselineSrc} />
                 </div>
               </div>
               <div className="comparison-frame">
                 <FrameLabel candidate />
                 <div className="frame-paper">
-                  <DemoSite candidate />
+                  <CapturedView src={candidateSrc} candidate />
                   <RegionOverlay activeRegion={activeRegion} />
                 </div>
               </div>
@@ -308,12 +362,12 @@ export function ComparisonWorkspace({
                 <FrameLabel candidate />
               </div>
               <div className="frame-paper slider-paper">
-                <DemoSite />
+                <CapturedView src={baselineSrc} />
                 <div
                   className="candidate-clip"
                   style={{ clipPath: `inset(0 0 0 ${slider}%)` }}
                 >
-                  <DemoSite candidate />
+                  <CapturedView src={candidateSrc} candidate />
                 </div>
                 <div className="slider-line" style={{ left: `${slider}%` }}>
                   <span>{slider}%</span>
@@ -330,9 +384,9 @@ export function ComparisonWorkspace({
                 <FrameLabel candidate />
               </div>
               <div className="frame-paper overlay-paper">
-                <DemoSite />
+                <CapturedView src={baselineSrc} />
                 <div className="overlay-candidate">
-                  <DemoSite candidate />
+                  <CapturedView src={candidateSrc} candidate />
                 </div>
                 <RegionOverlay activeRegion={activeRegion} />
               </div>
@@ -342,7 +396,7 @@ export function ComparisonWorkspace({
             <div className="comparison-frame single diff-frame">
               <FrameLabel candidate />
               <div className="frame-paper">
-                <DemoSite candidate />
+                <CapturedView src={candidateSrc} candidate />
                 <div className="diff-film">
                   <span />
                   <span />
@@ -416,10 +470,11 @@ export function ComparisonWorkspace({
       )}
       {!publicMode && !reportMode && (
         <footer className="decision-bar">
-          <Button variant="danger" onClick={() => setDecision("rejected")}>
+          {runId && <Button onClick={shareRun}>{shareLabel}</Button>}
+          <Button variant="danger" onClick={() => recordDecision("rejected")}>
             {decision === "rejected" && <Check size={13} />} Reject change
           </Button>
-          <Button variant="primary" onClick={() => setDecision("accepted")}>
+          <Button variant="primary" onClick={() => recordDecision("accepted")}>
             {decision === "accepted" && <Check size={13} />} Accept change
           </Button>
         </footer>
