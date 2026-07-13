@@ -17,7 +17,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { changedRegions } from "@uirift/shared";
+import { changedRegions, type ChangedRegion, type Decision } from "@uirift/shared";
 import { Button } from "@/components/ui/button";
 import { DemoSite } from "@/components/demo-site";
 import { cn } from "@/lib/cn";
@@ -98,9 +98,15 @@ function LayerPanel() {
 function DiffInspector({
   activeRegion,
   onRegion,
+  regions,
+  changedPixels,
+  changedRatio,
 }: {
   activeRegion: number;
   onRegion: (id: number) => void;
+  regions: ChangedRegion[];
+  changedPixels: number;
+  changedRatio: number;
 }) {
   return (
     <aside className="diff-inspector">
@@ -117,15 +123,15 @@ function DiffInspector({
           <section className="metric-grid">
             <div>
               <small>Changed pixels</small>
-              <strong>1,256</strong>
+              <strong>{changedPixels.toLocaleString()}</strong>
             </div>
             <div>
               <small>Diff</small>
-              <strong>0.42%</strong>
+              <strong>{(changedRatio * 100).toFixed(2)}%</strong>
             </div>
             <div>
               <small>Region</small>
-              <strong>{activeRegion} of 3</strong>
+              <strong>{regions.length ? `${activeRegion} of ${regions.length}` : "None"}</strong>
             </div>
           </section>
           <section className="inspector-section">
@@ -158,7 +164,7 @@ function DiffInspector({
             <div className="section-title">
               FINDINGS <span>3</span>
             </div>
-            {changedRegions.map((region) => (
+            {regions.map((region) => (
               <button
                 type="button"
                 key={region.id}
@@ -212,8 +218,8 @@ function FrameLabel({ candidate = false }: { candidate?: boolean }) {
   );
 }
 
-function RegionOverlay({ activeRegion }: { activeRegion: number }) {
-  const region = changedRegions[activeRegion - 1] ?? changedRegions[0];
+function RegionOverlay({ activeRegion, regions }: { activeRegion: number; regions: ChangedRegion[] }) {
+  const region = regions[activeRegion - 1] ?? regions[0];
   if (!region) return null;
   return (
     <div
@@ -255,25 +261,45 @@ export function ComparisonWorkspace({
   reportMode = false,
   baselineSrc,
   candidateSrc,
+  diffSrc,
   runId,
+  regions = changedRegions,
+  changedPixels = 1256,
+  changedRatio = 0.0042,
+  initialDecision = "pending",
+  onDecision,
 }: {
   publicMode?: boolean;
   reportMode?: boolean;
   baselineSrc?: string;
   candidateSrc?: string;
+  diffSrc?: string;
   runId?: string;
+  regions?: ChangedRegion[];
+  changedPixels?: number;
+  changedRatio?: number;
+  initialDecision?: Decision;
+  onDecision?: (decision: Exclude<Decision, "pending">) => Promise<void>;
 }) {
   const [mode, setMode] = useState<CompareMode>("side-by-side");
   const [zoom, setZoom] = useState(72);
   const [slider, setSlider] = useState(54);
   const [activeRegion, setActiveRegion] = useState(1);
   const [decision, setDecision] = useState<"pending" | "accepted" | "rejected">(
-    "pending",
+    initialDecision,
   );
   const [shareLabel, setShareLabel] = useState("Share");
 
   async function recordDecision(next: "accepted" | "rejected") {
     setDecision(next);
+    if (onDecision) {
+      try {
+        await onDecision(next);
+      } catch {
+        setDecision("pending");
+      }
+      return;
+    }
     if (!runId) return;
     const response = await fetch(`/api/runs/${runId}/decision`, {
       method: "PATCH",
@@ -314,12 +340,12 @@ export function ComparisonWorkspace({
         setZoom((value) => Math.min(160, value + 10));
       if (event.key === "-") setZoom((value) => Math.max(40, value - 10));
       if (event.key === "0") setZoom(72);
-      if (event.key === "]") setActiveRegion((value) => (value % 3) + 1);
-      if (event.key === "[") setActiveRegion((value) => ((value + 1) % 3) + 1);
+      if (event.key === "]" && regions.length) setActiveRegion((value) => (value % regions.length) + 1);
+      if (event.key === "[" && regions.length) setActiveRegion((value) => ((value + regions.length - 2) % regions.length) + 1);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [changeMode]);
+  }, [changeMode, regions.length]);
 
   const canvasStyle = { "--workspace-zoom": zoom / 72 } as React.CSSProperties;
 
@@ -350,7 +376,7 @@ export function ComparisonWorkspace({
                 <FrameLabel candidate />
                 <div className="frame-paper">
                   <CapturedView src={candidateSrc} candidate />
-                  <RegionOverlay activeRegion={activeRegion} />
+                  <RegionOverlay activeRegion={activeRegion} regions={regions} />
                 </div>
               </div>
             </>
@@ -373,7 +399,7 @@ export function ComparisonWorkspace({
                   <span>{slider}%</span>
                   <i>↔</i>
                 </div>
-                <RegionOverlay activeRegion={activeRegion} />
+                <RegionOverlay activeRegion={activeRegion} regions={regions} />
               </div>
             </div>
           )}
@@ -388,7 +414,7 @@ export function ComparisonWorkspace({
                 <div className="overlay-candidate">
                   <CapturedView src={candidateSrc} candidate />
                 </div>
-                <RegionOverlay activeRegion={activeRegion} />
+                <RegionOverlay activeRegion={activeRegion} regions={regions} />
               </div>
             </div>
           )}
@@ -396,15 +422,9 @@ export function ComparisonWorkspace({
             <div className="comparison-frame single diff-frame">
               <FrameLabel candidate />
               <div className="frame-paper">
-                <CapturedView src={candidateSrc} candidate />
-                <div className="diff-film">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <RegionOverlay activeRegion={activeRegion} />
+                <CapturedView src={diffSrc ?? candidateSrc} candidate />
+                {!diffSrc && <div className="diff-film"><span /><span /><span /><span /><span /></div>}
+                <RegionOverlay activeRegion={activeRegion} regions={regions} />
               </div>
             </div>
           )}
@@ -466,11 +486,11 @@ export function ComparisonWorkspace({
         )}
       </section>
       {!reportMode && (
-        <DiffInspector activeRegion={activeRegion} onRegion={setActiveRegion} />
+        <DiffInspector activeRegion={activeRegion} onRegion={setActiveRegion} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} />
       )}
       {!publicMode && !reportMode && (
         <footer className="decision-bar">
-          {runId && <Button onClick={shareRun}>{shareLabel}</Button>}
+          {runId && !onDecision && <Button onClick={shareRun}>{shareLabel}</Button>}
           <Button variant="danger" onClick={() => recordDecision("rejected")}>
             {decision === "rejected" && <Check size={13} />} Reject change
           </Button>

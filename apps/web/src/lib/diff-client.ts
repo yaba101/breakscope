@@ -13,7 +13,11 @@ interface WorkerFailure { ok: false; error: string }
 export async function createVisualDiff(baselineUrl: string, candidateUrl: string, threshold = 0.2) {
   const [baselineResponse, candidateResponse] = await Promise.all([fetch(baselineUrl), fetch(candidateUrl)]);
   if (!baselineResponse.ok || !candidateResponse.ok) throw new Error("Unable to download captured images");
-  const [baseline, candidate] = await Promise.all([baselineResponse.arrayBuffer(), candidateResponse.arrayBuffer()]);
+  return createVisualDiffFromBlobs(await baselineResponse.blob(), await candidateResponse.blob(), threshold);
+}
+
+export async function createVisualDiffFromBlobs(baselineBlob: Blob, candidateBlob: Blob, threshold = 0.2) {
+  const [baseline, candidate] = await Promise.all([baselineBlob.arrayBuffer(), candidateBlob.arrayBuffer()]);
   const worker = new Worker(new URL("../workers/diff.worker.ts", import.meta.url));
   return await new Promise<WorkerSuccess>((resolve, reject) => {
     worker.onmessage = (event: MessageEvent<WorkerSuccess | WorkerFailure>) => {

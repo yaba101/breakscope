@@ -28,23 +28,29 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  projects,
-  runs,
   viewportProfiles,
   type RunSummary,
   type RunStatus,
-  type Decision,
 } from "@uirift/shared";
-import { isApprovedPublicUrl } from "@uirift/validation";
+import { isCaptureUrl } from "@uirift/validation";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { DemoSite } from "@/components/demo-site";
 import { ComparisonWorkspace } from "@/components/comparison-workspace";
-import { GitHubSignIn } from "@/components/github-sign-in";
 import { cn } from "@/lib/cn";
-import { createVisualDiff, uploadVisualDiff } from "@/lib/diff-client";
+import { createVisualDiffFromBlobs } from "@/lib/diff-client";
+import { captureLocally } from "@/lib/local-capture";
+import {
+  createLocalProject,
+  createLocalRun,
+  getLocalProject,
+  getLocalRun,
+  listLocalProjects,
+  listLocalRuns,
+  updateLocalRun,
+} from "@/lib/local-workspace";
 
 const captureStages = [
   {
@@ -261,9 +267,9 @@ export function SignInScreen() {
       </header>
       <section className="auth-panel">
         <div className="auth-context">
-          <span className="eyebrow">PORTFOLIO DEMO</span>
-          <h1>Sign in to create your workspace</h1>
-          <p>Use GitHub to save projects and run live visual comparisons.</p>
+          <span className="eyebrow">LOCAL-FIRST BETA</span>
+          <h1>Build your workspace on this device</h1>
+          <p>Create projects and run real visual comparisons without an account.</p>
           <div className="auth-heatmap">
             <i />
             <i />
@@ -278,36 +284,29 @@ export function SignInScreen() {
             </li>
             <li>
               <Gauge />
-              Live comparisons <b>3 per day</b>
+              Live comparisons <b>Unlimited locally</b>
             </li>
             <li>
               <Clock3 />
-              Artifact retention <b>7 days</b>
+              Artifact retention <b>Until you clear it</b>
             </li>
           </ul>
         </div>
         <div className="auth-action">
-          <h2>Continue to UIRift</h2>
-          <p>GitHub is used only for identity in this portfolio release.</p>
-          <GitHubSignIn />
-          <div className="auth-separator">
-            <span>or</span>
-          </div>
-          <Link className="demo-link" href="/demo">
-            <Eye /> Open the seeded demo without signing in <ArrowRight />
+          <h2>Open a local workspace</h2>
+          <p>No sign-in, remote database, or tracking. Your work stays in this browser.</p>
+          <Link className="demo-link guest-link" href="/app/projects">
+            <Folder /> Continue as guest <ArrowRight />
           </Link>
           <div className="auth-security">
-            <ShieldCheck />
+            <LockKeyhole />
             <span>
-              <b>Managed with Better Auth</b>
-              <small>
-                Sessions remain in UIRift&apos;s Cloudflare D1 database.
-              </small>
+              <b>Stored only on this device</b>
+              <small>Projects, captures, diffs, and decisions use IndexedDB.</small>
             </span>
           </div>
           <small className="auth-terms">
-            By continuing, you agree to the demonstration&apos;s acceptable-use
-            and retention limits.
+            GitHub authentication and cloud sync will be added after the local workflow is proven.
           </small>
         </div>
       </section>
@@ -326,39 +325,28 @@ function HealthBars({ values }: { values: number[] }) {
 }
 
 export function ProjectsScreen() {
-  const projectQuery = useQuery({
-    queryKey: ["projects"],
-    queryFn: async ({ signal }) => {
-      const response = await fetch("/api/projects", {
-        cache: "no-store",
-        signal,
+  const workspaceQuery = useQuery({
+    queryKey: ["local-workspace"],
+    queryFn: async () => {
+      const [localProjects, localRuns] = await Promise.all([listLocalProjects(), listLocalRuns()]);
+      const projectRows = localProjects.map((project) => {
+        const projectRuns = localRuns.filter((run) => run.projectId === project.id);
+        const lastRun = projectRuns[0];
+        return {
+          ...project,
+          origin: new URL(project.baselineUrl).hostname,
+          lastRunId: lastRun?.id.slice(0, 8) ?? "—",
+          updatedAt: new Date(project.updatedAt).toLocaleDateString(),
+          changedRegions: lastRun?.regions.length ?? 0,
+          health: projectRuns.slice(0, 8).map((run) => run.status === "ready" ? 10 : 3),
+          status: lastRun?.decision === "accepted" ? "approved" as const : "review" as const,
+        };
       });
-      if (!response.ok) throw new Error("fixture fallback");
-      const payload = (await response.json()) as {
-        projects: Array<{
-          id: string;
-          name: string;
-          baseline_origin: string;
-          candidate_origin: string;
-          updated_at: number;
-        }>;
-      };
-      return payload.projects.map((project) => ({
-        id: project.id,
-        name: project.name,
-        origin: new URL(project.baseline_origin).hostname,
-        baselineUrl: project.baseline_origin,
-        candidateUrl: project.candidate_origin,
-        lastRunId: "—",
-        updatedAt: new Date(project.updated_at).toLocaleDateString(),
-        changedRegions: 0,
-        health: [2, 4, 3, 5, 4],
-        status: "approved" as const,
-      }));
+      return { projects: projectRows, runs: localRuns };
     },
-    retry: false,
   });
-  const projectRows = projectQuery.data ?? projects;
+  const projectRows = workspaceQuery.data?.projects ?? [];
+  const recentRuns = workspaceQuery.data?.runs.slice(0, 3) ?? [];
 
   return (
     <AppShell breadcrumb="Projects">
@@ -368,14 +356,14 @@ export function ProjectsScreen() {
             <div>
               <span>WORKSPACE</span>
               <h1>Projects</h1>
-              <p>Two projects available on the portfolio plan.</p>
+              <p>Two projects stored privately in this browser.</p>
             </div>
             <div className="page-actions">
               <label>
                 <Search />
                 <input placeholder="Search projects…" />
               </label>
-              <Link className="button-link primary" href="/app/projects/new">
+              <Link className={cn("button-link primary", projectRows.length >= 2 && "disabled")} href="/app/projects/new" aria-disabled={projectRows.length >= 2}>
                 <Plus /> New project
               </Link>
             </div>
@@ -416,9 +404,9 @@ export function ProjectsScreen() {
                 </div>
                 <div className="environment-pair">
                   <small>BASELINE</small>
-                  <b>main@a1b2c3d</b>
+                  <b>{new URL(project.baselineUrl).hostname}</b>
                   <small>CANDIDATE</small>
-                  <b>d4e5f6g</b>
+                  <b>{new URL(project.candidateUrl).hostname}</b>
                 </div>
                 <div>
                   <b>#{project.lastRunId}</b>
@@ -426,11 +414,11 @@ export function ProjectsScreen() {
                 </div>
                 <div className="thumb-pair">
                   <span>
-                    <DemoSite compact />
+                    <Globe2 />
                   </span>
                   <ArrowRight />
                   <span>
-                    <DemoSite compact candidate />
+                    <Globe2 />
                   </span>
                 </div>
                 <div
@@ -462,7 +450,7 @@ export function ProjectsScreen() {
             <b>RECENT ACTIVITY</b>
             <MoreHorizontal />
           </div>
-          {runs.map((run) => (
+          {recentRuns.map((run) => (
             <div className="activity-item" key={run.id}>
               <span className={cn("activity-icon", run.status)}>
                 {run.status === "failed" ? <XCircle /> : <Check />}
@@ -474,9 +462,7 @@ export function ProjectsScreen() {
                   {run.status === "failed" ? "failed" : "completed"}
                 </b>
                 <p>{run.projectName}</p>
-                <small>
-                  {run.changedRegions} changes · {run.duration}
-                </small>
+                <small>{run.regions.length} changes · local capture</small>
               </div>
             </div>
           ))}
@@ -496,17 +482,10 @@ export function ProjectSetupScreen({
 }) {
   const projectQuery = useQuery({
     queryKey: ["project", projectId],
-    queryFn: async ({ signal }) => {
-      const response = await fetch(`/api/projects/${projectId}`, { signal });
-      if (!response.ok) throw new Error("Unable to load this project");
-      const payload = (await response.json()) as {
-        project: {
-          name: string;
-          baseline_origin: string;
-          candidate_origin: string;
-        };
-      };
-      return payload.project;
+    queryFn: async () => {
+      const project = await getLocalProject(projectId!);
+      if (!project) throw new Error("This project was not found on this device");
+      return project;
     },
     enabled: existing && Boolean(projectId),
     retry: false,
@@ -527,8 +506,8 @@ export function ProjectSetupScreen({
       existing={existing}
       projectId={projectId}
       initialName={projectQuery.data?.name}
-      initialBaseline={projectQuery.data?.baseline_origin}
-      initialCandidate={projectQuery.data?.candidate_origin}
+      initialBaseline={projectQuery.data?.baselineUrl}
+      initialCandidate={projectQuery.data?.candidateUrl}
       initialError={
         projectQuery.error instanceof Error ? projectQuery.error.message : ""
       }
@@ -552,53 +531,34 @@ function ProjectSetupForm({
   initialError: string;
 }) {
   const router = useRouter();
-  const [name, setName] = useState(initialName ?? "Acme Cloud");
+  const [name, setName] = useState(initialName ?? "");
   const [baseline, setBaseline] = useState(
-    initialBaseline ?? (existing ? "https://acme-demo.pages.dev" : ""),
+    initialBaseline ?? "",
   );
   const [candidate, setCandidate] = useState(
-    initialCandidate ?? (existing ? "https://acme-preview.vercel.app" : ""),
+    initialCandidate ?? "",
   );
   const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
   const [routePath, setRoutePath] = useState("/pricing");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(initialError);
-  const baselineValid = isApprovedPublicUrl(baseline);
-  const candidateValid = isApprovedPublicUrl(candidate);
+  const baselineValid = isCaptureUrl(baseline);
+  const candidateValid = isCaptureUrl(candidate);
 
   async function submit() {
-    if (!baselineValid || !candidateValid || submitting) return;
+    if (!name.trim() || !baselineValid || !candidateValid || !routePath.startsWith("/") || submitting) return;
     setSubmitting(true);
     setSubmitError("");
     try {
-      const response =
-        existing && projectId
-          ? await fetch(`/api/projects/${projectId}/runs`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ routePath, viewport }),
-            })
-          : await fetch("/api/projects", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                name,
-                baselineUrl: baseline,
-                candidateUrl: candidate,
-              }),
-            });
-      const payload = (await response.json()) as {
-        project?: { id: string };
-        run?: { id: string };
-        error?: { message?: string };
-      };
-      if (!response.ok)
-        throw new Error(
-          payload.error?.message ?? "Unable to save your changes",
-        );
-      if (payload.run) router.push(`/app/runs/${payload.run.id}/capture`);
-      else if (payload.project)
-        router.push(`/app/projects/${payload.project.id}`);
+      if (existing && projectId) {
+        const project = await getLocalProject(projectId);
+        if (!project) throw new Error("This project was not found on this device");
+        const run = await createLocalRun(project, routePath, viewport);
+        router.push(`/app/runs/${run.id}/capture`);
+      } else {
+        const project = await createLocalProject({ name, baselineUrl: baseline, candidateUrl: candidate });
+        router.push(`/app/projects/${project.id}`);
+      }
     } catch (error) {
       setSubmitError(
         error instanceof Error ? error.message : "Unable to save your changes",
@@ -681,8 +641,7 @@ function ProjectSetupForm({
               <div className="viewport-choice">
                 <span>Viewport</span>
                 <p>
-                  One viewport per run protects the daily live-capture
-                  allowance.
+                One viewport keeps each local comparison focused and fast.
                 </p>
                 <div>
                   <button
@@ -708,10 +667,9 @@ function ProjectSetupForm({
           <div className="setup-note">
             <ShieldCheck />
             <p>
-              <b>Public HTTPS only</b>
+              <b>Preview-safe URLs</b>
               <small>
-                Localhost, IP literals, credentials, private networks and
-                unsupported hosts are blocked.
+                Approved HTTPS preview hosts are supported. Localhost is allowed for local development.
               </small>
             </p>
           </div>
@@ -725,12 +683,12 @@ function ProjectSetupForm({
           <span>Baseline</span>
           <b>{baseline || "Waiting for URL…"}</b>
           <div className="url-preview-frame">
-            {baselineValid ? <DemoSite compact /> : <Globe2 />}
+            <Globe2 />
           </div>
           <span>Candidate</span>
           <b>{candidate || "Waiting for URL…"}</b>
           <div className="url-preview-frame">
-            {candidateValid ? <DemoSite compact candidate /> : <Globe2 />}
+            <Globe2 />
           </div>
           <dl>
             <div>
@@ -753,7 +711,7 @@ function ProjectSetupForm({
             <Button>Save draft</Button>
             <Button
               variant="primary"
-              disabled={!baselineValid || !candidateValid || submitting}
+              disabled={!name.trim() || !baselineValid || !candidateValid || !routePath.startsWith("/") || submitting}
               onClick={submit}
             >
               {submitting ? "Saving…" : existing ? "Save and run" : "Continue"}
@@ -784,65 +742,88 @@ function ValidationLine({ valid }: { valid: boolean }) {
     <span className={cn("validation-line", valid && "valid")}>
       {valid ? <CheckCircle2 /> : <CircleDot />}
       {valid
-        ? "Verified · public HTTPS"
-        : "Enter an approved pages.dev, vercel.app, netlify.app or workers.dev URL"}
+        ? "Verified · ready for local capture"
+        : "Use localhost or an approved pages.dev, vercel.app, netlify.app or workers.dev URL"}
     </span>
   );
 }
 
 export function CaptureScreen({ runId }: { runId: string }) {
   const router = useRouter();
-  const diffStarted = useRef(false);
-  const statusQuery = useQuery({
-    queryKey: ["run-status", runId],
-    queryFn: async ({ signal }) => {
-      const response = await fetch(`/api/runs/${runId}`, {
-        cache: "no-store",
-        signal,
-      });
-      const payload = (await response.json()) as {
-        run?: { status: string };
-        error?: { message?: string };
-      };
-      if (!response.ok || !payload.run)
-        throw new Error(payload.error?.message ?? "Unable to read run status");
-      if (payload.run.status === "ready") router.replace(`/app/runs/${runId}`);
-      if (payload.run.status === "processing" && !diffStarted.current) {
-        diffStarted.current = true;
-        try {
-          const result = await createVisualDiff(
-            `/api/runs/${runId}/artifacts/baseline`,
-            `/api/runs/${runId}/artifacts/candidate`,
-          );
-          await uploadVisualDiff(runId, result);
-          router.replace(`/app/runs/${runId}`);
-          return "ready";
-        } catch (error) {
-          diffStarted.current = false;
-          throw error;
-        }
+  const started = useRef(false);
+  const [liveStatus, setLiveStatus] = useState<RunStatus>("queued");
+  const [captureError, setCaptureError] = useState("");
+  const [context, setContext] = useState({ projectName: "Local project", routePath: "/", viewport: viewportProfiles.desktop });
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    async function executeCapture() {
+      try {
+        const run = await getLocalRun(runId);
+        if (!run) throw new Error("This comparison was not found on this device");
+        const project = await getLocalProject(run.projectId);
+        if (!project) throw new Error("The project for this comparison was not found");
+        setContext({ projectName: project.name, routePath: run.routePath, viewport: viewportProfiles[run.viewport] });
+        if (run.status === "ready") return router.replace(`/app/runs/${runId}`);
+        setLiveStatus("capturing");
+        await updateLocalRun(runId, { status: "capturing", error: undefined });
+        const images = await captureLocally({
+          baselineUrl: project.baselineUrl,
+          candidateUrl: project.candidateUrl,
+          routePath: run.routePath,
+          viewport: run.viewport,
+        });
+        setLiveStatus("processing");
+        await updateLocalRun(runId, { status: "processing", baselineImage: images.baseline, candidateImage: images.candidate });
+        const result = await createVisualDiffFromBlobs(images.baseline, images.candidate);
+        const profile = viewportProfiles[run.viewport];
+        const regions = result.regions.map((region, index) => ({
+          id: index + 1,
+          x: (region.x / profile.width) * 100,
+          y: (region.y / profile.height) * 100,
+          width: (region.width / profile.width) * 100,
+          height: (region.height / profile.height) * 100,
+          pixelCount: region.pixelCount,
+          label: `Changed region ${index + 1}`,
+          severity: (region.pixelCount > 500 ? "high" : region.pixelCount > 100 ? "medium" : "low") as "high" | "medium" | "low",
+        }));
+        await updateLocalRun(runId, {
+          status: "ready",
+          baselineImage: images.baseline,
+          candidateImage: images.candidate,
+          diffImage: new Blob([result.diff], { type: "image/png" }),
+          changedPixels: result.changedPixels,
+          changedRatio: result.changedRatio,
+          regions,
+          completedAt: Date.now(),
+        });
+        setLiveStatus("ready");
+        router.replace(`/app/runs/${runId}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Local capture failed";
+        setCaptureError(message);
+        setLiveStatus("failed");
+        await updateLocalRun(runId, { status: "failed", error: message }).catch(() => undefined);
       }
-      return payload.run.status;
-    },
-    refetchInterval: (query) =>
-      ["ready", "failed"].includes(query.state.data ?? "") ? false : 1_500,
-    retry: 2,
-  });
-  const liveStatus = statusQuery.data ?? "queued";
-  const captureError =
-    liveStatus === "failed"
-      ? "The browser capture failed. You can return to the project and try again."
-      : statusQuery.error instanceof Error
-        ? statusQuery.error.message
-        : "";
+    }
+    void executeCapture();
+  }, [router, runId]);
+
+  const localStages = captureStages.map((stage, index) => ({
+    ...stage,
+    status: liveStatus === "failed" && index > 0 ? "queued" : liveStatus === "processing" || liveStatus === "ready" ? "done" : index === 0 ? "done" : index === 1 ? "running" : "queued",
+    state: liveStatus === "processing" && index === 2 ? "Processing" : liveStatus === "ready" ? "Complete" : stage.state,
+    detail: index === 2 ? "Runs in this browser" : "Local Playwright",
+  }));
 
   return (
-    <AppShell breadcrumb={`Acme Cloud / Run #${runId}`} dock={false}>
+    <AppShell breadcrumb={`${context.projectName} / Run #${runId.slice(0, 8)}`} dock={false}>
       <div className="capture-screen">
         <aside className="capture-context">
           <span>RUN #{runId.slice(0, 8)}</span>
-          <h2>Pricing</h2>
-          <p>/pricing · Desktop 1440</p>
+          <h2>{context.projectName}</h2>
+          <p>{context.routePath} · {context.viewport.label} {context.viewport.width}</p>
           <div>
             <b>Baseline</b>
             <small>main@a1b2c3d</small>
@@ -859,12 +840,12 @@ export function CaptureScreen({ runId }: { runId: string }) {
               <h1>
                 {liveStatus === "processing"
                   ? "Calculating visual diff"
-                  : "Capture in progress"}
+                  : liveStatus === "failed" ? "Capture stopped" : "Capture in progress"}
               </h1>
               <p>
                 {liveStatus === "processing"
                   ? "Screenshots ready · processing on this device"
-                  : "Browser job is running"}
+                  : "Local Playwright is capturing both pages"}
               </p>
             </div>
             <b>ETA 00:18</b>
@@ -874,7 +855,7 @@ export function CaptureScreen({ runId }: { runId: string }) {
           </div>
           {captureError && <p className="validation-line">{captureError}</p>}
           <div className="capture-stage-list">
-            {captureStages.map((stage, index) => (
+            {localStages.map((stage, index) => (
               <article className={stage.status} key={stage.name}>
                 <span>
                   {stage.status === "done" ? (
@@ -893,7 +874,7 @@ export function CaptureScreen({ runId }: { runId: string }) {
                 <b>{stage.state}</b>
                 {stage.status !== "queued" && (
                   <div className="stage-preview">
-                    <DemoSite compact candidate={index === 1} />
+                    <Globe2 aria-label={index === 0 ? "Baseline page" : "Candidate page"} />
                   </div>
                 )}
               </article>
@@ -910,7 +891,7 @@ export function CaptureScreen({ runId }: { runId: string }) {
             <p>
               <LoaderCircle /> Capturing candidate
             </p>
-            <small>Attempt 1 of 3 · Worker 1</small>
+            <small>Local process · no cloud usage</small>
           </section>
           <section>
             <span>ENVIRONMENT</span>
@@ -930,8 +911,8 @@ export function CaptureScreen({ runId }: { runId: string }) {
             </dl>
           </section>
           <section>
-            <span>DAILY ALLOWANCE</span>
-            <b>3 / 3 remaining</b>
+            <span>LOCAL MODE</span>
+            <b>No daily allowance</b>
             <div className="quota-track">
               <i />
             </div>
@@ -965,46 +946,28 @@ export function CaptureScreen({ runId }: { runId: string }) {
 
 export function RunsScreen() {
   const runsQuery = useQuery({
-    queryKey: ["runs"],
-    queryFn: async ({ signal }): Promise<RunSummary[]> => {
-      const response = await fetch("/api/runs", { cache: "no-store", signal });
-      if (!response.ok) throw new Error("fixture fallback");
-      const payload = (await response.json()) as {
-        runs: Array<{
-          id: string;
-          project_id: string;
-          project_name: string;
-          route_path: string;
-          viewport_id: "desktop" | "mobile";
-          status: RunStatus;
-          decision: Decision;
-          changed_pixels: number;
-          changed_ratio: number;
-          changed_regions: number;
-          created_at: number;
-          completed_at: number | null;
-        }>;
-      };
-      return payload.runs.map((run) => ({
+    queryKey: ["local-runs"],
+    queryFn: async (): Promise<RunSummary[]> => {
+      const localRuns = await listLocalRuns();
+      return localRuns.map((run) => ({
         id: run.id,
-        projectId: run.project_id,
-        projectName: run.project_name,
-        routePath: run.route_path,
-        viewport: viewportProfiles[run.viewport_id],
+        projectId: run.projectId,
+        projectName: run.projectName,
+        routePath: run.routePath,
+        viewport: viewportProfiles[run.viewport],
         status: run.status,
         decision: run.decision,
-        changedPixels: run.changed_pixels,
-        changedRatio: run.changed_ratio * 100,
-        changedRegions: run.changed_regions,
-        createdAt: new Date(run.created_at).toLocaleString(),
-        duration: run.completed_at
-          ? `${Math.max(1, Math.round((run.completed_at - run.created_at) / 1_000))}s`
+        changedPixels: run.changedPixels,
+        changedRatio: run.changedRatio * 100,
+        changedRegions: run.regions.length,
+        createdAt: new Date(run.createdAt).toLocaleString(),
+        duration: run.completedAt
+          ? `${Math.max(1, Math.round((run.completedAt - run.createdAt) / 1_000))}s`
           : "—",
       }));
     },
-    retry: false,
   });
-  const runRows = runsQuery.data ?? runs;
+  const runRows = runsQuery.data ?? [];
 
   return (
     <AppShell breadcrumb="Runs">
@@ -1014,7 +977,7 @@ export function RunsScreen() {
             <div>
               <span>RUN HISTORY</span>
               <h1>Comparisons</h1>
-              <p>Ten retained runs per project.</p>
+              <p>Comparison history stored on this device.</p>
             </div>
             <div className="page-actions">
               <label>
@@ -1072,10 +1035,10 @@ export function RunsScreen() {
                   </small>
                 </div>
                 <span className="run-thumb">
-                  <DemoSite compact />
+                  <Globe2 />
                 </span>
                 <span className="run-thumb">
-                  <DemoSite compact candidate />
+                  <Globe2 />
                 </span>
                 <div
                   className={
@@ -1100,29 +1063,28 @@ export function RunsScreen() {
           </div>
         </section>
         <aside className="runs-side">
-          <span>FREE-TIER STATUS</span>
-          <h2>Live capture available</h2>
+          <span>LOCAL WORKSPACE</span>
+          <h2>Capture service available</h2>
           <div className="quota-orbit">
-            <b>2</b>
-            <small>attempts left</small>
+            <b>∞</b>
+            <small>local attempts</small>
           </div>
           <dl>
             <div>
               <dt>Projects</dt>
-              <dd>2 / 2</dd>
+              <dd>Up to 2</dd>
             </div>
             <div>
               <dt>Stored runs</dt>
-              <dd>3 / 20</dd>
+              <dd>{runRows.length}</dd>
             </div>
             <div>
-              <dt>Artifacts expire</dt>
-              <dd>6 days</dd>
+              <dt>Artifacts</dt>
+              <dd>Stay local</dd>
             </div>
           </dl>
           <p>
-            <ShieldCheck /> The seeded demo remains available after the live
-            allowance is reached.
+            <ShieldCheck /> Nothing is uploaded to UIRift or Cloudflare in local mode.
           </p>
         </aside>
       </div>
