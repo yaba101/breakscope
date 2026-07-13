@@ -35,6 +35,12 @@ test("guest can capture and compare a real local page", async ({ page }, testInf
   await expect(page.getByText(/127\.0\.0\.1:3100/, { exact: true })).toHaveCount(2);
   await expect(page.getByText("main@a1b2c3d", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Run #1247", { exact: false })).toHaveCount(0);
+  if (testInfo.project.name === "mobile") await page.getByRole("button", { name: "Open inspector" }).click();
+  await page.getByRole("tab", { name: "DETAILS" }).click();
+  await expect(page.getByText("Semantic elements", { exact: true })).toBeVisible();
+  await expect(page.getByText(/\d+ → \d+/)).toBeVisible();
+  await page.getByRole("tab", { name: "DIFF" }).click();
+  if (testInfo.project.name === "mobile") await page.getByRole("button", { name: "Close inspector" }).click();
   await page.getByRole("button", { name: /Slider$/ }).click();
   await page.getByLabel("Comparison slider position").fill("35");
   await expect(page.getByLabel("Comparison slider position")).toHaveValue("35");

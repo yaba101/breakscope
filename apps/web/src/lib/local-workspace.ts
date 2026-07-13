@@ -1,4 +1,4 @@
-import type { ChangedRegion, Decision, RunStatus, ViewportId } from "@uirift/shared";
+import type { ChangedRegion, Decision, PageSnapshot, RunStatus, ViewportId } from "@uirift/shared";
 
 const databaseName = "uirift-local-workspace";
 const databaseVersion = 1;
@@ -30,6 +30,8 @@ export interface LocalRun {
   baselineImage?: ArrayBuffer;
   candidateImage?: ArrayBuffer;
   diffImage?: ArrayBuffer;
+  baselineSnapshot?: PageSnapshot;
+  candidateSnapshot?: PageSnapshot;
   events?: CaptureEvent[];
   baselineDurationMs?: number;
   candidateDurationMs?: number;

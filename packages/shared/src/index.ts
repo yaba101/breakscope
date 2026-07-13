@@ -41,6 +41,56 @@ export interface ChangedRegion {
   severity: "high" | "medium" | "low";
 }
 
+export interface ElementRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ElementSnapshot {
+  key: string;
+  order: number;
+  tag: string;
+  role: string;
+  name: string;
+  text: string;
+  selector: string;
+  visible: boolean;
+  inViewport: boolean;
+  rect: ElementRect;
+  attributes: {
+    id: string;
+    testId: string;
+    href: string;
+    type: string;
+    alt: string;
+    placeholder: string;
+    ariaLabel: string;
+  };
+  styles: {
+    display: string;
+    position: string;
+    color: string;
+    backgroundColor: string;
+    fontSize: string;
+    fontWeight: string;
+    borderRadius: string;
+  };
+}
+
+export interface PageSnapshot {
+  url: string;
+  title: string;
+  language: string;
+  viewportWidth: number;
+  viewportHeight: number;
+  documentWidth: number;
+  documentHeight: number;
+  capturedAt: number;
+  elements: ElementSnapshot[];
+}
+
 export interface RunSummary {
   id: string;
   projectId: string;

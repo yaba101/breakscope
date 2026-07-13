@@ -556,6 +556,9 @@ button {
   border-right: 0;
   border-left: 1px solid var(--ui-border-subtle);
 }
+.inspector-sheet-toggle {
+  display: none;
+}
 .panel-heading {
   display: flex;
   height: 44px;
@@ -3382,8 +3385,21 @@ button {
     transform: translateY(calc(100% - 46px));
     transition: transform 0.2s;
   }
-  .diff-inspector:focus-within {
+  .diff-inspector.open {
     transform: translateY(0);
+  }
+  .inspector-sheet-toggle {
+    position: absolute;
+    z-index: 2;
+    top: 8px;
+    right: 8px;
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 1px solid var(--ui-border-subtle);
+    border-radius: 4px;
+    background: var(--ui-raised);
   }
   .frames {
     inset: 45px 10px 140px;

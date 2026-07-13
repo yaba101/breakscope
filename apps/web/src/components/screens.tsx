@@ -892,8 +892,8 @@ export function CaptureScreen({ runId }: { runId: string }) {
         objectUrls.push(baselineUrl);
         setPreview({ baseline: baselineUrl });
         const baselineImage = await baseline.image.arrayBuffer();
-        appendEvent({ stage: "baseline", status: "success", label: "Baseline captured", detail: `${baseline.statusCode} · ${profile.width}×${profile.height} · ${(baseline.durationMs / 1000).toFixed(1)}s` });
-        await updateLocalRun(runId, { baselineImage, baselineDurationMs: baseline.durationMs, events: currentEvents });
+        appendEvent({ stage: "baseline", status: "success", label: "Baseline captured", detail: `${baseline.statusCode} · ${profile.width}×${profile.height} · ${baseline.snapshot.elements.length} semantic elements · ${(baseline.durationMs / 1000).toFixed(1)}s` });
+        await updateLocalRun(runId, { baselineImage, baselineSnapshot: baseline.snapshot, baselineDurationMs: baseline.durationMs, events: currentEvents });
 
         currentStage = "candidate";
         setPhase("candidate");
@@ -908,8 +908,8 @@ export function CaptureScreen({ runId }: { runId: string }) {
         objectUrls.push(candidateUrl);
         setPreview({ baseline: baselineUrl, candidate: candidateUrl });
         const candidateImage = await candidate.image.arrayBuffer();
-        appendEvent({ stage: "candidate", status: "success", label: "Candidate captured", detail: `${candidate.statusCode} · ${profile.width}×${profile.height} · ${(candidate.durationMs / 1000).toFixed(1)}s` });
-        await updateLocalRun(runId, { candidateImage, candidateDurationMs: candidate.durationMs, events: currentEvents });
+        appendEvent({ stage: "candidate", status: "success", label: "Candidate captured", detail: `${candidate.statusCode} · ${profile.width}×${profile.height} · ${candidate.snapshot.elements.length} semantic elements · ${(candidate.durationMs / 1000).toFixed(1)}s` });
+        await updateLocalRun(runId, { candidateImage, candidateSnapshot: candidate.snapshot, candidateDurationMs: candidate.durationMs, events: currentEvents });
 
         currentStage = "diff";
         setPhase("diff");
@@ -936,6 +936,8 @@ export function CaptureScreen({ runId }: { runId: string }) {
           status: "ready",
           baselineImage,
           candidateImage,
+          baselineSnapshot: baseline.snapshot,
+          candidateSnapshot: candidate.snapshot,
           diffImage: result.diff,
           changedPixels: result.changedPixels,
           changedRatio: result.changedRatio,

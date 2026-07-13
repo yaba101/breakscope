@@ -2,7 +2,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { chromium } from "@playwright/test";
-import { viewportProfiles, type ViewportId } from "@uirift/shared";
+import { viewportProfiles, type PageSnapshot, type ViewportId } from "@uirift/shared";
 import { isCaptureUrl, isLocalPreviewUrl } from "@uirift/validation";
 
 const port = Number(process.env.UIRIFT_CAPTURE_PORT ?? 4317);
@@ -109,13 +109,143 @@ async function capture(url: string, viewport: ViewportId) {
     await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(300);
+    // tsx preserves helper function names with an injected __name call. Defining
+    // the no-op helper in the browser context keeps nested snapshot utilities
+    // serializable when Playwright evaluates them in the captured page.
+    await page.evaluate("globalThis.__name = (target) => target");
+    const snapshotData = await page.evaluate(({ viewportWidth, viewportHeight }) => {
+      const normalized = (value: string | null | undefined, limit = 240) =>
+        (value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
+      const implicitRole = (element: Element) => {
+        const tag = element.tagName.toLowerCase();
+        if (tag === "a" && element.hasAttribute("href")) return "link";
+        if (tag === "button") return "button";
+        if (tag === "nav") return "navigation";
+        if (tag === "main") return "main";
+        if (tag === "header") return "banner";
+        if (tag === "footer") return "contentinfo";
+        if (tag === "aside") return "complementary";
+        if (/^h[1-6]$/.test(tag)) return "heading";
+        if (tag === "img") return "img";
+        if (tag === "select") return "combobox";
+        if (tag === "textarea") return "textbox";
+        if (tag === "input") {
+          const type = (element.getAttribute("type") ?? "text").toLowerCase();
+          if (["button", "submit", "reset"].includes(type)) return "button";
+          if (type === "checkbox") return "checkbox";
+          if (type === "radio") return "radio";
+          if (type === "range") return "slider";
+          return "textbox";
+        }
+        return "";
+      };
+      const selectorFor = (element: Element) => {
+        const testId = element.getAttribute("data-testid");
+        if (testId) return `[data-testid="${normalized(testId, 80)}"]`;
+        if (element.id) return `#${normalized(element.id, 80)}`;
+        const parts: string[] = [];
+        let current: Element | null = element;
+        while (current && current !== document.documentElement && parts.length < 6) {
+          const tag = current.tagName.toLowerCase();
+          const siblings = current.parentElement ? Array.from(current.parentElement.children).filter((item) => item.tagName === current?.tagName) : [];
+          const position = siblings.length > 1 ? `:nth-of-type(${siblings.indexOf(current) + 1})` : "";
+          parts.unshift(`${tag}${position}`);
+          current = current.parentElement;
+        }
+        return parts.join(" > ");
+      };
+      const accessibleName = (element: Element) => {
+        const labelledBy = element.getAttribute("aria-labelledby");
+        const labelledText = labelledBy?.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? "").join(" ");
+        const labels = element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement
+          ? Array.from(element.labels ?? []).map((label) => label.textContent ?? "").join(" ")
+          : "";
+        return normalized(
+          element.getAttribute("aria-label") || labelledText || labels || element.getAttribute("alt") ||
+          element.getAttribute("placeholder") || element.getAttribute("title") ||
+          (element instanceof HTMLElement ? element.innerText : element.textContent),
+          160,
+        );
+      };
+      const candidates = Array.from(document.querySelectorAll(
+        "h1,h2,h3,h4,h5,h6,a,button,input,select,textarea,img,nav,main,header,footer,aside,section,article,[role],[data-testid]",
+      )).slice(0, 500);
+      const keyCounts = new Map<string, number>();
+      const elements = candidates.map((element, order) => {
+        const style = getComputedStyle(element);
+        const bounds = element.getBoundingClientRect();
+        const tag = element.tagName.toLowerCase();
+        const role = normalized(element.getAttribute("role") || implicitRole(element), 60);
+        const name = accessibleName(element);
+        const selector = selectorFor(element);
+        const testId = normalized(element.getAttribute("data-testid"), 100);
+        const id = normalized(element.id, 100);
+        const href = element instanceof HTMLAnchorElement ? normalized(element.pathname || element.href, 240) : "";
+        const baseKey = testId ? `testid:${testId}` : id ? `id:${id}` : role && name ? `${role}:${name.toLowerCase()}` : selector;
+        const occurrence = (keyCounts.get(baseKey) ?? 0) + 1;
+        keyCounts.set(baseKey, occurrence);
+        const visible = style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0 && bounds.width > 0 && bounds.height > 0;
+        return {
+          key: occurrence === 1 ? baseKey : `${baseKey}#${occurrence}`,
+          order,
+          tag,
+          role,
+          name,
+          text: normalized(element instanceof HTMLElement ? element.innerText : element.textContent),
+          selector,
+          visible,
+          inViewport: visible && bounds.bottom > 0 && bounds.right > 0 && bounds.top < viewportHeight && bounds.left < viewportWidth,
+          rect: {
+            x: Math.round((bounds.left + window.scrollX) * 10) / 10,
+            y: Math.round((bounds.top + window.scrollY) * 10) / 10,
+            width: Math.round(bounds.width * 10) / 10,
+            height: Math.round(bounds.height * 10) / 10,
+          },
+          attributes: {
+            id,
+            testId,
+            href,
+            type: normalized(element.getAttribute("type"), 60),
+            alt: normalized(element.getAttribute("alt"), 160),
+            placeholder: normalized(element.getAttribute("placeholder"), 160),
+            ariaLabel: normalized(element.getAttribute("aria-label"), 160),
+          },
+          styles: {
+            display: style.display,
+            position: style.position,
+            color: style.color,
+            backgroundColor: style.backgroundColor,
+            fontSize: style.fontSize,
+            fontWeight: style.fontWeight,
+            borderRadius: style.borderRadius,
+          },
+        };
+      });
+      const root = document.documentElement;
+      return {
+        title: document.title,
+        language: document.documentElement.lang || navigator.language,
+        viewportWidth,
+        viewportHeight,
+        documentWidth: Math.max(root.scrollWidth, document.body?.scrollWidth ?? 0),
+        documentHeight: Math.max(root.scrollHeight, document.body?.scrollHeight ?? 0),
+        elements,
+      };
+    }, { viewportWidth: profile.width, viewportHeight: profile.height });
     const png = await page.screenshot({ fullPage: false, animations: "disabled", type: "png" });
+    const finalUrl = page.url();
+    const snapshot: PageSnapshot = {
+      ...snapshotData,
+      url: finalUrl,
+      capturedAt: Date.now(),
+    };
     await context.close();
     return {
       image: `data:image/png;base64,${png.toString("base64")}`,
-      finalUrl: page.url(),
+      finalUrl,
       statusCode: navigation.status(),
       durationMs: Date.now() - startedAt,
+      snapshot,
     };
   } finally {
     await browser.close();

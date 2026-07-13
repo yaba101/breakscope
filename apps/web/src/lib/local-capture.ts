@@ -1,4 +1,4 @@
-import type { ViewportId } from "@uirift/shared";
+import type { PageSnapshot, ViewportId } from "@uirift/shared";
 
 interface CaptureInput {
   baselineUrl: string;
@@ -19,6 +19,7 @@ interface CapturePageResponse {
   finalUrl?: string;
   statusCode?: number;
   durationMs?: number;
+  snapshot?: PageSnapshot;
   error?: string;
 }
 
@@ -59,7 +60,7 @@ export async function capturePageLocally(input: {
     throw new Error(`Local capture is offline. Start UIRift with pnpm dev:local and try again.${detail}`);
   }
   const payload = (await response.json()) as CapturePageResponse;
-  if (!response.ok || !payload.image) {
+  if (!response.ok || !payload.image || !payload.snapshot) {
     throw new Error(payload.error ?? "Local browser capture failed");
   }
   return {
@@ -67,6 +68,7 @@ export async function capturePageLocally(input: {
     finalUrl: payload.finalUrl ?? new URL(input.routePath, input.url).toString(),
     statusCode: payload.statusCode ?? 200,
     durationMs: payload.durationMs ?? 0,
+    snapshot: payload.snapshot,
   };
 }
 

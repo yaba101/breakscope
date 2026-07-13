@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Eye,
   FolderOpen,
   LocateFixed,
@@ -32,6 +33,13 @@ interface PixelInspection {
   candidate?: string;
   loading?: boolean;
   error?: string;
+}
+
+interface SnapshotSummary {
+  baselineElements: number;
+  candidateElements: number;
+  baselineDocumentHeight: number;
+  candidateDocumentHeight: number;
 }
 
 export interface ComparisonLayer {
@@ -97,6 +105,7 @@ function DiffInspector({
   baselineLabel,
   candidateLabel,
   pixelInspection,
+  snapshotSummary,
 }: {
   activeRegion: number;
   onRegion: (id: number) => void;
@@ -108,9 +117,20 @@ function DiffInspector({
   baselineLabel: string;
   candidateLabel: string;
   pixelInspection?: PixelInspection;
+  snapshotSummary?: SnapshotSummary;
 }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
   return (
-    <aside className="diff-inspector">
+    <aside className={cn("diff-inspector", mobileOpen && "open")}>
+      <button
+        type="button"
+        className="inspector-sheet-toggle"
+        aria-label={mobileOpen ? "Close inspector" : "Open inspector"}
+        aria-expanded={mobileOpen}
+        onClick={() => setMobileOpen((open) => !open)}
+      >
+        {mobileOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+      </button>
       <Tabs.Root defaultValue="diff">
         <Tabs.List className="inspector-tabs" aria-label="Inspector">
           <Tabs.Trigger value="diff">DIFF</Tabs.Trigger>
@@ -195,6 +215,18 @@ function DiffInspector({
                 <dt>Candidate</dt>
                 <dd>{candidateLabel}</dd>
               </div>
+              {snapshotSummary && (
+                <>
+                  <div>
+                    <dt>Semantic elements</dt>
+                    <dd>{snapshotSummary.baselineElements} → {snapshotSummary.candidateElements}</dd>
+                  </div>
+                  <div>
+                    <dt>Document height</dt>
+                    <dd>{snapshotSummary.baselineDocumentHeight}px → {snapshotSummary.candidateDocumentHeight}px</dd>
+                  </div>
+                </>
+              )}
             </dl>
           </section>
         </Tabs.Content>
@@ -271,6 +303,7 @@ export function ComparisonWorkspace({
   baselineLabel = "main@a1b2c3d",
   candidateLabel = "d4e5f6g",
   layers,
+  snapshotSummary,
 }: {
   publicMode?: boolean;
   reportMode?: boolean;
@@ -289,6 +322,7 @@ export function ComparisonWorkspace({
   baselineLabel?: string;
   candidateLabel?: string;
   layers?: ComparisonLayer[];
+  snapshotSummary?: SnapshotSummary;
 }) {
   const { tool, regionsVisible, setTool } = useComparisonTools();
   const [mode, setMode] = useState<CompareMode>("side-by-side");
@@ -627,7 +661,7 @@ export function ComparisonWorkspace({
         </div>
       </section>
       {!reportMode && (
-        <DiffInspector activeRegion={activeRegion} onRegion={(id) => { setActiveRegion(id); setTool("select"); }} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} routePath={routePath} viewport={viewport} baselineLabel={baselineLabel} candidateLabel={candidateLabel} pixelInspection={pixelInspection} />
+        <DiffInspector activeRegion={activeRegion} onRegion={(id) => { setActiveRegion(id); setTool("select"); }} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} routePath={routePath} viewport={viewport} baselineLabel={baselineLabel} candidateLabel={candidateLabel} pixelInspection={pixelInspection} snapshotSummary={snapshotSummary} />
       )}
       {!publicMode && !reportMode && (
         <footer className="decision-bar">
