@@ -2,6 +2,8 @@ import type { PixelRegion } from "@uirift/comparison-engine";
 
 interface WorkerSuccess {
   ok: true;
+  width: number;
+  height: number;
   diff: ArrayBuffer;
   changedPixels: number;
   changedRatio: number;

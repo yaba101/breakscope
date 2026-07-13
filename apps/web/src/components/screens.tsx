@@ -925,10 +925,10 @@ export function CaptureScreen({ runId }: { runId: string }) {
         }
         const regions = result.regions.map((region, index) => ({
           id: index + 1,
-          x: (region.x / profile.width) * 100,
-          y: (region.y / profile.height) * 100,
-          width: (region.width / profile.width) * 100,
-          height: (region.height / profile.height) * 100,
+          x: (region.x / result.width) * 100,
+          y: (region.y / result.height) * 100,
+          width: (region.width / result.width) * 100,
+          height: (region.height / result.height) * 100,
           pixelCount: region.pixelCount,
           label: `Changed region ${index + 1}`,
           severity: (region.pixelCount > 500 ? "high" : region.pixelCount > 100 ? "medium" : "low") as "high" | "medium" | "low",
@@ -944,6 +944,8 @@ export function CaptureScreen({ runId }: { runId: string }) {
           diffImage: result.diff,
           changedPixels: result.changedPixels,
           changedRatio: result.changedRatio,
+          captureWidth: result.width,
+          captureHeight: result.height,
           regions,
           semanticFindings: semantic.findings,
           semanticSummary: semantic.summary,

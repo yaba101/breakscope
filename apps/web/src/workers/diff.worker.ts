@@ -14,15 +14,17 @@ self.onmessage = async (event: MessageEvent<DiffRequest>) => {
       createImageBitmap(new Blob([event.data.baseline], { type: "image/png" })),
       createImageBitmap(new Blob([event.data.candidate], { type: "image/png" })),
     ]);
-    if (baselineBitmap.width !== candidateBitmap.width || baselineBitmap.height !== candidateBitmap.height) {
-      throw new Error("Captured images have different dimensions");
-    }
-    const { width, height } = baselineBitmap;
+    const width = Math.max(baselineBitmap.width, candidateBitmap.width);
+    const height = Math.max(baselineBitmap.height, candidateBitmap.height);
     const baselineCanvas = new OffscreenCanvas(width, height);
     const candidateCanvas = new OffscreenCanvas(width, height);
     const baselineContext = baselineCanvas.getContext("2d", { willReadFrequently: true });
     const candidateContext = candidateCanvas.getContext("2d", { willReadFrequently: true });
     if (!baselineContext || !candidateContext) throw new Error("Canvas is unavailable");
+    baselineContext.fillStyle = "#ffffff";
+    baselineContext.fillRect(0, 0, width, height);
+    candidateContext.fillStyle = "#ffffff";
+    candidateContext.fillRect(0, 0, width, height);
     baselineContext.drawImage(baselineBitmap, 0, 0);
     candidateContext.drawImage(candidateBitmap, 0, 0);
     const result = compareRgba(

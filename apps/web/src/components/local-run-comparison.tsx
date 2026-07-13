@@ -62,6 +62,12 @@ export function LocalRunComparison({ runId }: { runId: string }) {
   if (error) return <div className="report-state"><p>{error}</p></div>;
   if (!loaded) return <div className="report-state"><p>Opening local comparison…</p></div>;
 
+  const captureViewport = {
+    ...viewportProfiles[loaded.run.viewport],
+    width: loaded.run.captureWidth ?? viewportProfiles[loaded.run.viewport].width,
+    height: loaded.run.captureHeight ?? viewportProfiles[loaded.run.viewport].height,
+  };
+
   async function analyzeWithAi() {
     if (!loaded) return;
     setAiStatus("loading");
@@ -115,7 +121,7 @@ export function LocalRunComparison({ runId }: { runId: string }) {
       initialDecision={loaded.run.decision}
       projectName={loaded.project.name}
       routePath={loaded.run.routePath}
-      viewport={viewportProfiles[loaded.run.viewport]}
+      viewport={captureViewport}
       baselineLabel={new URL(loaded.project.baselineUrl).host}
       candidateLabel={new URL(loaded.project.candidateUrl).host}
       layers={loaded.layers}

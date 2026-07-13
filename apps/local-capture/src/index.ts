@@ -246,7 +246,7 @@ async function capture(url: string, viewport: ViewportId) {
       }
     }
     if (!snapshotData) throw new Error("Unable to read the settled page snapshot");
-    const png = await page.screenshot({ fullPage: false, animations: "disabled", type: "png" });
+    const png = await page.screenshot({ fullPage: true, animations: "disabled", type: "png" });
     const finalUrl = page.url();
     const snapshot: PageSnapshot = {
       ...snapshotData,

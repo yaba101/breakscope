@@ -26,6 +26,8 @@ export interface LocalRun {
   decision: Decision;
   changedPixels: number;
   changedRatio: number;
+  captureWidth?: number;
+  captureHeight?: number;
   regions: ChangedRegion[];
   baselineImage?: ArrayBuffer;
   candidateImage?: ArrayBuffer;
