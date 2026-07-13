@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ComparisonWorkspace } from "./comparison-workspace";
 
 describe("ComparisonWorkspace", () => {
@@ -40,5 +40,26 @@ describe("ComparisonWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "content" }));
     expect(screen.getByRole("button", { name: /Primary pricing action changed/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Enterprise plan shifted horizontally/ })).not.toBeInTheDocument();
+  });
+
+  it("presents a cached AI verdict and keeps refresh opt-in", () => {
+    const onAnalyze = vi.fn();
+    render(<ComparisonWorkspace onAnalyze={onAnalyze} aiAnalysis={{
+      model: "nvidia/test",
+      generatedAt: 1,
+      executiveSummary: "The candidate removes the primary checkout path.",
+      beforePurpose: "Choose a plan and continue to checkout.",
+      afterPurpose: "Read plan details without a checkout action.",
+      verdict: "block",
+      confidence: 0.94,
+      riskScore: 91,
+      userImpacts: ["Visitors cannot continue to checkout."],
+      regressions: [{ title: "Checkout removed", explanation: "The primary action is absent.", severity: "high" }],
+      recommendations: ["Restore and keyboard-test the checkout action."],
+    }} />);
+    expect(screen.getByRole("heading", { name: /removes the primary checkout path/i })).toBeInTheDocument();
+    expect(screen.getByText("Visitors cannot continue to checkout.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /refresh ai review/i }));
+    expect(onAnalyze).toHaveBeenCalledOnce();
   });
 });

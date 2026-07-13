@@ -15,10 +15,11 @@ import {
   Minus,
   Monitor,
   Plus,
+  Sparkles,
   Smartphone,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { changedRegions, demoSemanticFindings, demoSemanticSummary, viewportProfiles, type ChangedRegion, type Decision, type ElementRect, type SemanticFinding, type SemanticSummary, type ViewportProfile } from "@uirift/shared";
+import { changedRegions, demoSemanticFindings, demoSemanticSummary, viewportProfiles, type AiAnalysis, type ChangedRegion, type Decision, type ElementRect, type SemanticFinding, type SemanticSummary, type ViewportProfile } from "@uirift/shared";
 import { Button } from "@/components/ui/button";
 import { DemoSite } from "@/components/demo-site";
 import { cn } from "@/lib/cn";
@@ -108,6 +109,10 @@ function DiffInspector({
   snapshotSummary,
   semanticFindings = [],
   semanticSummary,
+  aiAnalysis,
+  aiStatus = "idle",
+  aiError,
+  onAnalyze,
   activeSemanticId,
   onSemanticFinding,
 }: {
@@ -124,6 +129,10 @@ function DiffInspector({
   snapshotSummary?: SnapshotSummary;
   semanticFindings?: SemanticFinding[];
   semanticSummary?: SemanticSummary;
+  aiAnalysis?: AiAnalysis;
+  aiStatus?: "idle" | "loading" | "error";
+  aiError?: string;
+  onAnalyze?: () => void;
   activeSemanticId?: string;
   onSemanticFinding: (finding: SemanticFinding) => void;
 }) {
@@ -159,6 +168,25 @@ function DiffInspector({
               <p>{semanticSummary.description}</p>
               <div className="risk-meter"><i style={{ width: `${semanticSummary.riskScore}%` }} /></div>
               <span>{semanticSummary.riskScore}/100 risk · {Math.round(semanticSummary.matchRate * 100)}% elements matched</span>
+            </section>
+          )}
+          {onAnalyze && (
+            <section className={cn("ai-review", aiAnalysis && `verdict-${aiAnalysis.verdict}`)}>
+              <div className="ai-review-heading"><small>NVIDIA AI REVIEW</small>{aiAnalysis && <b>{aiAnalysis.verdict}</b>}</div>
+              {aiAnalysis ? (
+                <>
+                  <h3>{aiAnalysis.executiveSummary}</h3>
+                  <dl><div><dt>Before</dt><dd>{aiAnalysis.beforePurpose}</dd></div><div><dt>After</dt><dd>{aiAnalysis.afterPurpose}</dd></div></dl>
+                  {aiAnalysis.userImpacts.length > 0 && <div className="ai-review-list"><small>USER IMPACT</small><ul>{aiAnalysis.userImpacts.map((item) => <li key={item}>{item}</li>)}</ul></div>}
+                  {aiAnalysis.recommendations.length > 0 && <div className="ai-review-list"><small>VERIFY NEXT</small><ul>{aiAnalysis.recommendations.map((item) => <li key={item}>{item}</li>)}</ul></div>}
+                  <span>{aiAnalysis.riskScore}/100 risk · {Math.round(aiAnalysis.confidence * 100)}% confidence</span>
+                </>
+              ) : <p>Ask a vision model to explain the product and user impact of this visual change.</p>}
+              {aiError && <p className="ai-review-error" role="alert">{aiError}</p>}
+              <Button type="button" variant="secondary" onClick={onAnalyze} disabled={aiStatus === "loading"}>
+                <Sparkles size={13} /> {aiStatus === "loading" ? "Analyzing both captures…" : aiAnalysis ? "Refresh AI review" : "Analyze with NVIDIA"}
+              </Button>
+              <small>Opt-in: both screenshots are sent only when you click.</small>
             </section>
           )}
           {pixelInspection && (
@@ -362,6 +390,10 @@ export function ComparisonWorkspace({
   snapshotSummary,
   semanticFindings: suppliedSemanticFindings,
   semanticSummary: suppliedSemanticSummary,
+  aiAnalysis,
+  aiStatus,
+  aiError,
+  onAnalyze,
 }: {
   publicMode?: boolean;
   reportMode?: boolean;
@@ -383,6 +415,10 @@ export function ComparisonWorkspace({
   snapshotSummary?: SnapshotSummary;
   semanticFindings?: SemanticFinding[];
   semanticSummary?: SemanticSummary;
+  aiAnalysis?: AiAnalysis;
+  aiStatus?: "idle" | "loading" | "error";
+  aiError?: string;
+  onAnalyze?: () => void;
 }) {
   const semanticFindings = suppliedSemanticFindings ?? (publicMode ? demoSemanticFindings : []);
   const semanticSummary = suppliedSemanticSummary ?? (publicMode ? demoSemanticSummary : undefined);
@@ -747,7 +783,7 @@ export function ComparisonWorkspace({
         </div>
       </section>
       {!reportMode && (
-        <DiffInspector activeRegion={activeRegion} onRegion={(id) => { setActiveRegion(id); setTool("select"); }} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} routePath={routePath} viewport={viewport} baselineLabel={baselineLabel} candidateLabel={candidateLabel} pixelInspection={pixelInspection} snapshotSummary={snapshotSummary} semanticFindings={semanticFindings} semanticSummary={semanticSummary} activeSemanticId={effectiveSemanticId} onSemanticFinding={focusSemanticFinding} />
+        <DiffInspector activeRegion={activeRegion} onRegion={(id) => { setActiveRegion(id); setTool("select"); }} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} routePath={routePath} viewport={viewport} baselineLabel={baselineLabel} candidateLabel={candidateLabel} pixelInspection={pixelInspection} snapshotSummary={snapshotSummary} semanticFindings={semanticFindings} semanticSummary={semanticSummary} aiAnalysis={aiAnalysis} aiStatus={aiStatus} aiError={aiError} onAnalyze={onAnalyze} activeSemanticId={effectiveSemanticId} onSemanticFinding={focusSemanticFinding} />
       )}
       {!publicMode && !reportMode && (
         <footer className="decision-bar">

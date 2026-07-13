@@ -135,6 +135,24 @@ export interface SemanticSummary {
   };
 }
 
+export interface AiAnalysis {
+  model: string;
+  generatedAt: number;
+  executiveSummary: string;
+  beforePurpose: string;
+  afterPurpose: string;
+  verdict: "safe" | "review" | "block";
+  confidence: number;
+  riskScore: number;
+  userImpacts: string[];
+  regressions: Array<{
+    title: string;
+    explanation: string;
+    severity: "high" | "medium" | "low";
+  }>;
+  recommendations: string[];
+}
+
 export interface RunSummary {
   id: string;
   projectId: string;

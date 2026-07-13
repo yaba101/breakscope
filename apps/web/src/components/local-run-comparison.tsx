@@ -17,6 +17,8 @@ interface LoadedRun {
 export function LocalRunComparison({ runId }: { runId: string }) {
   const [loaded, setLoaded] = useState<LoadedRun>();
   const [error, setError] = useState("");
+  const [aiStatus, setAiStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [aiError, setAiError] = useState("");
 
   useEffect(() => {
     const urls: string[] = [];
@@ -57,6 +59,47 @@ export function LocalRunComparison({ runId }: { runId: string }) {
   if (error) return <div className="report-state"><p>{error}</p></div>;
   if (!loaded) return <div className="report-state"><p>Opening local comparison…</p></div>;
 
+  async function analyzeWithAi() {
+    if (!loaded) return;
+    setAiStatus("loading");
+    setAiError("");
+    try {
+      const toDataUrl = (value: ArrayBuffer) => new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error ?? new Error("Unable to prepare the screenshots"));
+        reader.readAsDataURL(new Blob([value], { type: "image/png" }));
+      });
+      const [baselineImage, candidateImage] = await Promise.all([
+        toDataUrl(loaded.run.baselineImage!),
+        toDataUrl(loaded.run.candidateImage!),
+      ]);
+      const response = await fetch("/api/ai/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baselineImage,
+          candidateImage,
+          routePath: loaded.run.routePath,
+          baselineLabel: new URL(loaded.project.baselineUrl).host,
+          candidateLabel: new URL(loaded.project.candidateUrl).host,
+          deterministicSummary: loaded.run.semanticSummary,
+          deterministicFindings: (loaded.run.semanticFindings ?? []).slice(0, 20),
+        }),
+      });
+      const payload = await response.json() as { analysis?: LocalRun["aiAnalysis"]; error?: string };
+      if (!response.ok || !payload.analysis) throw new Error(payload.error ?? "AI analysis failed");
+      const run = await updateLocalRun(runId, { aiAnalysis: payload.analysis, aiAnalysisError: undefined });
+      setLoaded((current) => current ? { ...current, run } : current);
+      setAiStatus("idle");
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "Unable to analyze this comparison";
+      setAiError(message);
+      setAiStatus("error");
+      await updateLocalRun(runId, { aiAnalysisError: message }).catch(() => undefined);
+    }
+  }
+
   return (
     <ComparisonWorkspace
       runId={runId}
@@ -75,6 +118,10 @@ export function LocalRunComparison({ runId }: { runId: string }) {
       layers={loaded.layers}
       semanticFindings={loaded.run.semanticFindings ?? []}
       semanticSummary={loaded.run.semanticSummary}
+      aiAnalysis={loaded.run.aiAnalysis}
+      aiStatus={aiStatus}
+      aiError={aiError || loaded.run.aiAnalysisError}
+      onAnalyze={() => void analyzeWithAi()}
       snapshotSummary={loaded.run.baselineSnapshot && loaded.run.candidateSnapshot ? {
         baselineElements: loaded.run.baselineSnapshot.elements.length,
         candidateElements: loaded.run.candidateSnapshot.elements.length,

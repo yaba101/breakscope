@@ -1,4 +1,4 @@
-import type { ChangedRegion, Decision, PageSnapshot, RunStatus, SemanticFinding, SemanticSummary, ViewportId } from "@uirift/shared";
+import type { AiAnalysis, ChangedRegion, Decision, PageSnapshot, RunStatus, SemanticFinding, SemanticSummary, ViewportId } from "@uirift/shared";
 
 const databaseName = "uirift-local-workspace";
 const databaseVersion = 1;
@@ -34,6 +34,8 @@ export interface LocalRun {
   candidateSnapshot?: PageSnapshot;
   semanticFindings?: SemanticFinding[];
   semanticSummary?: SemanticSummary;
+  aiAnalysis?: AiAnalysis;
+  aiAnalysisError?: string;
   events?: CaptureEvent[];
   baselineDurationMs?: number;
   candidateDurationMs?: number;
