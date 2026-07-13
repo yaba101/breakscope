@@ -12,6 +12,7 @@ import {
   FolderOpen,
   LocateFixed,
   Maximize2,
+  Minimize2,
   Minus,
   Monitor,
   Plus,
@@ -19,13 +20,15 @@ import {
   Smartphone,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { changedRegions, demoSemanticFindings, demoSemanticSummary, viewportProfiles, type AiAnalysis, type ChangedRegion, type Decision, type ElementRect, type SemanticFinding, type SemanticSummary, type ViewportProfile } from "@uirift/shared";
+import { changedRegions, demoSemanticFindings, demoSemanticSummary, viewportProfiles, type AiAnalysis, type ChangedRegion, type Decision, type ElementRect, type ElementSnapshot, type PageSnapshot, type SemanticFinding, type SemanticSummary, type ViewportProfile } from "@uirift/shared";
 import { Button } from "@/components/ui/button";
 import { DemoSite } from "@/components/demo-site";
 import { cn } from "@/lib/cn";
 import { useComparisonTools } from "@/lib/comparison-tools";
+import { analyzeSnapshotAccessibility } from "@/lib/accessibility-analysis";
 
 type CompareMode = "side-by-side" | "slider" | "overlay" | "diff";
+const severityOrder = { high: 0, medium: 1, low: 2 } as const;
 
 interface PixelInspection {
   x: number;
@@ -118,6 +121,8 @@ function DiffInspector({
   onAnalyze,
   activeSemanticId,
   onSemanticFinding,
+  baselineSnapshot,
+  candidateSnapshot,
 }: {
   activeRegion: number;
   onRegion: (id: number) => void;
@@ -138,13 +143,24 @@ function DiffInspector({
   onAnalyze?: () => void;
   activeSemanticId?: string;
   onSemanticFinding: (finding: SemanticFinding) => void;
+  baselineSnapshot?: PageSnapshot;
+  candidateSnapshot?: PageSnapshot;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [showAllFindings, setShowAllFindings] = useState(false);
+  const [showFullReview, setShowFullReview] = useState(false);
   const [findingFilter, setFindingFilter] = useState<"all" | SemanticFinding["category"]>("all");
-  const filteredFindings = findingFilter === "all" ? semanticFindings : semanticFindings.filter((finding) => finding.category === findingFilter);
+  const filteredFindings = (findingFilter === "all" ? semanticFindings : semanticFindings.filter((finding) => finding.category === findingFilter))
+    .toSorted((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+  const visibleFindings = showAllFindings ? filteredFindings : filteredFindings.slice(0, 6);
   const findingCount = semanticFindings.length || regions.length;
+  const activeFinding = semanticFindings.find((finding) => finding.id === activeSemanticId);
+  const baselineElement = findSnapshotElement(baselineSnapshot, activeFinding?.baseline);
+  const candidateElement = findSnapshotElement(candidateSnapshot, activeFinding?.candidate);
+  const accessibilityFindings = analyzeSnapshotAccessibility(baselineSnapshot, candidateSnapshot);
   return (
-    <aside className={cn("diff-inspector", mobileOpen && "open")}>
+    <aside className={cn("diff-inspector", mobileOpen && "open", expanded && "expanded")}>
       <button
         type="button"
         className="inspector-sheet-toggle"
@@ -154,12 +170,17 @@ function DiffInspector({
       >
         {mobileOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
       </button>
-      <Tabs.Root defaultValue="diff">
+      <button type="button" className="inspector-expand" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-label={expanded ? "Collapse review panel" : "Expand review panel"}>
+        {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+      </button>
+      <Tabs.Root defaultValue="review">
         <Tabs.List className="inspector-tabs" aria-label="Inspector">
-          <Tabs.Trigger value="diff">DIFF</Tabs.Trigger>
-          <Tabs.Trigger value="details">DETAILS</Tabs.Trigger>
+          <Tabs.Trigger value="review">REVIEW</Tabs.Trigger>
+          <Tabs.Trigger value="changes">CHANGES</Tabs.Trigger>
+          <Tabs.Trigger value="inspect">INSPECT</Tabs.Trigger>
+          <Tabs.Trigger value="a11y">A11Y</Tabs.Trigger>
         </Tabs.List>
-        <Tabs.Content value="diff">
+        <Tabs.Content value="review">
           <section className="inspector-section selection">
             <small>SELECTION</small>
             <p>{routePath} / {viewport.label}</p>
@@ -179,9 +200,11 @@ function DiffInspector({
               {aiAnalysis ? (
                 <>
                   <h3>{aiAnalysis.executiveSummary}</h3>
-                  <dl><div><dt>Before</dt><dd>{aiAnalysis.beforePurpose}</dd></div><div><dt>After</dt><dd>{aiAnalysis.afterPurpose}</dd></div></dl>
-                  {aiAnalysis.userImpacts.length > 0 && <div className="ai-review-list"><small>USER IMPACT</small><ul>{aiAnalysis.userImpacts.map((item) => <li key={item}>{item}</li>)}</ul></div>}
-                  {aiAnalysis.recommendations.length > 0 && <div className="ai-review-list"><small>VERIFY NEXT</small><ul>{aiAnalysis.recommendations.map((item) => <li key={item}>{item}</li>)}</ul></div>}
+                  {aiAnalysis.regressions.length > 0 && <div className="ai-review-list priority"><small>TOP RISKS</small><ul>{aiAnalysis.regressions.slice(0, showFullReview ? 8 : 3).map((item) => <li key={item.title}><b>{item.title}</b><span>{item.explanation}</span></li>)}</ul></div>}
+                  {aiAnalysis.userImpacts.length > 0 && <div className="ai-review-list"><small>USER IMPACT</small><ul>{aiAnalysis.userImpacts.slice(0, showFullReview ? 8 : 3).map((item) => <li key={item}>{item}</li>)}</ul></div>}
+                  {aiAnalysis.recommendations.length > 0 && <div className="ai-review-list checklist"><small>VERIFY BEFORE MERGE</small><ul>{aiAnalysis.recommendations.slice(0, showFullReview ? 8 : 3).map((item) => <li key={item}>{item}</li>)}</ul></div>}
+                  {showFullReview && <dl><div><dt>Before</dt><dd>{aiAnalysis.beforePurpose}</dd></div><div><dt>After</dt><dd>{aiAnalysis.afterPurpose}</dd></div></dl>}
+                  <button type="button" className="review-more" onClick={() => { setShowFullReview((value) => !value); if (!showFullReview) setExpanded(true); }}>{showFullReview ? "Show concise review" : "Open full review"}<ChevronRight size={12} /></button>
                   <span>{aiAnalysis.riskScore}/100 risk · {Math.round(aiAnalysis.confidence * 100)}% confidence</span>
                 </>
               ) : <p>Ask a vision model to explain the product and user impact of this visual change.</p>}
@@ -192,6 +215,9 @@ function DiffInspector({
               <small>Opt-in: both screenshots are sent only when you click.</small>
             </section>
           )}
+          {semanticFindings.length > 0 && <section className="inspector-section review-findings"><div className="section-title">PRIORITY CHANGES <span>{findingCount}</span></div>{semanticFindings.toSorted((a, b) => severityOrder[a.severity] - severityOrder[b.severity]).slice(0, 3).map((finding) => <button type="button" aria-label={`Review finding: ${finding.title}`} key={finding.id} onClick={() => onSemanticFinding(finding)}><i className={finding.severity} /><span><b>{finding.title}</b><small>{finding.impact}</small></span><ChevronRight size={13} /></button>)}</section>}
+        </Tabs.Content>
+        <Tabs.Content value="changes">
           {pixelInspection && (
             <section className="inspector-section pixel-inspector" aria-live="polite">
               <small>PIXEL INSPECTOR · X {pixelInspection.x} Y {pixelInspection.y}</small>
@@ -237,7 +263,7 @@ function DiffInspector({
               </div>
             )}
             {!findingCount && <p className="empty-findings">No meaningful changes detected.</p>}
-            {filteredFindings.map((finding, index) => (
+            {visibleFindings.map((finding, index) => (
               <div className="semantic-finding" key={finding.id}>
                 <button
                   type="button"
@@ -259,6 +285,7 @@ function DiffInspector({
                 )}
               </div>
             ))}
+            {filteredFindings.length > 6 && <button type="button" className="show-all-findings" onClick={() => setShowAllFindings((value) => !value)}>{showAllFindings ? "Show priority findings" : `Show all ${filteredFindings.length} findings`}</button>}
             {!semanticFindings.length && regions.map((region) => (
               <button
                 type="button"
@@ -275,7 +302,8 @@ function DiffInspector({
             ))}
           </section>
         </Tabs.Content>
-        <Tabs.Content value="details" className="details-tab">
+        <Tabs.Content value="inspect" className="details-tab">
+          <GeometryInspector baseline={baselineElement} candidate={candidateElement} finding={activeFinding} />
           <section>
             <small>CAPTURE</small>
             <dl>
@@ -310,9 +338,60 @@ function DiffInspector({
             </dl>
           </section>
         </Tabs.Content>
+        <Tabs.Content value="a11y" className="accessibility-tab">
+          <section className="a11y-summary"><small>SNAPSHOT ACCESSIBILITY</small><h3>{accessibilityFindings.length ? `${accessibilityFindings.length} items need review` : "No snapshot issues found"}</h3><p>Fast checks from the captured accessibility tree. This is not a complete WCAG audit.</p></section>
+          <section className="a11y-findings">{accessibilityFindings.map((finding) => <article key={finding.id}><div><i className={finding.severity} /><b>{finding.title}</b><em>{finding.severity}</em></div><p>{finding.description}</p><code>{finding.selector}</code><strong>Fix</strong><span>{finding.remediation}</span></article>)}{!accessibilityFindings.length && <p className="empty-findings">No missing names, image alternatives, or changed roles were detected.</p>}</section>
+        </Tabs.Content>
       </Tabs.Root>
     </aside>
   );
+}
+
+function findSnapshotElement(snapshot: PageSnapshot | undefined, evidence: SemanticFinding["baseline"] | SemanticFinding["candidate"]) {
+  if (!snapshot || !evidence) return undefined;
+  return snapshot.elements.find((element) => element.key === evidence.key)
+    ?? snapshot.elements.find((element) => element.selector === evidence.selector);
+}
+
+function GeometryInspector({ baseline, candidate, finding }: { baseline?: ElementSnapshot; candidate?: ElementSnapshot; finding?: SemanticFinding }) {
+  if (!baseline && !candidate) {
+    return <section className="geometry-empty"><small>ELEMENT SPECS</small><h3>Select a semantic finding</h3><p>Choose a change to compare its exact geometry and computed styles.</p></section>;
+  }
+  const rows = [
+    ["X", baseline?.rect.x, candidate?.rect.x, "px"],
+    ["Y", baseline?.rect.y, candidate?.rect.y, "px"],
+    ["Width", baseline?.rect.width, candidate?.rect.width, "px"],
+    ["Height", baseline?.rect.height, candidate?.rect.height, "px"],
+    ["Font size", baseline?.styles.fontSize, candidate?.styles.fontSize],
+    ["Font weight", baseline?.styles.fontWeight, candidate?.styles.fontWeight],
+    ["Color", baseline?.styles.color, candidate?.styles.color],
+    ["Background", baseline?.styles.backgroundColor, candidate?.styles.backgroundColor],
+    ["Radius", baseline?.styles.borderRadius, candidate?.styles.borderRadius],
+    ["Display", baseline?.styles.display, candidate?.styles.display],
+    ["Position", baseline?.styles.position, candidate?.styles.position],
+  ] as const;
+  const selector = candidate?.selector ?? baseline?.selector ?? "";
+  return (
+    <section className="geometry-inspector">
+      <small>ELEMENT SPECS</small>
+      <h3>{finding?.title ?? candidate?.name ?? baseline?.name ?? "Selected element"}</h3>
+      <code title={selector}>{selector}</code>
+      <div className="geometry-head"><span>Property</span><span>Baseline</span><span>Candidate</span><span>Delta</span></div>
+      {rows.map(([label, before, after, unit]) => {
+        const numericBefore = typeof before === "number" ? before : Number.parseFloat(before ?? "");
+        const numericAfter = typeof after === "number" ? after : Number.parseFloat(after ?? "");
+        const delta = Number.isFinite(numericBefore) && Number.isFinite(numericAfter) ? numericAfter - numericBefore : undefined;
+        const changed = before !== after;
+        return <div className={cn("geometry-row", changed && "changed")} key={label}><b>{label}</b><span>{formatSpec(before, unit)}</span><span>{formatSpec(after, unit)}</span><em>{delta === undefined || delta === 0 ? "—" : `${delta > 0 ? "+" : ""}${Math.round(delta * 10) / 10}${unit ?? ""}`}</em></div>;
+      })}
+    </section>
+  );
+}
+
+function formatSpec(value: number | string | undefined, unit?: string) {
+  if (value === undefined || value === "") return "—";
+  if (typeof value === "number") return `${Math.round(value * 10) / 10}${unit ?? ""}`;
+  return value;
 }
 
 function FrameLabel({ candidate = false, label, routePath, viewport }: { candidate?: boolean; label: string; routePath: string; viewport: ViewportProfile }) {
@@ -397,6 +476,8 @@ export function ComparisonWorkspace({
   aiStatus,
   aiError,
   onAnalyze,
+  baselineSnapshot,
+  candidateSnapshot,
 }: {
   publicMode?: boolean;
   reportMode?: boolean;
@@ -422,6 +503,8 @@ export function ComparisonWorkspace({
   aiStatus?: "idle" | "loading" | "error";
   aiError?: string;
   onAnalyze?: () => void;
+  baselineSnapshot?: PageSnapshot;
+  candidateSnapshot?: PageSnapshot;
 }) {
   const semanticFindings = suppliedSemanticFindings ?? (publicMode ? demoSemanticFindings : []);
   const semanticSummary = suppliedSemanticSummary ?? (publicMode ? demoSemanticSummary : undefined);
@@ -618,14 +701,14 @@ export function ComparisonWorkspace({
   const effectiveSemanticId = semanticFindings.some((finding) => finding.id === activeSemanticId) ? activeSemanticId : semanticFindings[0]?.id;
   const activeSemanticFinding = semanticFindings.find((finding) => finding.id === effectiveSemanticId);
   const activeSemanticEvidence = activeSemanticFinding?.candidate ?? activeSemanticFinding?.baseline;
-  const semanticFocusRect = activeSemanticEvidence?.inViewport ? activeSemanticEvidence.rect : undefined;
+  const semanticFocusRect = activeSemanticEvidence?.rect;
 
   function focusSemanticFinding(finding: SemanticFinding) {
     setActiveSemanticId(finding.id);
     setTool("select");
     const selected = finding.candidate ?? finding.baseline;
     const paper = framePaperRef.current;
-    if (!selected?.inViewport || !paper) return;
+    if (!selected || !paper) return;
     const basePaperWidth = paper.getBoundingClientRect().width / (zoom / 100);
     const targetZoom = Math.min(190, Math.max(115, 100 * Math.min(
       viewport.width / Math.max(260, selected.rect.width * 2.6),
@@ -811,7 +894,7 @@ export function ComparisonWorkspace({
         </div>
       </section>
       {!reportMode && (
-        <DiffInspector activeRegion={activeRegion} onRegion={(id) => { setActiveRegion(id); setTool("select"); }} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} routePath={routePath} viewport={viewport} baselineLabel={baselineLabel} candidateLabel={candidateLabel} pixelInspection={pixelInspection} snapshotSummary={snapshotSummary} semanticFindings={semanticFindings} semanticSummary={semanticSummary} aiAnalysis={aiAnalysis} aiStatus={aiStatus} aiError={aiError} onAnalyze={onAnalyze} activeSemanticId={effectiveSemanticId} onSemanticFinding={focusSemanticFinding} />
+        <DiffInspector activeRegion={activeRegion} onRegion={(id) => { setActiveRegion(id); setTool("select"); }} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} routePath={routePath} viewport={viewport} baselineLabel={baselineLabel} candidateLabel={candidateLabel} pixelInspection={pixelInspection} snapshotSummary={snapshotSummary} semanticFindings={semanticFindings} semanticSummary={semanticSummary} aiAnalysis={aiAnalysis} aiStatus={aiStatus} aiError={aiError} onAnalyze={onAnalyze} activeSemanticId={effectiveSemanticId} onSemanticFinding={focusSemanticFinding} baselineSnapshot={baselineSnapshot} candidateSnapshot={candidateSnapshot} />
       )}
       {!publicMode && !reportMode && (
         <footer className="decision-bar">

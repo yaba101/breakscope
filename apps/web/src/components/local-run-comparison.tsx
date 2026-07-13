@@ -127,6 +127,8 @@ export function LocalRunComparison({ runId }: { runId: string }) {
       layers={loaded.layers}
       semanticFindings={loaded.run.semanticFindings ?? []}
       semanticSummary={loaded.run.semanticSummary}
+      baselineSnapshot={loaded.run.baselineSnapshot}
+      candidateSnapshot={loaded.run.candidateSnapshot}
       aiAnalysis={loaded.run.aiAnalysis}
       aiStatus={aiStatus}
       aiError={aiError || loaded.run.aiAnalysisError}

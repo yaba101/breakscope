@@ -42,9 +42,10 @@ describe("ComparisonWorkspace", () => {
     expect(screen.getByRole("heading", { name: "Pricing hierarchy changed" })).toBeInTheDocument();
     expect(screen.getByText("47/100 risk · 88% elements matched")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Professional pricing plan expanded/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "content" }));
     expect(screen.getByRole("button", { name: /Primary pricing action changed/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Enterprise plan shifted horizontally/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "CHANGES" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "INSPECT" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "A11Y" })).toBeInTheDocument();
   });
 
   it("presents a cached AI verdict and keeps refresh opt-in", () => {
