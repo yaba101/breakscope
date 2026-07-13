@@ -21,11 +21,13 @@ test("guest can capture and compare a real local page", async ({ page }, testInf
   await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page).toHaveURL(/\/app\/projects\/.+/);
-  await expect(page.getByLabel("Route path")).toHaveValue("/");
+  await expect(page.getByLabel("Custom route path")).toHaveValue("/");
   await expect(page.getByRole("button", { name: "Home /" })).toBeVisible();
   await expect(page.getByRole("button", { name: "/demo", exact: true })).toBeVisible({ timeout: 45_000 });
-  await page.getByLabel("Route path").fill("/demo-pages/baseline/pricing");
-  await page.getByRole("button", { name: /save and run/i }).click();
+  await page.getByLabel("Custom route path").fill("/demo-pages/baseline/pricing");
+  await page.getByRole("button", { name: "Add route" }).click();
+  await page.getByRole("button", { name: "Home /" }).click();
+  await page.getByRole("button", { name: "Run 1 route" }).click();
   await expect(page).toHaveURL(/\/capture$/);
   await page.waitForURL(/\/app\/runs\/[^/]+$/, { timeout: 45_000 });
   await expect(page.getByRole("button", { name: /side by side/i })).toBeVisible();
@@ -75,14 +77,36 @@ test("failed capture reports the real URL and offers recovery", async ({ page })
   await page.getByLabel("Baseline URL").fill("http://127.0.0.1:3100");
   await page.getByLabel("Candidate URL").fill("http://127.0.0.1:3100");
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByLabel("Route path").fill("/this-route-does-not-exist");
-  await page.getByRole("button", { name: /save and run/i }).click();
+  await expect(page.getByRole("button", { name: "/demo", exact: true })).toBeVisible({ timeout: 45_000 });
+  await page.getByLabel("Custom route path").fill("/this-route-does-not-exist");
+  await page.getByRole("button", { name: "Add route" }).click();
+  await page.getByRole("button", { name: "Home /" }).click();
+  await page.getByRole("button", { name: "Run 1 route" }).click();
   await expect(page.getByRole("heading", { name: "Capture failed" })).toBeVisible({ timeout: 45_000 });
   await expect(page.getByRole("paragraph").filter({ hasText: /Page returned 404.*this-route-does-not-exist/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry capture" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Edit route or URLs" })).toBeVisible();
   await expect(page.getByText("Run #1247", { exact: false })).toHaveCount(0);
   await expect(page.getByText("feat/pricing-refresh", { exact: true })).toHaveCount(0);
+});
+
+test("discovered routes can run as a comparison batch", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Batch navigation is covered in the desktop workspace");
+  test.setTimeout(120_000);
+  await page.goto("/app/projects/new");
+  await page.getByLabel("Baseline URL").fill("http://127.0.0.1:3100");
+  await page.getByLabel("Candidate URL").fill("http://127.0.0.1:3100");
+  await page.getByLabel("Project name").fill("Route batch");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("button", { name: "/demo", exact: true })).toBeVisible({ timeout: 45_000 });
+  await page.getByRole("button", { name: "/demo", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Run 2 routes" })).toBeEnabled();
+  await page.getByRole("button", { name: "Run 2 routes" }).click();
+  await page.waitForURL(/\/app\/runs\/[^/]+$/, { timeout: 100_000 });
+  await expect(page.getByRole("treeitem", { name: "Open / Desktop comparison" })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: "Open /demo Desktop comparison" })).toBeVisible();
+  await page.getByRole("treeitem", { name: "Open /demo Desktop comparison" }).click();
+  await expect(page.getByText("/demo / Desktop", { exact: true })).toBeVisible();
 });
 
 test("project flow exposes the two-project guardrail", async ({ page }) => {

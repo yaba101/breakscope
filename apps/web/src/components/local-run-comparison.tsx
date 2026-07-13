@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ComparisonWorkspace } from "@/components/comparison-workspace";
+import { ComparisonWorkspace, type ComparisonLayer } from "@/components/comparison-workspace";
 import { viewportProfiles } from "@uirift/shared";
-import { getLocalProject, getLocalRun, updateLocalRun, type LocalProject, type LocalRun } from "@/lib/local-workspace";
+import { getLocalProject, getLocalRun, listLocalRuns, updateLocalRun, type LocalProject, type LocalRun } from "@/lib/local-workspace";
 
 interface LoadedRun {
   run: LocalRun;
@@ -11,6 +11,7 @@ interface LoadedRun {
   baselineSrc: string;
   candidateSrc: string;
   diffSrc?: string;
+  layers: ComparisonLayer[];
 }
 
 export function LocalRunComparison({ runId }: { runId: string }) {
@@ -30,12 +31,24 @@ export function LocalRunComparison({ runId }: { runId: string }) {
         setError("The project for this comparison is no longer available.");
         return;
       }
+      const allRuns = await listLocalRuns();
+      const siblingRuns = run.batchId
+        ? allRuns.filter((item) => item.batchId === run.batchId && item.status === "ready")
+        : [run];
+      const layers = siblingRuns
+        .sort((a, b) => (a.batchIndex ?? 0) - (b.batchIndex ?? 0))
+        .map((item) => ({
+          id: item.id,
+          routePath: item.routePath,
+          viewport: viewportProfiles[item.viewport],
+          regionCount: item.regions.length,
+        }));
       const baselineSrc = URL.createObjectURL(new Blob([run.baselineImage], { type: "image/png" }));
       const candidateSrc = URL.createObjectURL(new Blob([run.candidateImage], { type: "image/png" }));
       urls.push(baselineSrc, candidateSrc);
       const diffSrc = run.diffImage ? URL.createObjectURL(new Blob([run.diffImage], { type: "image/png" })) : undefined;
       if (diffSrc) urls.push(diffSrc);
-      setLoaded({ run, project, baselineSrc, candidateSrc, diffSrc });
+      setLoaded({ run, project, baselineSrc, candidateSrc, diffSrc, layers });
     }
     void load().catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to open comparison"));
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
@@ -59,6 +72,7 @@ export function LocalRunComparison({ runId }: { runId: string }) {
       viewport={viewportProfiles[loaded.run.viewport]}
       baselineLabel={new URL(loaded.project.baselineUrl).host}
       candidateLabel={new URL(loaded.project.candidateUrl).host}
+      layers={loaded.layers}
       onDecision={async (decision) => {
         await updateLocalRun(runId, { decision });
       }}

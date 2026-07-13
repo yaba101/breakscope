@@ -18,6 +18,9 @@ export interface LocalRun {
   projectId: string;
   projectName: string;
   routePath: string;
+  batchId?: string;
+  batchIndex?: number;
+  batchTotal?: number;
   viewport: ViewportId;
   status: RunStatus;
   decision: Decision;
@@ -128,12 +131,20 @@ export function getLocalRun(id: string) {
   return readOne<LocalRun>("runs", id);
 }
 
-export async function createLocalRun(project: LocalProject, routePath: string, viewport: ViewportId) {
+export async function createLocalRun(
+  project: LocalProject,
+  routePath: string,
+  viewport: ViewportId,
+  batch?: { id: string; index: number; total: number },
+) {
   const run: LocalRun = {
     id: crypto.randomUUID(),
     projectId: project.id,
     projectName: project.name,
     routePath,
+    batchId: batch?.id,
+    batchIndex: batch?.index,
+    batchTotal: batch?.total,
     viewport,
     status: "queued",
     decision: "pending",

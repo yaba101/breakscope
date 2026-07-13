@@ -186,16 +186,21 @@ async function discoverRoutes(origin: string) {
       const routePath = queue.shift()!;
       inspected += 1;
       try {
-        const navigation = await page.goto(targetUrl(origin, routePath), { waitUntil: "domcontentloaded", timeout: 6_000 });
+        const navigation = await page.goto(targetUrl(origin, routePath), {
+          waitUntil: routePath === "/" ? "domcontentloaded" : "commit",
+          timeout: 5_000,
+        });
         const contentType = navigation?.headers()["content-type"] ?? "";
         if (!navigation?.ok() || !contentType.includes("text/html")) continue;
         available.add(routePath);
-        const hrefs = await page.evaluate(() => Array.from(document.querySelectorAll("a[href]"), (anchor) => anchor.getAttribute("href") ?? ""));
-        for (const href of hrefs) {
-          const path = discoveredPath(href, origin);
-          if (path && !queued.has(path) && queued.size < 40) {
-            queued.add(path);
-            queue.push(path);
+        if (routePath === "/") {
+          const hrefs = await page.evaluate(() => Array.from(document.querySelectorAll("a[href]"), (anchor) => anchor.getAttribute("href") ?? ""));
+          for (const href of hrefs) {
+            const path = discoveredPath(href, origin);
+            if (path && !queued.has(path) && queued.size < 40) {
+              queued.add(path);
+              queue.push(path);
+            }
           }
         }
       } catch {

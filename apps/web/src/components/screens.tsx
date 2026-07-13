@@ -51,6 +51,7 @@ import {
   listLocalRuns,
   updateLocalRun,
   type CaptureEvent,
+  type LocalRun,
 } from "@/lib/local-workspace";
 
 function AppPreview() {
@@ -534,6 +535,7 @@ function ProjectSetupForm({
   );
   const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
   const [routePath, setRoutePath] = useState("/");
+  const [selectedRoutes, setSelectedRoutes] = useState<string[]>(["/"]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(initialError);
   const baselineValid = isCaptureUrl(baseline);
@@ -549,16 +551,37 @@ function ProjectSetupForm({
   const discoveredRoutes = routeQuery.data?.routes ?? [];
   const routeOptions = discoveredRoutes.includes("/") ? discoveredRoutes : ["/", ...discoveredRoutes];
 
+  function toggleRoute(route: string) {
+    setSelectedRoutes((current) => current.includes(route) ? current.filter((item) => item !== route) : [...current, route]);
+  }
+
+  function addCustomRoute() {
+    const normalized = routePath.trim();
+    if (!normalized.startsWith("/")) return;
+    setSelectedRoutes((current) => current.includes(normalized) ? current : [...current, normalized]);
+  }
+
   async function submit() {
-    if (!name.trim() || !baselineValid || !candidateValid || !routePath.startsWith("/") || submitting) return;
+    if (!name.trim() || !baselineValid || !candidateValid || (existing && !selectedRoutes.length) || submitting) return;
     setSubmitting(true);
     setSubmitError("");
     try {
       if (existing && projectId) {
         const project = await getLocalProject(projectId);
         if (!project) throw new Error("This project was not found on this device");
-        const run = await createLocalRun(project, routePath, viewport);
-        router.push(`/app/runs/${run.id}/capture`);
+        const batchId = selectedRoutes.length > 1 ? crypto.randomUUID() : undefined;
+        const runs = [];
+        for (const [index, selectedRoute] of selectedRoutes.entries()) {
+          runs.push(await createLocalRun(
+            project,
+            selectedRoute,
+            viewport,
+            batchId ? { id: batchId, index, total: selectedRoutes.length } : undefined,
+          ));
+        }
+        const firstRun = runs[0];
+        if (!firstRun) throw new Error("Select at least one route to compare");
+        router.push(`/app/runs/${firstRun.id}/capture`);
       } else {
         const project = await createLocalProject({ name, baselineUrl: baseline, candidateUrl: candidate });
         router.push(`/app/projects/${project.id}`);
@@ -639,32 +662,35 @@ function ProjectSetupForm({
               <div className="route-discovery">
                 <div>
                   <span>Available on both deployments</span>
-                  <button type="button" onClick={() => void routeQuery.refetch()} disabled={routeQuery.isFetching}>
-                    {routeQuery.isFetching && <LoaderCircle />} {routeQuery.isFetching ? "Scanning…" : "Scan again"}
-                  </button>
+                  <span className="route-actions">
+                    <button type="button" onClick={() => setSelectedRoutes(routeOptions)} disabled={routeQuery.isFetching}>Select all routes</button>
+                    <button type="button" onClick={() => void routeQuery.refetch()} disabled={routeQuery.isFetching}>
+                      {routeQuery.isFetching && <LoaderCircle />} {routeQuery.isFetching ? "Scanning…" : "Scan again"}
+                    </button>
+                  </span>
                 </div>
                 <p>
                   {routeQuery.isFetching
                     ? "Starting at the home page and checking internal navigation links…"
                     : routeQuery.isSuccess
-                      ? `${routeOptions.length} common route${routeOptions.length === 1 ? "" : "s"} found.`
+                      ? `${routeOptions.length} common route${routeOptions.length === 1 ? "" : "s"} found · ${selectedRoutes.length} selected.`
                       : routeQuery.isError
                         ? `${routeQuery.error instanceof Error ? routeQuery.error.message : "Unable to discover routes."} Home is still available as the safe default.`
                         : "Home is selected by default."}
                 </p>
                 <div className="route-options" aria-label="Discovered routes">
                   {routeOptions.map((route) => (
-                    <button type="button" className={routePath === route ? "active" : ""} onClick={() => setRoutePath(route)} key={route}>
+                    <button type="button" aria-pressed={selectedRoutes.includes(route)} className={selectedRoutes.includes(route) ? "active" : ""} onClick={() => toggleRoute(route)} key={route}>
                       {route === "/" ? "Home /" : route}
                     </button>
                   ))}
                 </div>
               </div>
-              <FormField label="Route path">
-                <input
-                  value={routePath}
-                  onChange={(event) => setRoutePath(event.target.value)}
-                />
+              <FormField label="Custom route path">
+                <div className="custom-route-entry">
+                  <input value={routePath} onChange={(event) => setRoutePath(event.target.value)} />
+                  <Button onClick={addCustomRoute} disabled={!routePath.startsWith("/")}>Add route</Button>
+                </div>
                 <small>Enter a route manually if it is dynamic or not linked from the public site.</small>
               </FormField>
               <div className="viewport-choice">
@@ -739,10 +765,10 @@ function ProjectSetupForm({
           <div>
             <Button
               variant="primary"
-              disabled={!name.trim() || !baselineValid || !candidateValid || !routePath.startsWith("/") || submitting}
+              disabled={!name.trim() || !baselineValid || !candidateValid || (existing && (!selectedRoutes.length || routeQuery.isFetching)) || submitting}
               onClick={submit}
             >
-              {submitting ? "Saving…" : existing ? "Save and run" : "Continue"}
+              {submitting ? "Saving…" : existing ? `Run ${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"}` : "Continue"}
             </Button>
           </div>
         </footer>
@@ -776,6 +802,17 @@ function ValidationLine({ valid }: { valid: boolean }) {
   );
 }
 
+async function batchDestination(run: LocalRun) {
+  if (!run.batchId) return `/app/runs/${run.id}`;
+  const batchRuns = (await listLocalRuns())
+    .filter((item) => item.batchId === run.batchId)
+    .sort((a, b) => (a.batchIndex ?? 0) - (b.batchIndex ?? 0));
+  const next = batchRuns.find((item) => item.status === "queued");
+  if (next) return `/app/runs/${next.id}/capture`;
+  const firstReady = batchRuns.find((item) => item.status === "ready");
+  return `/app/runs/${firstReady?.id ?? run.id}`;
+}
+
 export function CaptureScreen({ runId }: { runId: string }) {
   const router = useRouter();
   const started = useRef(false);
@@ -793,6 +830,8 @@ export function CaptureScreen({ runId }: { runId: string }) {
     viewport: viewportProfiles.desktop,
     baselineHost: "Loading…",
     candidateHost: "Loading…",
+    batchIndex: 0,
+    batchTotal: 1,
   });
 
   useEffect(() => {
@@ -828,8 +867,13 @@ export function CaptureScreen({ runId }: { runId: string }) {
           viewport: profile,
           baselineHost: new URL(project.baselineUrl).host,
           candidateHost: new URL(project.candidateUrl).host,
+          batchIndex: (run.batchIndex ?? 0) + 1,
+          batchTotal: run.batchTotal ?? 1,
         });
-        if (run.status === "ready") return router.replace(`/app/runs/${runId}`);
+        if (run.status === "ready") {
+          started.current = false;
+          return router.replace(await batchDestination(run));
+        }
         setCaptureError("");
         setElapsed(0);
         setEvents([]);
@@ -900,7 +944,8 @@ export function CaptureScreen({ runId }: { runId: string }) {
           events: currentEvents,
         });
         setPhase("ready");
-        router.replace(`/app/runs/${runId}`);
+        started.current = false;
+        router.replace(await batchDestination(run));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error) || "Local capture failed";
         appendEvent({ stage: currentStage, status: "error", label: `${currentStage[0]?.toUpperCase()}${currentStage.slice(1)} failed`, detail: message });
@@ -935,7 +980,7 @@ export function CaptureScreen({ runId }: { runId: string }) {
     <AppShell breadcrumb={`${context.projectName} / Run #${runId.slice(0, 8)}`} dock={false}>
       <div className="capture-screen">
         <aside className="capture-context">
-          <span>RUN #{runId.slice(0, 8)}</span>
+          <span>{context.batchTotal > 1 ? `ROUTE ${context.batchIndex} OF ${context.batchTotal}` : `RUN #${runId.slice(0, 8)}`}</span>
           <h2>{context.projectName}</h2>
           <p>{context.routePath} · {context.viewport.label} {context.viewport.width}</p>
           <div>

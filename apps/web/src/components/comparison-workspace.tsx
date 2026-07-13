@@ -2,6 +2,7 @@
 
 import * as Tabs from "@radix-ui/react-tabs";
 import Image from "next/image";
+import Link from "next/link";
 import {
   Check,
   ChevronDown,
@@ -32,11 +33,17 @@ interface PixelInspection {
   error?: string;
 }
 
-function LayerPanel({ projectName, routePath, viewport, regionCount }: {
-  projectName: string;
+export interface ComparisonLayer {
+  id: string;
   routePath: string;
   viewport: ViewportProfile;
   regionCount: number;
+}
+
+function LayerPanel({ projectName, runId, layers }: {
+  projectName: string;
+  runId?: string;
+  layers: ComparisonLayer[];
 }) {
   return (
     <aside className="layer-panel">
@@ -45,22 +52,34 @@ function LayerPanel({ projectName, routePath, viewport, regionCount }: {
         <span>{projectName}</span>
       </div>
       <div className="layer-tree" role="tree" aria-label="Comparison layers">
-        <div className="layer-group">
-          <div className="layer-group-title">
-            <ChevronDown size={12} />
-            <FolderOpen size={14} />
-            {routePath}
-            <span>1</span>
-            <Eye size={12} />
+        {layers.map((layer) => (
+          <div className="layer-group" key={layer.id}>
+            <div className="layer-group-title">
+              <ChevronDown size={12} />
+              <FolderOpen size={14} />
+              {layer.routePath}
+              <span>1</span>
+              <Eye size={12} />
+            </div>
+            {runId ? (
+              <Link href={`/app/runs/${layer.id}`} className={cn("layer-row", layer.id === runId && "selected")} role="treeitem" aria-label={`Open ${layer.routePath} ${layer.viewport.label} comparison`} aria-selected={layer.id === runId}>
+                {layer.viewport.id === "desktop" ? <Monitor size={13} /> : <Smartphone size={13} />}
+                <span>{layer.viewport.label}</span>
+                <i className={layer.regionCount ? "changed" : "passed"} />
+                <em>{layer.regionCount}</em>
+                <Eye size={12} />
+              </Link>
+            ) : (
+              <div className="layer-row selected" role="treeitem" aria-label={`${layer.routePath} ${layer.viewport.label} comparison`} aria-selected="true">
+                {layer.viewport.id === "desktop" ? <Monitor size={13} /> : <Smartphone size={13} />}
+                <span>{layer.viewport.label}</span>
+                <i className={layer.regionCount ? "changed" : "passed"} />
+                <em>{layer.regionCount}</em>
+                <Eye size={12} />
+              </div>
+            )}
           </div>
-          <button type="button" className="layer-row selected" role="treeitem" aria-selected="true">
-            {viewport.id === "desktop" ? <Monitor size={13} /> : <Smartphone size={13} />}
-            <span>{viewport.label}</span>
-            <i className={regionCount ? "changed" : "passed"} />
-            <em>{regionCount}</em>
-            <Eye size={12} />
-          </button>
-        </div>
+        ))}
       </div>
     </aside>
   );
@@ -250,6 +269,7 @@ export function ComparisonWorkspace({
   viewport = viewportProfiles.desktop,
   baselineLabel = "main@a1b2c3d",
   candidateLabel = "d4e5f6g",
+  layers,
 }: {
   publicMode?: boolean;
   reportMode?: boolean;
@@ -267,6 +287,7 @@ export function ComparisonWorkspace({
   viewport?: ViewportProfile;
   baselineLabel?: string;
   candidateLabel?: string;
+  layers?: ComparisonLayer[];
 }) {
   const { tool, regionsVisible, setTool } = useComparisonTools();
   const [mode, setMode] = useState<CompareMode>("side-by-side");
@@ -416,7 +437,7 @@ export function ComparisonWorkspace({
         reportMode && "report-workspace",
       )}
     >
-      {!reportMode && <LayerPanel projectName={projectName} routePath={routePath} viewport={viewport} regionCount={regions.length} />}
+      {!reportMode && <LayerPanel projectName={projectName} runId={runId} layers={layers ?? [{ id: runId ?? "demo", routePath, viewport, regionCount: regions.length }]} />}
       <section
         className={cn("comparison-canvas", panning && "is-panning", tool === "inspect" && "is-inspecting")}
         style={canvasStyle}

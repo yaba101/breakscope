@@ -2171,6 +2171,10 @@ button {
   color: var(--ui-selection);
   font-size: 10px;
 }
+.route-actions {
+  display: flex;
+  gap: 8px;
+}
 .route-discovery > div:first-child svg {
   width: 12px;
   animation: spin 1s linear infinite;
@@ -2199,6 +2203,20 @@ button {
 .route-options button.active {
   border-color: var(--ui-selection);
   background: rgba(59, 130, 246, 0.1);
+  color: white;
+}
+.custom-route-entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+.custom-route-entry > input {
+  height: 42px;
+  border: 1px solid var(--ui-border);
+  border-radius: 4px;
+  outline: 0;
+  background: #1b1c1c;
+  padding: 0 13px;
   color: white;
 }
 .validation-line {
@@ -3333,7 +3351,7 @@ button {
   }
   .canvas-controls {
     right: 10px;
-    bottom: 106px;
+    bottom: 158px;
     left: 10px;
     transform: none;
     overflow: auto;
