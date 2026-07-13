@@ -1,7 +1,9 @@
 import { createServer, type ServerResponse } from "node:http";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { chromium } from "@playwright/test";
 import { viewportProfiles, type ViewportId } from "@uirift/shared";
-import { isCaptureUrl } from "@uirift/validation";
+import { isCaptureUrl, isLocalPreviewUrl } from "@uirift/validation";
 
 const port = Number(process.env.UIRIFT_CAPTURE_PORT ?? 4317);
 const allowedOrigins = new Set([
@@ -30,6 +32,37 @@ function targetUrl(origin: string, routePath: string) {
   return target.toString();
 }
 
+function isPrivateAddress(address: string) {
+  const normalized = address.toLowerCase();
+  if (normalized === "::" || normalized === "::1") return true;
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
+  if (/^fe[89ab]/.test(normalized)) return true;
+  const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+  const ipv4 = mapped ?? (isIP(normalized) === 4 ? normalized : "");
+  if (!ipv4) return false;
+  const [a = 0, b = 0] = ipv4.split(".").map(Number);
+  return (
+    a === 0 || a === 10 || a === 127 || a >= 224 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19))
+  );
+}
+
+async function assertPublicHostname(hostname: string, allowLocal: boolean) {
+  if (allowLocal && (hostname === "localhost" || hostname === "127.0.0.1")) return;
+  if (isIP(hostname)) {
+    if (isPrivateAddress(hostname)) throw new Error("Private network addresses are not allowed");
+    return;
+  }
+  const addresses = await lookup(hostname, { all: true, verbatim: true });
+  if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) {
+    throw new Error("The URL resolves to a private or unavailable network address");
+  }
+}
+
 async function capture(url: string, viewport: ViewportId) {
   const browser = await chromium.launch({ headless: true });
   try {
@@ -41,12 +74,29 @@ async function capture(url: string, viewport: ViewportId) {
       timezoneId: "UTC",
       locale: "en-US",
     });
+    const allowLocal = isLocalPreviewUrl(url);
+    const checkedHosts = new Set<string>();
+    await context.route("**/*", async (route) => {
+      try {
+        const requested = new URL(route.request().url());
+        if (!["http:", "https:"].includes(requested.protocol)) return route.continue();
+        if (!checkedHosts.has(requested.hostname)) {
+          await assertPublicHostname(requested.hostname, allowLocal);
+          checkedHosts.add(requested.hostname);
+        }
+        return route.continue();
+      } catch {
+        return route.abort("blockedbyclient");
+      }
+    });
     const page = await context.newPage();
-    const navigation = await page.goto(url, { waitUntil: "networkidle", timeout: 30_000 });
-    if (!navigation?.ok()) throw new Error(`Page returned ${navigation?.status() ?? "no response"}`);
+    const navigation = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    if (!navigation?.ok()) throw new Error(`Page returned ${navigation?.status() ?? "no response"} for ${url}`);
     const contentType = navigation.headers()["content-type"] ?? "";
     if (!contentType.includes("text/html")) throw new Error("URL did not return an HTML page");
+    await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
     await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(300);
     const png = await page.screenshot({ fullPage: false, animations: "disabled", type: "png" });
     await context.close();
     return `data:image/png;base64,${png.toString("base64")}`;
@@ -77,7 +127,7 @@ const server = createServer((request, response) => {
     try {
       const input = JSON.parse(raw) as CaptureRequest;
       if (!isCaptureUrl(input.baselineUrl) || !isCaptureUrl(input.candidateUrl)) {
-        return send(response, 400, { error: "Use an approved HTTPS preview URL or localhost" });
+        return send(response, 400, { error: "Use a public HTTPS URL or localhost" });
       }
       if (!(input.viewport in viewportProfiles) || !input.routePath?.startsWith("/")) {
         return send(response, 400, { error: "Invalid route or viewport" });

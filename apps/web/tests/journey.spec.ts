@@ -37,3 +37,12 @@ test("project flow exposes the two-project guardrail", async ({ page }) => {
   await page.getByRole("link", { name: /new project/i }).click();
   await expect(page.getByRole("heading", { name: "Create project" })).toBeVisible();
 });
+
+test("custom public HTTPS domains enable project creation", async ({ page }) => {
+  await page.goto("/app/projects/new");
+  await page.getByLabel("Project name").fill("Adavia");
+  await page.getByLabel("Baseline URL").fill("https://adavia.com");
+  await page.getByLabel("Candidate URL").fill("https://dev.adavia.com");
+  await expect(page.getByText("Ready for local capture", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
+});

@@ -2131,6 +2131,9 @@ button {
 .setup-note small {
   color: var(--ui-fg-muted);
 }
+.setup-note.invalid {
+  color: var(--ui-warning);
+}
 .url-preview {
   border-left: 1px solid var(--ui-border-subtle);
   padding: 0 18px;

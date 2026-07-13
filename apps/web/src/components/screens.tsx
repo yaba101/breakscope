@@ -665,12 +665,12 @@ function ProjectSetupForm({
               </div>
             </>
           )}
-          <div className="setup-note">
-            <ShieldCheck />
+          <div className={cn("setup-note", (!baselineValid || !candidateValid) && "invalid")}>
+            {baselineValid && candidateValid ? <ShieldCheck /> : <CircleDot />}
             <p>
-              <b>Preview-safe URLs</b>
+              <b>{baselineValid && candidateValid ? "Ready for local capture" : "Check both URLs"}</b>
               <small>
-                Approved HTTPS preview hosts are supported. Localhost is allowed for local development.
+                Any public HTTPS domain is supported. Localhost is allowed for local development.
               </small>
             </p>
           </div>
@@ -743,7 +743,7 @@ function ValidationLine({ valid }: { valid: boolean }) {
       {valid ? <CheckCircle2 /> : <CircleDot />}
       {valid
         ? "Verified · ready for local capture"
-        : "Use localhost or an approved pages.dev, vercel.app, netlify.app or workers.dev URL"}
+        : "Use a public HTTPS URL or localhost"}
     </span>
   );
 }

@@ -18,6 +18,17 @@ export function isApprovedPublicUrl(value: string) {
   }
 }
 
+export function isPublicHttpsUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password) return false;
+    const host = url.hostname.toLowerCase();
+    return host !== "localhost" && !host.endsWith(".localhost") && !isIpLiteral(host);
+  } catch {
+    return false;
+  }
+}
+
 export function isLocalPreviewUrl(value: string) {
   try {
     const url = new URL(value);
@@ -33,13 +44,13 @@ export function isLocalPreviewUrl(value: string) {
 }
 
 export function isCaptureUrl(value: string) {
-  return isApprovedPublicUrl(value) || isLocalPreviewUrl(value);
+  return isPublicHttpsUrl(value) || isLocalPreviewUrl(value);
 }
 
 export const projectInputSchema = z.object({
   name: z.string().trim().min(2).max(60),
-  baselineUrl: z.string().url().refine(isApprovedPublicUrl, "Use an approved public HTTPS preview URL"),
-  candidateUrl: z.string().url().refine(isApprovedPublicUrl, "Use an approved public HTTPS preview URL"),
+  baselineUrl: z.string().url().refine(isPublicHttpsUrl, "Use a public HTTPS URL"),
+  candidateUrl: z.string().url().refine(isPublicHttpsUrl, "Use a public HTTPS URL"),
 });
 
 export const runInputSchema = z.object({
