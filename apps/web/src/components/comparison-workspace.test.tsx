@@ -32,6 +32,11 @@ describe("ComparisonWorkspace", () => {
     expect(screen.getByRole("button", { name: "Reset canvas view" })).toBeInTheDocument();
   });
 
+  it("preserves a full-page capture aspect ratio", () => {
+    const { container } = render(<ComparisonWorkspace publicMode viewport={{ id: "desktop", label: "Desktop", width: 1440, height: 9527 }} />);
+    expect(container.querySelector(".frame-paper")).toHaveStyle({ aspectRatio: String(1440 / 9527) });
+  });
+
   it("presents meaningful semantic findings instead of anonymous pixel regions", () => {
     render(<ComparisonWorkspace publicMode />);
     expect(screen.getByRole("heading", { name: "Pricing hierarchy changed" })).toBeInTheDocument();

@@ -479,7 +479,32 @@ export function ComparisonWorkspace({
     setShareLabel("Copied");
   }
 
-  const changeMode = useCallback((next: CompareMode) => setMode(next), []);
+  const fitView = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || canvasSize.width <= 1 || canvasSize.height <= 1) {
+      setZoom(100);
+      setPan({ x: 0, y: 0 });
+      return;
+    }
+    const measureAndFit = () => {
+      const papers = Array.from(canvas.querySelectorAll<HTMLElement>(".frame-paper"));
+      if (!papers.length) return;
+      const bounds = papers.map((paper) => paper.getBoundingClientRect());
+      const left = Math.min(...bounds.map((item) => item.left));
+      const right = Math.max(...bounds.map((item) => item.right));
+      const top = Math.min(...bounds.map((item) => item.top));
+      const bottom = Math.max(...bounds.map((item) => item.bottom));
+      const currentScale = Number(getComputedStyle(canvas).getPropertyValue("--workspace-zoom")) || 1;
+      const adjustment = Math.min(
+        (canvasSize.width - 70) / Math.max(1, right - left),
+        (canvasSize.height - 115) / Math.max(1, bottom - top + 48 * currentScale),
+      );
+      setZoom(Math.max(5, Math.min(100, currentScale * adjustment * 90)));
+      setPan({ x: 0, y: 0 });
+    };
+    measureAndFit();
+  }, [canvasSize.height, canvasSize.width, setPan, setZoom]);
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (
@@ -487,13 +512,13 @@ export function ComparisonWorkspace({
         event.target.matches("input, textarea, select")
       )
         return;
-      if (event.key === "1") changeMode("side-by-side");
-      if (event.key === "2") changeMode("slider");
-      if (event.key === "3") changeMode("overlay");
-      if (event.key === "4") changeMode("diff");
+      if (event.key === "1") setMode("side-by-side");
+      if (event.key === "2") setMode("slider");
+      if (event.key === "3") setMode("overlay");
+      if (event.key === "4") setMode("diff");
       if (event.key === "+" || event.key === "=")
         setZoom((value) => Math.min(400, value + 10));
-      if (event.key === "-") setZoom((value) => Math.max(25, value - 10));
+      if (event.key === "-") setZoom((value) => Math.max(5, value - 10));
       if (event.key === "0") fitView();
       if (event.key === "]" && regions.length) setActiveRegion((value) => (value % regions.length) + 1);
       if (event.key === "[" && regions.length) setActiveRegion((value) => ((value + regions.length - 2) % regions.length) + 1);
@@ -511,7 +536,7 @@ export function ComparisonWorkspace({
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [changeMode, regions.length]);
+  }, [fitView, regions.length]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -524,6 +549,11 @@ export function ComparisonWorkspace({
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(fitView);
+    return () => window.cancelAnimationFrame(frame);
+  }, [fitView, mode, viewport.height, viewport.width]);
+
   const canvasStyle = {
     "--workspace-zoom": zoom / 100,
     "--workspace-pan-x": `${pan.x}px`,
@@ -531,22 +561,17 @@ export function ComparisonWorkspace({
   } as React.CSSProperties;
   const panning = tool === "pan" || spacePanning;
 
-  function fitView() {
-    setZoom(100);
-    setPan({ x: 0, y: 0 });
-  }
-
   function actualSize() {
     const paperWidth = framePaperRef.current?.getBoundingClientRect().width;
     if (!paperWidth) return;
-    setZoom((current) => Math.min(400, Math.max(25, (viewport.width / (paperWidth / (current / 100))) * 100)));
+    setZoom((current) => Math.min(400, Math.max(5, (viewport.width / (paperWidth / (current / 100))) * 100)));
     setPan({ x: 0, y: 0 });
   }
 
   function zoomAt(clientX: number, clientY: number, nextZoom: number) {
     const bounds = canvasRef.current?.getBoundingClientRect();
     if (!bounds) return;
-    const constrained = Math.min(400, Math.max(25, nextZoom));
+    const constrained = Math.min(400, Math.max(5, nextZoom));
     const ratio = constrained / zoom;
     const pointerX = clientX - bounds.left - bounds.width / 2;
     const pointerY = clientY - bounds.top - bounds.height / 2;
@@ -672,13 +697,13 @@ export function ComparisonWorkspace({
             <>
               <div className="comparison-frame">
                 <FrameLabel label={baselineLabel} routePath={routePath} viewport={viewport} />
-                <div ref={framePaperRef} className="frame-paper" onClick={interactWithFrame}>
+                <div ref={framePaperRef} className="frame-paper" style={{ aspectRatio: viewport.width / viewport.height }} onClick={interactWithFrame}>
                   <CapturedView src={baselineSrc} allowFixture={publicMode} />
                 </div>
               </div>
               <div className="comparison-frame">
                 <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
-                <div className="frame-paper" onClick={interactWithFrame}>
+                <div className="frame-paper" style={{ aspectRatio: viewport.width / viewport.height }} onClick={interactWithFrame}>
                   <CapturedView src={candidateSrc} candidate allowFixture={publicMode} />
                   {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} focusRect={semanticFocusRect} viewport={viewport} focusLabel={activeSemanticFinding ? String(semanticFindings.indexOf(activeSemanticFinding) + 1) : undefined} />}
                 </div>
@@ -691,7 +716,7 @@ export function ComparisonWorkspace({
                 <FrameLabel label={baselineLabel} routePath={routePath} viewport={viewport} />
                 <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
               </div>
-              <div ref={framePaperRef} className="frame-paper slider-paper" onClick={interactWithFrame}>
+              <div ref={framePaperRef} className="frame-paper slider-paper" style={{ aspectRatio: viewport.width / viewport.height }} onClick={interactWithFrame}>
                 <CapturedView src={baselineSrc} allowFixture={publicMode} />
                 <div
                   className="candidate-clip"
@@ -714,7 +739,7 @@ export function ComparisonWorkspace({
                 <FrameLabel label={baselineLabel} routePath={routePath} viewport={viewport} />
                 <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
               </div>
-              <div ref={framePaperRef} className="frame-paper overlay-paper" onClick={interactWithFrame}>
+              <div ref={framePaperRef} className="frame-paper overlay-paper" style={{ aspectRatio: viewport.width / viewport.height }} onClick={interactWithFrame}>
                 <CapturedView src={baselineSrc} allowFixture={publicMode} />
                 <div className="overlay-candidate" style={{ opacity: overlayOpacity / 100 }}>
                   <CapturedView src={candidateSrc} candidate allowFixture={publicMode} />
@@ -726,7 +751,7 @@ export function ComparisonWorkspace({
           {mode === "diff" && (
             <div className="comparison-frame single diff-frame">
               <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
-              <div ref={framePaperRef} className="frame-paper" onClick={interactWithFrame}>
+              <div ref={framePaperRef} className="frame-paper" style={{ aspectRatio: viewport.width / viewport.height }} onClick={interactWithFrame}>
                 <CapturedView src={diffSrc ?? candidateSrc} candidate allowFixture={publicMode} />
                 {!diffSrc && <div className="diff-film"><span /><span /><span /><span /><span /></div>}
                 {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} focusRect={semanticFocusRect} viewport={viewport} focusLabel={activeSemanticFinding ? String(semanticFindings.indexOf(activeSemanticFinding) + 1) : undefined} />}
@@ -743,7 +768,7 @@ export function ComparisonWorkspace({
             <button
               type="button"
               aria-label="Zoom out"
-              onClick={() => setZoom((value) => Math.max(25, value - 10))}
+              onClick={() => setZoom((value) => Math.max(5, value - 10))}
             >
               <Minus size={13} />
             </button>
