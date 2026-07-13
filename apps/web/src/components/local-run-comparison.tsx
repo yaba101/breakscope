@@ -23,10 +23,10 @@ export function LocalRunComparison({ runId }: { runId: string }) {
         setError("This local comparison has no captured images.");
         return;
       }
-      const baselineSrc = URL.createObjectURL(run.baselineImage);
-      const candidateSrc = URL.createObjectURL(run.candidateImage);
+      const baselineSrc = URL.createObjectURL(new Blob([run.baselineImage], { type: "image/png" }));
+      const candidateSrc = URL.createObjectURL(new Blob([run.candidateImage], { type: "image/png" }));
       urls.push(baselineSrc, candidateSrc);
-      const diffSrc = run.diffImage ? URL.createObjectURL(run.diffImage) : undefined;
+      const diffSrc = run.diffImage ? URL.createObjectURL(new Blob([run.diffImage], { type: "image/png" })) : undefined;
       if (diffSrc) urls.push(diffSrc);
       setLoaded({ run, baselineSrc, candidateSrc, diffSrc });
     }

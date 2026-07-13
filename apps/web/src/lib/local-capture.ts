@@ -17,13 +17,14 @@ interface CaptureResponse {
 export async function captureLocally(input: CaptureInput) {
   let response: Response;
   try {
-    response = await fetch("http://127.0.0.1:4317/capture", {
+    response = await fetch("/api/local-capture", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     });
-  } catch {
-    throw new Error("Local capture is offline. Start UIRift with pnpm dev:local and try again.");
+  } catch (error) {
+    const detail = error instanceof Error ? ` (${error.message})` : "";
+    throw new Error(`Local capture is offline. Start UIRift with pnpm dev:local and try again.${detail}`);
   }
   const payload = (await response.json()) as CaptureResponse;
   if (!response.ok || !payload.baseline || !payload.candidate) {

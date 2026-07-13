@@ -14,10 +14,18 @@ export default defineConfig({
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1487, height: 1058 } } },
     { name: "mobile", use: { ...devices["iPhone 13"] } },
   ],
-  webServer: {
-    command: "pnpm dev --hostname 127.0.0.1 --port 3100",
-    url: "http://127.0.0.1:3100",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: "pnpm dev --hostname 127.0.0.1 --port 3100",
+      url: "http://127.0.0.1:3100",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: "pnpm --filter @uirift/local-capture start",
+      url: "http://127.0.0.1:4317/health",
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+  ],
 });

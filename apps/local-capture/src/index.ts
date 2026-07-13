@@ -87,7 +87,9 @@ const server = createServer((request, response) => {
       const candidate = await capture(targetUrl(input.candidateUrl, input.routePath), input.viewport);
       return send(response, 200, { baseline, candidate, durationMs: Date.now() - startedAt });
     } catch (error) {
-      return send(response, 500, { error: error instanceof Error ? error.message : "Capture failed" });
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Local capture failed:", error);
+      return send(response, 500, { error: message || "Capture failed" });
     }
   });
 });

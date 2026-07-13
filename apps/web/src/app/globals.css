@@ -1664,6 +1664,16 @@ button {
   width: 14px;
   margin-left: auto;
 }
+.demo-link.guest-link {
+  margin-top: 30px;
+  border-color: var(--ui-selection);
+  background: var(--ui-selection);
+  color: white;
+  font-weight: 620;
+}
+.demo-link.guest-link:hover {
+  background: #4d8dfa;
+}
 .auth-security {
   display: flex;
   align-items: center;
@@ -3135,7 +3145,7 @@ button {
   .diff-inspector {
     position: fixed;
     right: 0;
-    bottom: 58px;
+    bottom: 104px;
     left: 0;
     z-index: 60;
     max-height: 50dvh;
@@ -3183,6 +3193,7 @@ button {
   }
   .decision-bar {
     bottom: 46px;
+    z-index: 70;
     width: 100%;
     height: 50px;
   }

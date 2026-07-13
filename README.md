@@ -1,10 +1,11 @@
 # UIRift
 
-UIRift is a visual-regression workspace for comparing two deployed interfaces in a precise, design-tool-style review environment. It ships a seeded public demo and a real authenticated capture path built for Cloudflare's free tiers.
+UIRift is a local-first visual-regression workspace for comparing two deployed interfaces in a precise, design-tool-style review environment. The current beta needs no account, remote database, tracking, or Cloudflare resources.
 
 ## Workspace
 
-- `apps/web` — Next.js App Router application and same-origin API
+- `apps/web` — Next.js App Router interface, IndexedDB workspace, and client diff worker
+- `apps/local-capture` — localhost-only Playwright capture companion
 - `workers/capture` — private Cloudflare Queue consumer using Browser Run
 - `packages/database` — D1/Drizzle schema
 - `packages/shared` — contracts and seeded fixtures
@@ -15,22 +16,21 @@ UIRift is a visual-regression workspace for comparing two deployed interfaces in
 
 ```bash
 pnpm install
-pnpm db:migrate:local
-pnpm dev
+pnpm dev:local
 ```
 
-Open `http://localhost:3000`. The public seeded demo works without Cloudflare credentials. Copy `.env.example` to `.env.local` only when connecting GitHub OAuth and Better Auth Infrastructure.
+Open `http://localhost:3000`, choose **Continue as guest**, and create a project. `dev:local` starts both the Next.js interface and the capture companion. No environment variables or external accounts are needed.
 
 ## Product routes
 
 - `/` — landing page and engineering case study
-- `/sign-in` — GitHub OAuth entry
-- `/app/projects` — two-project workspace
+- `/sign-in` — local guest entry
+- `/app/projects` — two-project IndexedDB workspace
 - `/app/projects/new` and `/app/projects/:id` — project and comparison setup
-- `/app/runs/:id/capture` — Queue/Browser Run progress and client-side diff processing
-- `/app/runs` — retained comparison history
+- `/app/runs/:id/capture` — local Playwright progress and client-side diff processing
+- `/app/runs` — local comparison history
 - `/app/runs/:id` — interactive comparison workspace
-- `/report/:token` — hashed, seven-day read-only report
+- `/report/:token` — future hosted read-only report shell
 - `/demo` — seeded comparison that does not consume live capture quota
 
 ## Commands
@@ -46,12 +46,12 @@ pnpm preview
 
 The repository currently passes TypeScript, ESLint, Vitest, Playwright desktop/mobile journeys, a production Next.js build, and React Doctor at 100/100.
 
-## Zero-dollar guardrails
+## Local beta boundaries
 
-The portfolio release allows two projects per user, ten retained runs per project, three live attempts per day, one active run, and one viewport per run. Live capture stops before the daily Browser Run free allowance is exhausted; `/demo` remains available from seeded artifacts.
+The local beta allows two projects and one viewport per run. Projects, screenshots, diff PNGs, changed regions, history, and decisions remain in the browser's IndexedDB until the user clears site data. Approved HTTPS preview hosts and localhost are supported. Public sharing and cross-device sync are intentionally deferred because they require hosted storage.
 
 ## Deployment status
 
-The application, bindings, migrations, capture worker, and deployment commands are ready. Cloudflare resources and GitHub OAuth credentials are intentionally not provisioned from this local repository yet. Follow [docs/deployment.md](docs/deployment.md) after authorizing the target accounts.
+The Cloudflare, Better Auth, D1, R2, Queue, and Browser Run implementation remains in the repository as the future hosted adapter, but it is not used by the guest workflow. Follow [docs/deployment.md](docs/deployment.md) only when the local product loop is ready for hosting.
 
 See [docs/architecture.md](docs/architecture.md) for the system design and security boundaries.

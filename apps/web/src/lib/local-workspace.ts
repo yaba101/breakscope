@@ -24,9 +24,9 @@ export interface LocalRun {
   changedPixels: number;
   changedRatio: number;
   regions: ChangedRegion[];
-  baselineImage?: Blob;
-  candidateImage?: Blob;
-  diffImage?: Blob;
+  baselineImage?: ArrayBuffer;
+  candidateImage?: ArrayBuffer;
+  diffImage?: ArrayBuffer;
   error?: string;
   createdAt: number;
   completedAt?: number;
@@ -145,4 +145,17 @@ export async function updateLocalRun(id: string, patch: Partial<LocalRun>) {
 export function subscribeToWorkspace(callback: () => void) {
   window.addEventListener(changedEvent, callback);
   return () => window.removeEventListener(changedEvent, callback);
+}
+
+export async function clearLocalWorkspace() {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(["projects", "runs"], "readwrite");
+    transaction.objectStore("projects").clear();
+    transaction.objectStore("runs").clear();
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  database.close();
+  window.dispatchEvent(new Event(changedEvent));
 }

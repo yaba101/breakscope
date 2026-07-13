@@ -45,6 +45,7 @@ import { captureLocally } from "@/lib/local-capture";
 import {
   createLocalProject,
   createLocalRun,
+  clearLocalWorkspace,
   getLocalProject,
   getLocalRun,
   listLocalProjects,
@@ -143,7 +144,7 @@ export function LandingScreen() {
           <a href="#architecture">Architecture</a>
         </nav>
         <div>
-          <Link href="/sign-in">Sign in</Link>
+          <Link href="/sign-in">Open workspace</Link>
           <Link
             className="button-link secondary"
             href="https://github.com/your-name/uirift"
@@ -168,13 +169,13 @@ export function LandingScreen() {
               <small>Processed on your device</small>
             </span>
             <span>
-              <LockKeyhole /> Zero-dollar architecture
-              <small>Built on Cloudflare free tiers</small>
+              <LockKeyhole /> Local-first architecture
+              <small>No account, database, or tracking</small>
             </span>
           </div>
           <div className="hero-actions">
-            <Link className="button-link primary" href="/demo">
-              Try live demo <ArrowRight size={14} />
+            <Link className="button-link primary" href="/sign-in">
+              Start local workspace <ArrowRight size={14} />
             </Link>
             <Link href="#workflow">
               See how it works <ArrowRight size={13} />
@@ -229,18 +230,18 @@ export function LandingScreen() {
           <h2>Designed around the limits, not despite them.</h2>
         </div>
         <p>
-          Cloudflare captures and stores the screenshots. A Web Worker performs
-          the CPU-heavy image comparison in the browser, keeping the public demo
-          inside a strict no-bill architecture.
+          A localhost Playwright companion captures both pages. IndexedDB stores
+          the artifacts, while a Web Worker performs the pixel comparison in
+          your browser. Nothing is uploaded.
         </p>
         <div className="architecture-flow">
           <b>Next.js</b>
           <ArrowRight />
-          <b>Queue</b>
+          <b>Local capture</b>
           <ArrowRight />
-          <b>Browser Run</b>
+          <b>Playwright</b>
           <ArrowRight />
-          <b>R2</b>
+          <b>IndexedDB</b>
           <ArrowRight />
           <b>Web Worker</b>
         </div>
@@ -456,7 +457,7 @@ export function ProjectsScreen() {
                 {run.status === "failed" ? <XCircle /> : <Check />}
               </span>
               <div>
-                <small>{run.createdAt}</small>
+                <small>{new Date(run.createdAt).toLocaleString("en-US", { timeZone: "UTC" })}</small>
                 <b>
                   Run #{run.id}{" "}
                   {run.status === "failed" ? "failed" : "completed"}
@@ -708,7 +709,6 @@ function ProjectSetupForm({
         <footer className="setup-footer">
           <Link href="/app/projects">Cancel</Link>
           <div>
-            <Button>Save draft</Button>
             <Button
               variant="primary"
               disabled={!name.trim() || !baselineValid || !candidateValid || !routePath.startsWith("/") || submitting}
@@ -775,8 +775,21 @@ export function CaptureScreen({ runId }: { runId: string }) {
           viewport: run.viewport,
         });
         setLiveStatus("processing");
-        await updateLocalRun(runId, { status: "processing", baselineImage: images.baseline, candidateImage: images.candidate });
-        const result = await createVisualDiffFromBlobs(images.baseline, images.candidate);
+        const [baselineImage, candidateImage] = await Promise.all([
+          images.baseline.arrayBuffer(),
+          images.candidate.arrayBuffer(),
+        ]);
+        try {
+          await updateLocalRun(runId, { status: "processing", baselineImage, candidateImage });
+        } catch (error) {
+          throw new Error(`Unable to store captured images: ${String(error)}`);
+        }
+        let result;
+        try {
+          result = await createVisualDiffFromBlobs(images.baseline, images.candidate);
+        } catch (error) {
+          throw new Error(`Unable to calculate the visual diff: ${String(error)}`);
+        }
         const profile = viewportProfiles[run.viewport];
         const regions = result.regions.map((region, index) => ({
           id: index + 1,
@@ -788,20 +801,24 @@ export function CaptureScreen({ runId }: { runId: string }) {
           label: `Changed region ${index + 1}`,
           severity: (region.pixelCount > 500 ? "high" : region.pixelCount > 100 ? "medium" : "low") as "high" | "medium" | "low",
         }));
-        await updateLocalRun(runId, {
+        try {
+          await updateLocalRun(runId, {
           status: "ready",
-          baselineImage: images.baseline,
-          candidateImage: images.candidate,
-          diffImage: new Blob([result.diff], { type: "image/png" }),
+          baselineImage,
+          candidateImage,
+          diffImage: result.diff,
           changedPixels: result.changedPixels,
           changedRatio: result.changedRatio,
           regions,
           completedAt: Date.now(),
-        });
+          });
+        } catch (error) {
+          throw new Error(`Unable to store the comparison result: ${String(error)}`);
+        }
         setLiveStatus("ready");
         router.replace(`/app/runs/${runId}`);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Local capture failed";
+        const message = error instanceof Error ? error.message : String(error) || "Local capture failed";
         setCaptureError(message);
         setLiveStatus("failed");
         await updateLocalRun(runId, { status: "failed", error: message }).catch(() => undefined);
@@ -917,7 +934,7 @@ export function CaptureScreen({ runId }: { runId: string }) {
               <i />
             </div>
           </section>
-          <Button variant="danger">Cancel run</Button>
+          <Button disabled>Local capture active</Button>
         </aside>
         <section className="live-log">
           <header>
@@ -1260,19 +1277,19 @@ export function SettingsScreen() {
           <article>
             <div>
               <h2>Account</h2>
-              <p>Identity is managed through GitHub and Better Auth.</p>
+              <p>This beta runs as a private guest workspace in your browser.</p>
             </div>
             <button type="button">
               <span className="settings-avatar">YM</span>
-              <b>Yeabsira Mekuria</b>
-              <small>GitHub connected</small>
+              <b>Local guest</b>
+              <small>No account connected</small>
               <ChevronRight />
             </button>
           </article>
           <article>
             <div>
               <h2>Usage limits</h2>
-              <p>Hard limits keep the portfolio deployment at $0.</p>
+              <p>Local guardrails keep the workspace fast and focused.</p>
             </div>
             <dl>
               <div>
@@ -1281,21 +1298,24 @@ export function SettingsScreen() {
               </div>
               <div>
                 <dt>Runs</dt>
-                <dd>10 / project</dd>
+                <dd>Stored locally</dd>
               </div>
               <div>
                 <dt>Attempts</dt>
-                <dd>3 / day</dd>
+                <dd>Unlimited</dd>
               </div>
             </dl>
           </article>
           <article>
             <div>
               <h2>Retention</h2>
-              <p>Screenshot artifacts are removed after seven days.</p>
+              <p>Screenshot artifacts remain until browser data is cleared.</p>
             </div>
-            <button type="button" className="danger-row">
-              <Trash2 /> Delete expired artifacts now
+            <button type="button" className="danger-row" onClick={async () => {
+              await clearLocalWorkspace();
+              window.location.href = "/app/projects";
+            }}>
+              <Trash2 /> Clear local workspace data
             </button>
           </article>
           <article>

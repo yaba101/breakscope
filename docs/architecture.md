@@ -1,6 +1,19 @@
 # UIRift architecture
 
-## Runtime shape
+## Current local runtime
+
+```mermaid
+flowchart LR
+  U["Next.js UI"] --> P["Local Playwright companion"]
+  P --> U
+  U --> I["IndexedDB projects and PNG artifacts"]
+  I --> W["Browser diff Web Worker"]
+  W --> I
+```
+
+The guest workflow creates projects and runs in IndexedDB. A localhost-only Node process captures approved preview URLs with Playwright, then returns the PNGs directly to the browser. The Web Worker calculates the diff and grouped regions; the browser stores the result and decisions locally. No application data leaves the machine.
+
+## Future hosted runtime
 
 UIRift uses one public Next.js Worker and one private Queue consumer:
 
@@ -17,11 +30,12 @@ flowchart LR
   A --> S["Hashed share token"]
 ```
 
-The capture Worker opens both approved public HTTPS URLs with the same viewport, color scheme, reduced motion, font-settle rule, and animation override. It stores baseline and candidate PNGs in R2, then changes the run to `processing`. The user's browser downloads both authenticated artifacts and runs pixelmatch inside an OffscreenCanvas Web Worker. The generated diff PNG and grouped changed regions are uploaded back to the same-origin API.
+This Cloudflare adapter is retained for the later authenticated release. It is not required or invoked by the current guest workflow.
 
 ## Workspace packages
 
-- `apps/web`: Next.js App Router UI, Better Auth, APIs, D1 migration, client diff worker.
+- `apps/web`: Next.js App Router UI, local IndexedDB repository, future Better Auth APIs, and client diff worker.
+- `apps/local-capture`: localhost-only Playwright capture service.
 - `workers/capture`: Browser Run Queue consumer and scheduled retention cleanup.
 - `packages/database`: Drizzle schema for product data.
 - `packages/validation`: approved-host URL and request validation.
