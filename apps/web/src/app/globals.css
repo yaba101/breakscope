@@ -2297,6 +2297,10 @@ button {
   border-color: var(--ui-selection);
   color: var(--ui-selection);
 }
+.capture-stage-list article.failed > span {
+  border-color: var(--ui-danger);
+  color: var(--ui-danger);
+}
 .capture-stage-list article.running svg {
   animation: spin 1s linear infinite;
 }
@@ -2326,6 +2330,25 @@ button {
   overflow: hidden;
   border: 1px solid var(--ui-border);
   background: white;
+}
+.stage-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+}
+.capture-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.capture-error-actions p {
+  flex: 1;
+  color: var(--ui-danger);
+}
+.capture-error-actions > a {
+  color: var(--ui-selection);
 }
 .run-details {
   border-left: 1px solid var(--ui-border-subtle);

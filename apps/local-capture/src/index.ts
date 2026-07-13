@@ -20,6 +20,12 @@ interface CaptureRequest {
   viewport: ViewportId;
 }
 
+interface CapturePageRequest {
+  url: string;
+  routePath: string;
+  viewport: ViewportId;
+}
+
 function send(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, { "Content-Type": "application/json" });
   response.end(JSON.stringify(body));
@@ -64,6 +70,7 @@ async function assertPublicHostname(hostname: string, allowLocal: boolean) {
 }
 
 async function capture(url: string, viewport: ViewportId) {
+  const startedAt = Date.now();
   const browser = await chromium.launch({ headless: true });
   try {
     const profile = viewportProfiles[viewport];
@@ -99,7 +106,12 @@ async function capture(url: string, viewport: ViewportId) {
     await page.waitForTimeout(300);
     const png = await page.screenshot({ fullPage: false, animations: "disabled", type: "png" });
     await context.close();
-    return `data:image/png;base64,${png.toString("base64")}`;
+    return {
+      image: `data:image/png;base64,${png.toString("base64")}`,
+      finalUrl: page.url(),
+      statusCode: navigation.status(),
+      durationMs: Date.now() - startedAt,
+    };
   } finally {
     await browser.close();
   }
@@ -115,7 +127,9 @@ const server = createServer((request, response) => {
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   if (request.method === "OPTIONS") return response.writeHead(204).end();
   if (request.method === "GET" && request.url === "/health") return send(response, 200, { ok: true });
-  if (request.method !== "POST" || request.url !== "/capture") return send(response, 404, { error: "Not found" });
+  if (request.method !== "POST" || !["/capture", "/capture-page"].includes(request.url ?? "")) {
+    return send(response, 404, { error: "Not found" });
+  }
   if (origin && !allowedOrigins.has(origin)) return send(response, 403, { error: "Origin is not allowed" });
 
   let raw = "";
@@ -125,6 +139,17 @@ const server = createServer((request, response) => {
   });
   request.on("end", async () => {
     try {
+      if (request.url === "/capture-page") {
+        const input = JSON.parse(raw) as CapturePageRequest;
+        if (!isCaptureUrl(input.url)) {
+          return send(response, 400, { error: "Use a public HTTPS URL or localhost" });
+        }
+        if (!(input.viewport in viewportProfiles) || !input.routePath?.startsWith("/")) {
+          return send(response, 400, { error: "Invalid route or viewport" });
+        }
+        return send(response, 200, await capture(targetUrl(input.url, input.routePath), input.viewport));
+      }
+
       const input = JSON.parse(raw) as CaptureRequest;
       if (!isCaptureUrl(input.baselineUrl) || !isCaptureUrl(input.candidateUrl)) {
         return send(response, 400, { error: "Use a public HTTPS URL or localhost" });
@@ -135,7 +160,11 @@ const server = createServer((request, response) => {
       const startedAt = Date.now();
       const baseline = await capture(targetUrl(input.baselineUrl, input.routePath), input.viewport);
       const candidate = await capture(targetUrl(input.candidateUrl, input.routePath), input.viewport);
-      return send(response, 200, { baseline, candidate, durationMs: Date.now() - startedAt });
+      return send(response, 200, {
+        baseline: baseline.image,
+        candidate: candidate.image,
+        durationMs: Date.now() - startedAt,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("Local capture failed:", error);

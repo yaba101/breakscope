@@ -27,9 +27,21 @@ export interface LocalRun {
   baselineImage?: ArrayBuffer;
   candidateImage?: ArrayBuffer;
   diffImage?: ArrayBuffer;
+  events?: CaptureEvent[];
+  baselineDurationMs?: number;
+  candidateDurationMs?: number;
   error?: string;
   createdAt: number;
   completedAt?: number;
+}
+
+export interface CaptureEvent {
+  id: string;
+  time: number;
+  stage: "system" | "baseline" | "candidate" | "diff";
+  status: "running" | "success" | "error";
+  label: string;
+  detail: string;
 }
 
 function openDatabase() {
@@ -128,6 +140,7 @@ export async function createLocalRun(project: LocalProject, routePath: string, v
     changedPixels: 0,
     changedRatio: 0,
     regions: [],
+    events: [],
     createdAt: Date.now(),
   };
   await writeOne("runs", run);

@@ -14,6 +14,42 @@ interface CaptureResponse {
   error?: string;
 }
 
+interface CapturePageResponse {
+  image?: string;
+  finalUrl?: string;
+  statusCode?: number;
+  durationMs?: number;
+  error?: string;
+}
+
+export async function capturePageLocally(input: {
+  url: string;
+  routePath: string;
+  viewport: ViewportId;
+}) {
+  let response: Response;
+  try {
+    response = await fetch("/api/local-capture/page", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? ` (${error.message})` : "";
+    throw new Error(`Local capture is offline. Start UIRift with pnpm dev:local and try again.${detail}`);
+  }
+  const payload = (await response.json()) as CapturePageResponse;
+  if (!response.ok || !payload.image) {
+    throw new Error(payload.error ?? "Local browser capture failed");
+  }
+  return {
+    image: dataUrlToBlob(payload.image),
+    finalUrl: payload.finalUrl ?? new URL(input.routePath, input.url).toString(),
+    statusCode: payload.statusCode ?? 200,
+    durationMs: payload.durationMs ?? 0,
+  };
+}
+
 export async function captureLocally(input: CaptureInput) {
   let response: Response;
   try {

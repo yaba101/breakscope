@@ -32,7 +32,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   viewportProfiles,
   type RunSummary,
-  type RunStatus,
 } from "@uirift/shared";
 import { isCaptureUrl } from "@uirift/validation";
 import { AppShell } from "@/components/app-shell";
@@ -41,7 +40,7 @@ import { DemoSite } from "@/components/demo-site";
 import { ComparisonWorkspace } from "@/components/comparison-workspace";
 import { cn } from "@/lib/cn";
 import { createVisualDiffFromBlobs } from "@/lib/diff-client";
-import { captureLocally } from "@/lib/local-capture";
+import { capturePageLocally } from "@/lib/local-capture";
 import {
   createLocalProject,
   createLocalRun,
@@ -51,28 +50,8 @@ import {
   listLocalProjects,
   listLocalRuns,
   updateLocalRun,
+  type CaptureEvent,
 } from "@/lib/local-workspace";
-
-const captureStages = [
-  {
-    name: "Baseline",
-    state: "Captured",
-    detail: "acme-demo.pages.dev",
-    status: "done",
-  },
-  {
-    name: "Candidate",
-    state: "Capturing",
-    detail: "acme-preview.vercel.app",
-    status: "running",
-  },
-  {
-    name: "Visual diff",
-    state: "Queued",
-    detail: "Runs in your browser",
-    status: "queued",
-  },
-];
 
 function AppPreview() {
   return (
@@ -459,7 +438,7 @@ export function ProjectsScreen() {
               <div>
                 <small>{new Date(run.createdAt).toLocaleString("en-US", { timeZone: "UTC" })}</small>
                 <b>
-                  Run #{run.id}{" "}
+                  Run #{run.id.slice(0, 8)}{" "}
                   {run.status === "failed" ? "failed" : "completed"}
                 </b>
                 <p>{run.projectName}</p>
@@ -570,7 +549,7 @@ function ProjectSetupForm({
   return (
     <AppShell
       breadcrumb={
-        existing ? "Acme Cloud / New comparison" : "Projects / New project"
+        existing ? `${initialName ?? "Project"} / New comparison` : "Projects / New project"
       }
       dock={false}
     >
@@ -751,46 +730,104 @@ function ValidationLine({ valid }: { valid: boolean }) {
 export function CaptureScreen({ runId }: { runId: string }) {
   const router = useRouter();
   const started = useRef(false);
-  const [liveStatus, setLiveStatus] = useState<RunStatus>("queued");
+  const [phase, setPhase] = useState<"starting" | "baseline" | "candidate" | "diff" | "ready" | "failed">("starting");
+  const [failedStage, setFailedStage] = useState<"baseline" | "candidate" | "diff">();
   const [captureError, setCaptureError] = useState("");
-  const [context, setContext] = useState({ projectName: "Local project", routePath: "/", viewport: viewportProfiles.desktop });
+  const [events, setEvents] = useState<CaptureEvent[]>([]);
+  const [retryKey, setRetryKey] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [preview, setPreview] = useState<{ baseline?: string; candidate?: string }>({});
+  const [context, setContext] = useState({
+    projectId: "",
+    projectName: "Local project",
+    routePath: "/",
+    viewport: viewportProfiles.desktop,
+    baselineHost: "Loading…",
+    candidateHost: "Loading…",
+  });
+
+  useEffect(() => {
+    if (phase === "ready" || phase === "failed") return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [phase, retryKey]);
 
   useEffect(() => {
     if (started.current) return;
     started.current = true;
+    const objectUrls: string[] = [];
     async function executeCapture() {
+      let currentEvents: CaptureEvent[] = [];
+      let currentStage: "baseline" | "candidate" | "diff" = "baseline";
+      const appendEvent = (event: Omit<CaptureEvent, "id" | "time">) => {
+        const next: CaptureEvent = { ...event, id: crypto.randomUUID(), time: Date.now() };
+        currentEvents = [...currentEvents, next];
+        setEvents(currentEvents);
+        return next;
+      };
       try {
         const run = await getLocalRun(runId);
         if (!run) throw new Error("This comparison was not found on this device");
         const project = await getLocalProject(run.projectId);
         if (!project) throw new Error("The project for this comparison was not found");
-        setContext({ projectName: project.name, routePath: run.routePath, viewport: viewportProfiles[run.viewport] });
+        const profile = viewportProfiles[run.viewport];
+        setContext({
+          projectId: project.id,
+          projectName: project.name,
+          routePath: run.routePath,
+          viewport: profile,
+          baselineHost: new URL(project.baselineUrl).host,
+          candidateHost: new URL(project.candidateUrl).host,
+        });
         if (run.status === "ready") return router.replace(`/app/runs/${runId}`);
-        setLiveStatus("capturing");
-        await updateLocalRun(runId, { status: "capturing", error: undefined });
-        const images = await captureLocally({
-          baselineUrl: project.baselineUrl,
-          candidateUrl: project.candidateUrl,
+        setCaptureError("");
+        setElapsed(0);
+        setEvents([]);
+        setPreview({});
+        appendEvent({ stage: "system", status: "success", label: "Run started", detail: `Run #${runId.slice(0, 8)} created locally` });
+        setPhase("baseline");
+        appendEvent({ stage: "baseline", status: "running", label: "Navigating", detail: new URL(run.routePath, project.baselineUrl).toString() });
+        await updateLocalRun(runId, { status: "capturing", error: undefined, events: currentEvents });
+
+        const baseline = await capturePageLocally({
+          url: project.baselineUrl,
           routePath: run.routePath,
           viewport: run.viewport,
         });
-        setLiveStatus("processing");
-        const [baselineImage, candidateImage] = await Promise.all([
-          images.baseline.arrayBuffer(),
-          images.candidate.arrayBuffer(),
-        ]);
-        try {
-          await updateLocalRun(runId, { status: "processing", baselineImage, candidateImage });
-        } catch (error) {
-          throw new Error(`Unable to store captured images: ${String(error)}`);
-        }
+        const baselineUrl = URL.createObjectURL(baseline.image);
+        objectUrls.push(baselineUrl);
+        setPreview({ baseline: baselineUrl });
+        const baselineImage = await baseline.image.arrayBuffer();
+        appendEvent({ stage: "baseline", status: "success", label: "Baseline captured", detail: `${baseline.statusCode} · ${profile.width}×${profile.height} · ${(baseline.durationMs / 1000).toFixed(1)}s` });
+        await updateLocalRun(runId, { baselineImage, baselineDurationMs: baseline.durationMs, events: currentEvents });
+
+        currentStage = "candidate";
+        setPhase("candidate");
+        appendEvent({ stage: "candidate", status: "running", label: "Navigating", detail: new URL(run.routePath, project.candidateUrl).toString() });
+        await updateLocalRun(runId, { events: currentEvents });
+        const candidate = await capturePageLocally({
+          url: project.candidateUrl,
+          routePath: run.routePath,
+          viewport: run.viewport,
+        });
+        const candidateUrl = URL.createObjectURL(candidate.image);
+        objectUrls.push(candidateUrl);
+        setPreview({ baseline: baselineUrl, candidate: candidateUrl });
+        const candidateImage = await candidate.image.arrayBuffer();
+        appendEvent({ stage: "candidate", status: "success", label: "Candidate captured", detail: `${candidate.statusCode} · ${profile.width}×${profile.height} · ${(candidate.durationMs / 1000).toFixed(1)}s` });
+        await updateLocalRun(runId, { candidateImage, candidateDurationMs: candidate.durationMs, events: currentEvents });
+
+        currentStage = "diff";
+        setPhase("diff");
+        appendEvent({ stage: "diff", status: "running", label: "Calculating diff", detail: "Pixel comparison is running in this browser" });
+        await updateLocalRun(runId, { status: "processing", events: currentEvents });
         let result;
         try {
-          result = await createVisualDiffFromBlobs(images.baseline, images.candidate);
+          result = await createVisualDiffFromBlobs(baseline.image, candidate.image);
         } catch (error) {
           throw new Error(`Unable to calculate the visual diff: ${String(error)}`);
         }
-        const profile = viewportProfiles[run.viewport];
         const regions = result.regions.map((region, index) => ({
           id: index + 1,
           x: (region.x / profile.width) * 100,
@@ -801,8 +838,8 @@ export function CaptureScreen({ runId }: { runId: string }) {
           label: `Changed region ${index + 1}`,
           severity: (region.pixelCount > 500 ? "high" : region.pixelCount > 100 ? "medium" : "low") as "high" | "medium" | "low",
         }));
-        try {
-          await updateLocalRun(runId, {
+        appendEvent({ stage: "diff", status: "success", label: "Comparison complete", detail: `${result.changedPixels.toLocaleString()} changed pixels · ${regions.length} regions` });
+        await updateLocalRun(runId, {
           status: "ready",
           baselineImage,
           candidateImage,
@@ -811,28 +848,39 @@ export function CaptureScreen({ runId }: { runId: string }) {
           changedRatio: result.changedRatio,
           regions,
           completedAt: Date.now(),
-          });
-        } catch (error) {
-          throw new Error(`Unable to store the comparison result: ${String(error)}`);
-        }
-        setLiveStatus("ready");
+          events: currentEvents,
+        });
+        setPhase("ready");
         router.replace(`/app/runs/${runId}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error) || "Local capture failed";
+        appendEvent({ stage: currentStage, status: "error", label: `${currentStage[0]?.toUpperCase()}${currentStage.slice(1)} failed`, detail: message });
         setCaptureError(message);
-        setLiveStatus("failed");
-        await updateLocalRun(runId, { status: "failed", error: message }).catch(() => undefined);
+        setFailedStage(currentStage);
+        setPhase("failed");
+        await updateLocalRun(runId, { status: "failed", error: message, events: currentEvents }).catch(() => undefined);
       }
     }
     void executeCapture();
-  }, [router, runId]);
+    return () => objectUrls.forEach((url) => URL.revokeObjectURL(url));
+  }, [router, runId, retryKey]);
 
-  const localStages = captureStages.map((stage, index) => ({
-    ...stage,
-    status: liveStatus === "failed" && index > 0 ? "queued" : liveStatus === "processing" || liveStatus === "ready" ? "done" : index === 0 ? "done" : index === 1 ? "running" : "queued",
-    state: liveStatus === "processing" && index === 2 ? "Processing" : liveStatus === "ready" ? "Complete" : stage.state,
-    detail: index === 2 ? "Runs in this browser" : "Local Playwright",
-  }));
+  const stageOrder = ["baseline", "candidate", "diff"] as const;
+  const currentIndex = stageOrder.indexOf(phase === "starting" || phase === "ready" || phase === "failed" ? "baseline" : phase);
+  const localStages = stageOrder.map((stage, index) => {
+    const isFailed = phase === "failed" && failedStage === stage;
+    const done = phase === "ready" || (!isFailed && (currentIndex > index || (phase === "failed" && stageOrder.indexOf(failedStage ?? "baseline") > index)));
+    const running = phase === stage;
+    return {
+      name: stage === "diff" ? "Visual diff" : `${stage[0]?.toUpperCase()}${stage.slice(1)}`,
+      detail: stage === "baseline" ? context.baselineHost : stage === "candidate" ? context.candidateHost : "Runs in this browser",
+      status: isFailed ? "failed" : done ? "done" : running ? "running" : "queued",
+      state: isFailed ? "Failed" : done ? "Complete" : running ? (stage === "diff" ? "Processing" : "Capturing") : "Queued",
+      preview: stage === "baseline" ? preview.baseline : stage === "candidate" ? preview.candidate : undefined,
+    };
+  });
+  const activeJob = phase === "baseline" ? "Capturing baseline" : phase === "candidate" ? "Capturing candidate" : phase === "diff" ? "Calculating visual diff" : phase === "failed" ? "Capture failed" : "Preparing capture";
+  const progress = phase === "baseline" ? 20 : phase === "candidate" ? 55 : phase === "diff" ? 85 : phase === "ready" ? 100 : failedStage === "baseline" ? 20 : failedStage === "candidate" ? 55 : 85;
 
   return (
     <AppShell breadcrumb={`${context.projectName} / Run #${runId.slice(0, 8)}`} dock={false}>
@@ -843,11 +891,11 @@ export function CaptureScreen({ runId }: { runId: string }) {
           <p>{context.routePath} · {context.viewport.label} {context.viewport.width}</p>
           <div>
             <b>Baseline</b>
-            <small>main@a1b2c3d</small>
+            <small>{context.baselineHost}</small>
           </div>
           <div>
             <b>Candidate</b>
-            <small>d4e5f6g</small>
+            <small>{context.candidateHost}</small>
           </div>
         </aside>
         <section className="capture-progress">
@@ -855,28 +903,36 @@ export function CaptureScreen({ runId }: { runId: string }) {
             <div>
               <span>RUN PROGRESS</span>
               <h1>
-                {liveStatus === "processing"
+                {phase === "diff"
                   ? "Calculating visual diff"
-                  : liveStatus === "failed" ? "Capture stopped" : "Capture in progress"}
+                  : phase === "failed" ? "Capture failed" : "Capture in progress"}
               </h1>
               <p>
-                {liveStatus === "processing"
+                {phase === "diff"
                   ? "Screenshots ready · processing on this device"
-                  : "Local Playwright is capturing both pages"}
+                  : phase === "failed" ? "The run stopped at the failed step below" : "Local Playwright is capturing each page in sequence"}
               </p>
             </div>
-            <b>ETA 00:18</b>
+            <b>{phase === "failed" ? `Stopped after ${elapsed}s` : `Elapsed ${elapsed}s`}</b>
           </header>
           <div className="progress-track">
-            <i />
+            <i style={{ width: `${progress}%` }} />
           </div>
-          {captureError && <p className="validation-line">{captureError}</p>}
+          {captureError && (
+            <div className="capture-error-actions">
+              <p className="validation-line"><XCircle /> {captureError}</p>
+              <Button onClick={() => { started.current = false; setRetryKey((value) => value + 1); }}>Retry capture</Button>
+              {context.projectId && <Link href={`/app/projects/${context.projectId}`}>Edit route or URLs</Link>}
+            </div>
+          )}
           <div className="capture-stage-list">
             {localStages.map((stage, index) => (
               <article className={stage.status} key={stage.name}>
                 <span>
                   {stage.status === "done" ? (
                     <Check />
+                  ) : stage.status === "failed" ? (
+                    <XCircle />
                   ) : stage.status === "running" ? (
                     <LoaderCircle />
                   ) : (
@@ -889,9 +945,10 @@ export function CaptureScreen({ runId }: { runId: string }) {
                   <p>{stage.detail}</p>
                 </div>
                 <b>{stage.state}</b>
-                {stage.status !== "queued" && (
+                {stage.preview && (
                   <div className="stage-preview">
-                    <Globe2 aria-label={index === 0 ? "Baseline page" : "Candidate page"} />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={stage.preview} alt={`${stage.name} capture preview`} />
                   </div>
                 )}
               </article>
@@ -906,7 +963,7 @@ export function CaptureScreen({ runId }: { runId: string }) {
           <section>
             <span>CURRENT JOB</span>
             <p>
-              <LoaderCircle /> Capturing candidate
+              {phase === "failed" ? <XCircle /> : <LoaderCircle />} {activeJob}
             </p>
             <small>Local process · no cloud usage</small>
           </section>
@@ -919,40 +976,27 @@ export function CaptureScreen({ runId }: { runId: string }) {
               </div>
               <div>
                 <dt>Viewport</dt>
-                <dd>1440×900</dd>
+                <dd>{context.viewport.width}×{context.viewport.height}</dd>
               </div>
               <div>
                 <dt>Region</dt>
-                <dd>Automatic</dd>
+                <dd>Local device</dd>
               </div>
             </dl>
           </section>
-          <section>
-            <span>LOCAL MODE</span>
-            <b>No daily allowance</b>
-            <div className="quota-track">
-              <i />
-            </div>
-          </section>
-          <Button disabled>Local capture active</Button>
+          <section><span>STORAGE</span><p>IndexedDB on this device</p><small>No account or cloud database</small></section>
         </aside>
         <section className="live-log">
           <header>
             <b>CAPTURE LOG</b>
             <span>Live</span>
           </header>
-          {[
-            ["10:14:02", "Run started", "Run #1247 created"],
-            ["10:14:05", "Navigated", "Baseline /pricing"],
-            ["10:14:08", "Captured", "Baseline 1440×900"],
-            ["10:14:12", "Navigated", "Candidate /pricing"],
-            ["10:14:15", "Capturing", "Waiting for fonts"],
-          ].map(([time, event, detail]) => (
-            <div key={time}>
-              <small>{time}</small>
-              <CheckCircle2 />
-              <b>{event}</b>
-              <span>{detail}</span>
+          {events.map((event) => (
+            <div key={event.id}>
+              <small>{new Date(event.time).toLocaleTimeString([], { hour12: false })}</small>
+              {event.status === "error" ? <XCircle /> : event.status === "running" ? <LoaderCircle /> : <CheckCircle2 />}
+              <b>{event.label}</b>
+              <span>{event.detail}</span>
             </div>
           ))}
         </section>
@@ -1044,7 +1088,7 @@ export function RunsScreen() {
                 className="run-row"
                 key={run.id}
               >
-                <b>#{run.id}</b>
+                <b>#{run.id.slice(0, 8)}</b>
                 <div>
                   <strong>{run.projectName}</strong>
                   <small>
@@ -1280,7 +1324,7 @@ export function SettingsScreen() {
               <p>This beta runs as a private guest workspace in your browser.</p>
             </div>
             <button type="button">
-              <span className="settings-avatar">YM</span>
+              <span className="settings-avatar">LG</span>
               <b>Local guest</b>
               <small>No account connected</small>
               <ChevronRight />
