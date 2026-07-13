@@ -14,13 +14,23 @@ import {
   Plus,
   Smartphone,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { changedRegions, viewportProfiles, type ChangedRegion, type Decision, type ViewportProfile } from "@uirift/shared";
 import { Button } from "@/components/ui/button";
 import { DemoSite } from "@/components/demo-site";
 import { cn } from "@/lib/cn";
+import { useComparisonTools } from "@/lib/comparison-tools";
 
 type CompareMode = "side-by-side" | "slider" | "overlay" | "diff";
+
+interface PixelInspection {
+  x: number;
+  y: number;
+  baseline?: string;
+  candidate?: string;
+  loading?: boolean;
+  error?: string;
+}
 
 function LayerPanel({ projectName, routePath, viewport, regionCount }: {
   projectName: string;
@@ -66,6 +76,7 @@ function DiffInspector({
   viewport,
   baselineLabel,
   candidateLabel,
+  pixelInspection,
 }: {
   activeRegion: number;
   onRegion: (id: number) => void;
@@ -76,6 +87,7 @@ function DiffInspector({
   viewport: ViewportProfile;
   baselineLabel: string;
   candidateLabel: string;
+  pixelInspection?: PixelInspection;
 }) {
   return (
     <aside className="diff-inspector">
@@ -89,6 +101,17 @@ function DiffInspector({
             <small>SELECTION</small>
             <p>{routePath} / {viewport.label}</p>
           </section>
+          {pixelInspection && (
+            <section className="inspector-section pixel-inspector" aria-live="polite">
+              <small>PIXEL INSPECTOR · X {pixelInspection.x} Y {pixelInspection.y}</small>
+              {pixelInspection.loading ? <p>Sampling both captures…</p> : pixelInspection.error ? <p>{pixelInspection.error}</p> : (
+                <dl>
+                  <div><dt>Baseline</dt><dd><i style={{ background: pixelInspection.baseline }} />{pixelInspection.baseline}</dd></div>
+                  <div><dt>Candidate</dt><dd><i style={{ background: pixelInspection.candidate }} />{pixelInspection.candidate}</dd></div>
+                </dl>
+              )}
+            </section>
+          )}
           <section className="metric-grid">
             <div>
               <small>Changed pixels</small>
@@ -245,9 +268,15 @@ export function ComparisonWorkspace({
   baselineLabel?: string;
   candidateLabel?: string;
 }) {
+  const { tool, regionsVisible, setTool } = useComparisonTools();
   const [mode, setMode] = useState<CompareMode>("side-by-side");
   const [zoom, setZoom] = useState(72);
   const [slider, setSlider] = useState(54);
+  const [overlayOpacity, setOverlayOpacity] = useState(50);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [spacePanning, setSpacePanning] = useState(false);
+  const [pixelInspection, setPixelInspection] = useState<PixelInspection>();
+  const drag = useRef<{ x: number; y: number; panX: number; panY: number } | undefined>(undefined);
   const [activeRegion, setActiveRegion] = useState(1);
   const [decision, setDecision] = useState<"pending" | "accepted" | "rejected">(
     initialDecision,
@@ -306,12 +335,78 @@ export function ComparisonWorkspace({
       if (event.key === "0") setZoom(72);
       if (event.key === "]" && regions.length) setActiveRegion((value) => (value % regions.length) + 1);
       if (event.key === "[" && regions.length) setActiveRegion((value) => ((value + regions.length - 2) % regions.length) + 1);
+      if (event.code === "Space") {
+        event.preventDefault();
+        setSpacePanning(true);
+      }
+    }
+    function onKeyUp(event: KeyboardEvent) {
+      if (event.code === "Space") setSpacePanning(false);
     }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
   }, [changeMode, regions.length]);
 
-  const canvasStyle = { "--workspace-zoom": zoom / 72 } as React.CSSProperties;
+  const canvasStyle = {
+    "--workspace-zoom": zoom / 72,
+    "--workspace-pan-x": `${pan.x}px`,
+    "--workspace-pan-y": `${pan.y}px`,
+  } as React.CSSProperties;
+  const panning = tool === "pan" || spacePanning;
+
+  function beginPan(event: React.PointerEvent<HTMLElement>) {
+    if (!panning) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
+  }
+
+  function movePan(event: React.PointerEvent<HTMLElement>) {
+    if (!drag.current || !panning) return;
+    setPan({
+      x: drag.current.panX + event.clientX - drag.current.x,
+      y: drag.current.panY + event.clientY - drag.current.y,
+    });
+  }
+
+  function endPan() {
+    drag.current = undefined;
+  }
+
+  function selectRegionAt(event: React.MouseEvent<HTMLDivElement>) {
+    if (tool !== "select" || !regions.length) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - bounds.left) / bounds.width) * 100;
+    const y = ((event.clientY - bounds.top) / bounds.height) * 100;
+    const region = regions.find((item) => x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height);
+    if (region) setActiveRegion(region.id);
+  }
+
+  async function samplePixelAt(event: React.MouseEvent<HTMLDivElement>) {
+    if (tool !== "inspect") return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(viewport.width - 1, Math.floor(((event.clientX - bounds.left) / bounds.width) * viewport.width)));
+    const y = Math.max(0, Math.min(viewport.height - 1, Math.floor(((event.clientY - bounds.top) / bounds.height) * viewport.height)));
+    setPixelInspection({ x, y, loading: true });
+    if (!baselineSrc || !candidateSrc) {
+      setPixelInspection({ x, y, error: "Pixel sampling requires captured images." });
+      return;
+    }
+    try {
+      const [baseline, candidate] = await Promise.all([samplePixel(baselineSrc, x, y, viewport), samplePixel(candidateSrc, x, y, viewport)]);
+      setPixelInspection({ x, y, baseline, candidate });
+    } catch {
+      setPixelInspection({ x, y, error: "Unable to read this pixel." });
+    }
+  }
+
+  function interactWithFrame(event: React.MouseEvent<HTMLDivElement>) {
+    selectRegionAt(event);
+    void samplePixelAt(event);
+  }
 
   return (
     <div
@@ -323,24 +418,28 @@ export function ComparisonWorkspace({
     >
       {!reportMode && <LayerPanel projectName={projectName} routePath={routePath} viewport={viewport} regionCount={regions.length} />}
       <section
-        className="comparison-canvas"
+        className={cn("comparison-canvas", panning && "is-panning", tool === "inspect" && "is-inspecting")}
         style={canvasStyle}
         aria-label="Visual comparison canvas"
+        onPointerDown={beginPan}
+        onPointerMove={movePan}
+        onPointerUp={endPan}
+        onPointerCancel={endPan}
       >
         <div className={cn("frames", `mode-${mode}`)}>
           {mode === "side-by-side" && (
             <>
               <div className="comparison-frame">
                 <FrameLabel label={baselineLabel} routePath={routePath} viewport={viewport} />
-                <div className="frame-paper">
+                <div className="frame-paper" onClick={interactWithFrame}>
                   <CapturedView src={baselineSrc} allowFixture={publicMode} />
                 </div>
               </div>
               <div className="comparison-frame">
                 <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
-                <div className="frame-paper">
+                <div className="frame-paper" onClick={interactWithFrame}>
                   <CapturedView src={candidateSrc} candidate allowFixture={publicMode} />
-                  <RegionOverlay activeRegion={activeRegion} regions={regions} />
+                  {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} />}
                 </div>
               </div>
             </>
@@ -351,7 +450,7 @@ export function ComparisonWorkspace({
                 <FrameLabel label={baselineLabel} routePath={routePath} viewport={viewport} />
                 <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
               </div>
-              <div className="frame-paper slider-paper">
+              <div className="frame-paper slider-paper" onClick={interactWithFrame}>
                 <CapturedView src={baselineSrc} allowFixture={publicMode} />
                 <div
                   className="candidate-clip"
@@ -363,7 +462,8 @@ export function ComparisonWorkspace({
                   <span>{slider}%</span>
                   <i>↔</i>
                 </div>
-                <RegionOverlay activeRegion={activeRegion} regions={regions} />
+                <input className="slider-input" aria-label="Comparison slider position" type="range" min="0" max="100" value={slider} onChange={(event) => setSlider(Number(event.target.value))} />
+                {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} />}
               </div>
             </div>
           )}
@@ -373,22 +473,22 @@ export function ComparisonWorkspace({
                 <FrameLabel label={baselineLabel} routePath={routePath} viewport={viewport} />
                 <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
               </div>
-              <div className="frame-paper overlay-paper">
+              <div className="frame-paper overlay-paper" onClick={interactWithFrame}>
                 <CapturedView src={baselineSrc} allowFixture={publicMode} />
-                <div className="overlay-candidate">
+                <div className="overlay-candidate" style={{ opacity: overlayOpacity / 100 }}>
                   <CapturedView src={candidateSrc} candidate allowFixture={publicMode} />
                 </div>
-                <RegionOverlay activeRegion={activeRegion} regions={regions} />
+                {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} />}
               </div>
             </div>
           )}
           {mode === "diff" && (
             <div className="comparison-frame single diff-frame">
               <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
-              <div className="frame-paper">
+              <div className="frame-paper" onClick={interactWithFrame}>
                 <CapturedView src={diffSrc ?? candidateSrc} candidate allowFixture={publicMode} />
                 {!diffSrc && <div className="diff-film"><span /><span /><span /><span /><span /></div>}
-                <RegionOverlay activeRegion={activeRegion} regions={regions} />
+                {regionsVisible && <RegionOverlay activeRegion={activeRegion} regions={regions} />}
               </div>
             </div>
           )}
@@ -410,13 +510,16 @@ export function ComparisonWorkspace({
             >
               <Plus size={13} />
             </button>
-            <button type="button" onClick={() => setZoom(72)}>
+            <button type="button" onClick={() => { setZoom(72); setPan({ x: 0, y: 0 }); }}>
               <Maximize2 size={12} /> Fit
             </button>
             <button type="button" onClick={() => setZoom(100)}>
               1:1
             </button>
           </div>
+          {mode === "overlay" && (
+            <label className="overlay-opacity">Opacity <input aria-label="Candidate overlay opacity" type="range" min="0" max="100" value={overlayOpacity} onChange={(event) => setOverlayOpacity(Number(event.target.value))} /><span>{overlayOpacity}%</span></label>
+          )}
           <div className="mode-controls" aria-label="Comparison mode">
             {(["side-by-side", "slider", "overlay", "diff"] as const).map(
               (item, index) => (
@@ -436,21 +539,9 @@ export function ComparisonWorkspace({
             )}
           </div>
         </div>
-        {mode === "slider" && (
-          <label className="sr-only">
-            Comparison slider
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={slider}
-              onChange={(event) => setSlider(Number(event.target.value))}
-            />
-          </label>
-        )}
       </section>
       {!reportMode && (
-        <DiffInspector activeRegion={activeRegion} onRegion={setActiveRegion} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} routePath={routePath} viewport={viewport} baselineLabel={baselineLabel} candidateLabel={candidateLabel} />
+        <DiffInspector activeRegion={activeRegion} onRegion={(id) => { setActiveRegion(id); setTool("select"); }} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} routePath={routePath} viewport={viewport} baselineLabel={baselineLabel} candidateLabel={candidateLabel} pixelInspection={pixelInspection} />
       )}
       {!publicMode && !reportMode && (
         <footer className="decision-bar">
@@ -470,4 +561,16 @@ export function ComparisonWorkspace({
       )}
     </div>
   );
+}
+
+async function samplePixel(src: string, x: number, y: number, viewport: ViewportProfile) {
+  const blob = await fetch(src).then((response) => response.blob());
+  const image = await createImageBitmap(blob);
+  const canvas = new OffscreenCanvas(1, 1);
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("Canvas unavailable");
+  context.drawImage(image, Math.floor((x / viewport.width) * image.width), Math.floor((y / viewport.height) * image.height), 1, 1, 0, 0, 1, 1);
+  image.close();
+  const [r = 0, g = 0, b = 0, a = 0] = context.getImageData(0, 0, 1, 1).data;
+  return `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(2)})`;
 }

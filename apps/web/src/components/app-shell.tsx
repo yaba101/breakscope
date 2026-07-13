@@ -6,6 +6,7 @@ import { ArrowDownLeft, Code2, Database, Folder, Hand, Layers3, MousePointer2, P
 import { useEffect, useState } from "react";
 import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/cn";
+import { useComparisonTools } from "@/lib/comparison-tools";
 import { listLocalRuns, subscribeToWorkspace } from "@/lib/local-workspace";
 
 const nav = [
@@ -21,6 +22,7 @@ function isComparisonPath(pathname: string) {
 
 function GlobalToolbar({ breadcrumb = "Local workspace" }: { breadcrumb?: string }) {
   const comparing = isComparisonPath(usePathname());
+  const { tool, regionsVisible, setTool, toggleRegions } = useComparisonTools();
   return (
     <header className="global-toolbar">
       <Link href="/" className="wordmark" aria-label="UIRift home">UI<span>RIFT</span></Link>
@@ -28,10 +30,10 @@ function GlobalToolbar({ breadcrumb = "Local workspace" }: { breadcrumb?: string
       <div className="breadcrumb">{breadcrumb}</div>
       {comparing && (
         <div className="canvas-tools" aria-label="Canvas tools">
-          <IconButton icon={MousePointer2} label="Select" active />
-          <IconButton icon={Hand} label="Pan (Space)" />
-          <IconButton icon={Layers3} label="Regions" />
-          <IconButton icon={Code2} label="Inspect pixels" />
+          <IconButton icon={MousePointer2} label="Select regions" active={tool === "select"} onClick={() => setTool("select")} />
+          <IconButton icon={Hand} label="Pan canvas (Space)" active={tool === "pan"} onClick={() => setTool("pan")} />
+          <IconButton icon={Layers3} label={regionsVisible ? "Hide regions" : "Show regions"} active={regionsVisible} onClick={toggleRegions} />
+          <IconButton icon={Code2} label="Inspect pixels" active={tool === "inspect"} onClick={() => setTool("inspect")} />
         </div>
       )}
       <div className="toolbar-meta">

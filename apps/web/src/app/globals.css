@@ -643,6 +643,16 @@ button {
   background-image: radial-gradient(#343535 1px, transparent 1px);
   background-size: 16px 16px;
 }
+.comparison-canvas.is-panning {
+  cursor: grab;
+  touch-action: none;
+}
+.comparison-canvas.is-panning:active {
+  cursor: grabbing;
+}
+.comparison-canvas.is-inspecting .frame-paper {
+  cursor: crosshair;
+}
 .frames {
   position: absolute;
   inset: 28px 25px 75px;
@@ -650,7 +660,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 28px;
-  transform: scale(var(--workspace-zoom));
+  transform: translate(var(--workspace-pan-x), var(--workspace-pan-y)) scale(var(--workspace-zoom));
   transform-origin: center center;
   transition: transform 150ms ease;
 }
@@ -746,6 +756,18 @@ button {
   background: var(--ui-selection);
   color: white;
   font-style: normal;
+}
+.slider-input {
+  position: absolute;
+  z-index: 18;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: ew-resize;
+  opacity: 0;
+}
+.comparison-canvas.is-inspecting .slider-input {
+  pointer-events: none;
 }
 .region-overlay {
   position: absolute;
@@ -844,6 +866,25 @@ button {
   padding: 3px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
 }
+.overlay-opacity {
+  display: flex;
+  height: 34px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 5px;
+  background: #181919;
+  padding: 0 10px;
+  color: var(--ui-fg-secondary);
+  font-size: 9px;
+}
+.overlay-opacity input {
+  width: 76px;
+  accent-color: var(--ui-selection);
+}
+.overlay-opacity span {
+  min-width: 28px;
+}
 .zoom-controls button,
 .mode-controls button {
   display: flex;
@@ -909,6 +950,31 @@ button {
 }
 .selection p {
   margin: 7px 0 0;
+}
+.pixel-inspector p {
+  margin: 8px 0 0;
+  color: var(--ui-fg-muted);
+}
+.pixel-inspector dl {
+  margin: 8px 0 0;
+}
+.pixel-inspector dl div {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+}
+.pixel-inspector dd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-family: var(--font-geist-mono);
+  font-size: 9px;
+}
+.pixel-inspector dd i {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--ui-border);
 }
 .metric-grid {
   display: grid;

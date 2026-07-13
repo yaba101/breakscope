@@ -10,7 +10,7 @@ test("portfolio visitor can enter a local guest workspace", async ({ page }) => 
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
 });
 
-test("guest can capture and compare a real local page", async ({ page }) => {
+test("guest can capture and compare a real local page", async ({ page }, testInfo) => {
   test.setTimeout(60_000);
   await page.goto("/app/projects/new");
   await expect(page.getByRole("heading", { name: "Create project" })).toBeVisible();
@@ -33,6 +33,34 @@ test("guest can capture and compare a real local page", async ({ page }) => {
   await expect(page.getByText(/127\.0\.0\.1:3100/, { exact: true })).toHaveCount(2);
   await expect(page.getByText("main@a1b2c3d", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Run #1247", { exact: false })).toHaveCount(0);
+  await page.getByRole("button", { name: /Slider$/ }).click();
+  await page.getByLabel("Comparison slider position").fill("35");
+  await expect(page.getByLabel("Comparison slider position")).toHaveValue("35");
+  await page.getByRole("button", { name: /Overlay$/ }).click();
+  await page.getByLabel("Candidate overlay opacity").fill("70");
+  await expect(page.getByLabel("Candidate overlay opacity")).toHaveValue("70");
+  await page.getByRole("button", { name: /Diff$/ }).click();
+  await expect(page.getByRole("button", { name: /Diff$/ })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: /Side by side$/ }).click();
+  if (testInfo.project.name === "desktop") {
+    const canvas = page.getByRole("region", { name: "Visual comparison canvas" });
+    const frames = canvas.locator(".frames");
+    const beforePan = await frames.evaluate((element) => getComputedStyle(element).transform);
+    await page.getByRole("button", { name: "Pan canvas (Space)" }).click();
+    const bounds = await canvas.boundingBox();
+    if (!bounds) throw new Error("Comparison canvas was not measurable");
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + bounds.width / 2 + 80, bounds.y + bounds.height / 2 + 40);
+    await page.mouse.up();
+    await expect.poll(() => frames.evaluate((element) => getComputedStyle(element).transform)).not.toBe(beforePan);
+    await page.getByRole("button", { name: "Hide regions" }).click();
+    await expect(page.getByRole("button", { name: "Show regions" })).toBeVisible();
+    await page.getByRole("button", { name: "Inspect pixels" }).click();
+    await page.getByRole("img", { name: "Candidate capture" }).click({ position: { x: 80, y: 80 } });
+    await expect(page.getByText(/PIXEL INSPECTOR/)).toBeVisible();
+    await expect(page.getByText(/rgba\(/)).toHaveCount(2);
+  }
   await page.getByRole("button", { name: /accept change/i }).click();
   await expect(page.getByRole("button", { name: /accept change/i })).toContainText("Accept change");
   await page.goto("/app/projects");
