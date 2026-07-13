@@ -15,6 +15,7 @@ UIRift is a visual-regression workspace for comparing two deployed interfaces in
 
 ```bash
 pnpm install
+pnpm db:migrate:local
 pnpm dev
 ```
 
