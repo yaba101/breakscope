@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-13T18:08:03.655201+00:00",
+  "generated_at": "2026-07-13T19:10:51.201825+00:00",
   "nodes": {
     "apps_web_src_components_app_shell_appshell": {
       "code_fingerprint": "8eb2bcc20f54da305fee2ee7dfeae0abb871da54d9cdc44b9e3fe4bcb99e08bc",
@@ -12,14 +12,51 @@
           "q": "Where does the local UIRift flow still use fixture state instead of real project, capture, run, and comparison data?"
         }
       ],
-      "score": 0.993812071,
+      "score": 0.9928113,
       "source_file": "apps/web/src/components/app-shell.tsx",
       "status": "tentative",
       "uses": 1
     },
+    "apps_web_src_components_comparison_workspace": {
+      "code_fingerprint": "e24c371c0e665daa6ac3dcf78ece33dfb1fc05f99376fa6bc6106d7ca6903eb7",
+      "label": "comparison-workspace.tsx",
+      "last": "2026-07-13T19:10:51.121165+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T19:10:51.121165+00:00",
+          "outcome": "useful",
+          "q": "How are UIRift's advanced local comparison, semantic reporting, NVIDIA analysis, and multi-route release report implemented?"
+        }
+      ],
+      "score": 0.999999978,
+      "source_file": "apps/web/src/components/comparison-workspace.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
     "apps_web_src_components_comparison_workspace_comparisonworkspace": {
-      "code_fingerprint": "1c0986e1c29618fe07ad1644aaf499d1f749435ba7333b8aae12a414c17235d6",
+      "code_fingerprint": "e24c371c0e665daa6ac3dcf78ece33dfb1fc05f99376fa6bc6106d7ca6903eb7",
       "label": "ComparisonWorkspace()",
+      "last": "2026-07-13T19:10:51.121165+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T19:10:51.121165+00:00",
+          "outcome": "useful",
+          "q": "How are UIRift's advanced local comparison, semantic reporting, NVIDIA analysis, and multi-route release report implemented?"
+        },
+        {
+          "date": "2026-07-13T11:41:12.219033+00:00",
+          "outcome": "useful",
+          "q": "Where does the local UIRift flow still use fixture state instead of real project, capture, run, and comparison data?"
+        }
+      ],
+      "score": 1.992811279,
+      "source_file": "apps/web/src/components/comparison-workspace.tsx",
+      "status": "preferred",
+      "uses": 2
+    },
+    "apps_web_src_components_local_run_comparison_localruncomparison": {
+      "code_fingerprint": "31e9d062b86f47a20a2811a0ea4aee976c343251a6212e1f00ad974fae9e5fc2",
+      "label": "LocalRunComparison()",
       "last": "2026-07-13T11:41:12.219033+00:00",
       "provenance": [
         {
@@ -28,13 +65,29 @@
           "q": "Where does the local UIRift flow still use fixture state instead of real project, capture, run, and comparison data?"
         }
       ],
-      "score": 0.993812071,
-      "source_file": "apps/web/src/components/comparison-workspace.tsx",
+      "score": 0.9928113,
+      "source_file": "apps/web/src/components/local-run-comparison.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "apps_web_src_components_screens": {
+      "code_fingerprint": "23976d019e7c03027d06e1a12202210651d10b79b76618c5dc7911512ea3f2a3",
+      "label": "screens.tsx",
+      "last": "2026-07-13T19:10:51.121165+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T19:10:51.121165+00:00",
+          "outcome": "useful",
+          "q": "How are UIRift's advanced local comparison, semantic reporting, NVIDIA analysis, and multi-route release report implemented?"
+        }
+      ],
+      "score": 0.999999978,
+      "source_file": "apps/web/src/components/screens.tsx",
       "status": "tentative",
       "uses": 1
     },
     "apps_web_src_components_screens_capturescreen": {
-      "code_fingerprint": "226780bac4aa860374fa9aac6e4cdb11ef96731327190917e4afa2f2ed60bcfb",
+      "code_fingerprint": "23976d019e7c03027d06e1a12202210651d10b79b76618c5dc7911512ea3f2a3",
       "label": "CaptureScreen()",
       "last": "2026-07-13T11:41:12.219033+00:00",
       "provenance": [
@@ -44,13 +97,13 @@
           "q": "Where does the local UIRift flow still use fixture state instead of real project, capture, run, and comparison data?"
         }
       ],
-      "score": 0.993812071,
+      "score": 0.9928113,
       "source_file": "apps/web/src/components/screens.tsx",
       "status": "tentative",
       "uses": 1
     },
     "apps_web_src_components_screens_projectsetupform": {
-      "code_fingerprint": "226780bac4aa860374fa9aac6e4cdb11ef96731327190917e4afa2f2ed60bcfb",
+      "code_fingerprint": "23976d019e7c03027d06e1a12202210651d10b79b76618c5dc7911512ea3f2a3",
       "label": "ProjectSetupForm()",
       "last": "2026-07-13T11:50:58.747067+00:00",
       "provenance": [
@@ -65,13 +118,13 @@
           "q": "Why can't custom HTTPS domains continue from the new project form?"
         }
       ],
-      "score": 1.987421925,
+      "score": 1.985420587,
       "source_file": "apps/web/src/components/screens.tsx",
       "status": "preferred",
       "uses": 2
     },
     "apps_web_src_components_screens_projectsscreen": {
-      "code_fingerprint": "226780bac4aa860374fa9aac6e4cdb11ef96731327190917e4afa2f2ed60bcfb",
+      "code_fingerprint": "23976d019e7c03027d06e1a12202210651d10b79b76618c5dc7911512ea3f2a3",
       "label": "ProjectsScreen()",
       "last": "2026-07-13T11:41:12.219033+00:00",
       "provenance": [
@@ -81,24 +134,77 @@
           "q": "Where does the local UIRift flow still use fixture state instead of real project, capture, run, and comparison data?"
         }
       ],
-      "score": 0.993812071,
+      "score": 0.9928113,
       "source_file": "apps/web/src/components/screens.tsx",
       "status": "tentative",
       "uses": 1
     },
     "apps_web_src_components_screens_runsscreen": {
-      "code_fingerprint": "226780bac4aa860374fa9aac6e4cdb11ef96731327190917e4afa2f2ed60bcfb",
+      "code_fingerprint": "23976d019e7c03027d06e1a12202210651d10b79b76618c5dc7911512ea3f2a3",
       "label": "RunsScreen()",
-      "last": "2026-07-13T11:41:12.219033+00:00",
+      "last": "2026-07-13T19:10:51.121165+00:00",
       "provenance": [
+        {
+          "date": "2026-07-13T19:10:51.121165+00:00",
+          "outcome": "useful",
+          "q": "How are UIRift's advanced local comparison, semantic reporting, NVIDIA analysis, and multi-route release report implemented?"
+        },
         {
           "date": "2026-07-13T11:41:12.219033+00:00",
           "outcome": "useful",
           "q": "Where does the local UIRift flow still use fixture state instead of real project, capture, run, and comparison data?"
         }
       ],
-      "score": 0.993812071,
+      "score": 1.992811279,
       "source_file": "apps/web/src/components/screens.tsx",
+      "status": "preferred",
+      "uses": 2
+    },
+    "apps_web_src_lib_ai_analysis": {
+      "code_fingerprint": "a6dea8f863963e02ae675f6cdb949eeaf3c81cdc4d94ec87039e3a5c77116cfe",
+      "label": "ai-analysis.ts",
+      "last": "2026-07-13T19:10:51.121165+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T19:10:51.121165+00:00",
+          "outcome": "useful",
+          "q": "How are UIRift's advanced local comparison, semantic reporting, NVIDIA analysis, and multi-route release report implemented?"
+        }
+      ],
+      "score": 0.999999978,
+      "source_file": "apps/web/src/lib/ai-analysis.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "apps_web_src_lib_local_workspace": {
+      "code_fingerprint": "9f0ae5cb5d5cbe2710a64de81f753f57418ccbc53e306ecbb53917937cb496f3",
+      "label": "local-workspace.ts",
+      "last": "2026-07-13T19:10:51.121165+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T19:10:51.121165+00:00",
+          "outcome": "useful",
+          "q": "How are UIRift's advanced local comparison, semantic reporting, NVIDIA analysis, and multi-route release report implemented?"
+        }
+      ],
+      "score": 0.999999978,
+      "source_file": "apps/web/src/lib/local-workspace.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "apps_web_src_lib_local_workspace_localrun": {
+      "code_fingerprint": "9f0ae5cb5d5cbe2710a64de81f753f57418ccbc53e306ecbb53917937cb496f3",
+      "label": "LocalRun",
+      "last": "2026-07-13T12:17:31.481656+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T12:17:31.481656+00:00",
+          "outcome": "useful",
+          "q": "How should UIRift make comparison tools functional and compare all discoverable top-level routes?"
+        }
+      ],
+      "score": 0.993390054,
+      "source_file": "apps/web/src/lib/local-workspace.ts",
       "status": "tentative",
       "uses": 1
     },
@@ -113,8 +219,72 @@
           "q": "Why can't custom HTTPS domains continue from the new project form?"
         }
       ],
-      "score": 0.993453964,
+      "score": 0.992453554,
       "source_file": "docs/architecture.md",
+      "status": "tentative",
+      "uses": 1
+    },
+    "packages_comparison_engine_src_index_pixelregion": {
+      "code_fingerprint": "5159d5c0337e3c2731a0954a2359415e98e7014e1e91a77553e7769552c7ea6f",
+      "label": "PixelRegion",
+      "last": "2026-07-13T18:09:10.483781+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T18:09:10.483781+00:00",
+          "outcome": "useful",
+          "q": "Why are the current reports not useful, how should the canvas interactions and one-screen layout be fixed, and what advanced or AI-driven comparison features should UIRift build next?"
+        }
+      ],
+      "score": 0.999010851,
+      "source_file": "packages/comparison-engine/src/index.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "packages_comparison_engine_src_semantic": {
+      "code_fingerprint": "43cbd4d275f1989ba83d4066ada46b17203b7e0ac5fedb1f2eae78528665934b",
+      "label": "semantic.ts",
+      "last": "2026-07-13T19:10:51.121165+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T19:10:51.121165+00:00",
+          "outcome": "useful",
+          "q": "How are UIRift's advanced local comparison, semantic reporting, NVIDIA analysis, and multi-route release report implemented?"
+        }
+      ],
+      "score": 0.999999978,
+      "source_file": "packages/comparison-engine/src/semantic.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "packages_shared_src_index_aianalysis": {
+      "code_fingerprint": "2f87d25fdcf92c56b99ce0ec7d6130454828304101f5f367a5e7aa983c31f2d2",
+      "label": "AiAnalysis",
+      "last": "2026-07-13T19:10:51.121165+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T19:10:51.121165+00:00",
+          "outcome": "useful",
+          "q": "How are UIRift's advanced local comparison, semantic reporting, NVIDIA analysis, and multi-route release report implemented?"
+        }
+      ],
+      "score": 0.999999978,
+      "source_file": "packages/shared/src/index.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "packages_shared_src_index_pagesnapshot": {
+      "code_fingerprint": "2f87d25fdcf92c56b99ce0ec7d6130454828304101f5f367a5e7aa983c31f2d2",
+      "label": "PageSnapshot",
+      "last": "2026-07-13T19:10:51.121165+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T19:10:51.121165+00:00",
+          "outcome": "useful",
+          "q": "How are UIRift's advanced local comparison, semantic reporting, NVIDIA analysis, and multi-route release report implemented?"
+        }
+      ],
+      "score": 0.999999978,
+      "source_file": "packages/shared/src/index.ts",
       "status": "tentative",
       "uses": 1
     },
@@ -129,31 +299,26 @@
           "q": "Why can't custom HTTPS domains continue from the new project form?"
         }
       ],
-      "score": 0.993453964,
+      "score": 0.992453554,
       "source_file": "packages/validation/src/index.ts",
       "status": "tentative",
       "uses": 1
     },
-    "workers_capture_src_index_capture": {
-      "code_fingerprint": "a7db93c15c211a389b56f0a8e07b850d62700511b10b114398ba1d7f8c71d0aa",
-      "label": "capture()",
+    "packages_validation_src_index_iscaptureurl": {
+      "code_fingerprint": "654b0151899335d53ef744899e8338aac916576104746dd0aaf7d01a41ce9926",
+      "label": "isCaptureUrl()",
       "last": "2026-07-13T11:50:58.747067+00:00",
       "provenance": [
         {
           "date": "2026-07-13T11:50:58.747067+00:00",
           "outcome": "useful",
           "q": "How should UIRift stop guessing /pricing and discover real routes shared by baseline and candidate deployments?"
-        },
-        {
-          "date": "2026-07-13T11:18:44.509600+00:00",
-          "outcome": "useful",
-          "q": "Why can't custom HTTPS domains continue from the new project form?"
         }
       ],
-      "score": 1.987421925,
-      "source_file": "workers/capture/src/index.ts",
-      "status": "preferred",
-      "uses": 2
+      "score": 0.992967033,
+      "source_file": "packages/validation/src/index.ts",
+      "status": "tentative",
+      "uses": 1
     }
   },
   "version": 1
