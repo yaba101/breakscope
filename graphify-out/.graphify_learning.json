@@ -1,0 +1,160 @@
+{
+  "generated_at": "2026-07-13T18:08:03.655201+00:00",
+  "nodes": {
+    "apps_web_src_components_app_shell_appshell": {
+      "code_fingerprint": "8eb2bcc20f54da305fee2ee7dfeae0abb871da54d9cdc44b9e3fe4bcb99e08bc",
+      "label": "AppShell()",
+      "last": "2026-07-13T11:41:12.219033+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T11:41:12.219033+00:00",
+          "outcome": "useful",
+          "q": "Where does the local UIRift flow still use fixture state instead of real project, capture, run, and comparison data?"
+        }
+      ],
+      "score": 0.993812071,
+      "source_file": "apps/web/src/components/app-shell.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "apps_web_src_components_comparison_workspace_comparisonworkspace": {
+      "code_fingerprint": "1c0986e1c29618fe07ad1644aaf499d1f749435ba7333b8aae12a414c17235d6",
+      "label": "ComparisonWorkspace()",
+      "last": "2026-07-13T11:41:12.219033+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T11:41:12.219033+00:00",
+          "outcome": "useful",
+          "q": "Where does the local UIRift flow still use fixture state instead of real project, capture, run, and comparison data?"
+        }
+      ],
+      "score": 0.993812071,
+      "source_file": "apps/web/src/components/comparison-workspace.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "apps_web_src_components_screens_capturescreen": {
+      "code_fingerprint": "226780bac4aa860374fa9aac6e4cdb11ef96731327190917e4afa2f2ed60bcfb",
+      "label": "CaptureScreen()",
+      "last": "2026-07-13T11:41:12.219033+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T11:41:12.219033+00:00",
+          "outcome": "useful",
+          "q": "Where does the local UIRift flow still use fixture state instead of real project, capture, run, and comparison data?"
+        }
+      ],
+      "score": 0.993812071,
+      "source_file": "apps/web/src/components/screens.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "apps_web_src_components_screens_projectsetupform": {
+      "code_fingerprint": "226780bac4aa860374fa9aac6e4cdb11ef96731327190917e4afa2f2ed60bcfb",
+      "label": "ProjectSetupForm()",
+      "last": "2026-07-13T11:50:58.747067+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T11:50:58.747067+00:00",
+          "outcome": "useful",
+          "q": "How should UIRift stop guessing /pricing and discover real routes shared by baseline and candidate deployments?"
+        },
+        {
+          "date": "2026-07-13T11:18:44.509600+00:00",
+          "outcome": "useful",
+          "q": "Why can't custom HTTPS domains continue from the new project form?"
+        }
+      ],
+      "score": 1.987421925,
+      "source_file": "apps/web/src/components/screens.tsx",
+      "status": "preferred",
+      "uses": 2
+    },
+    "apps_web_src_components_screens_projectsscreen": {
+      "code_fingerprint": "226780bac4aa860374fa9aac6e4cdb11ef96731327190917e4afa2f2ed60bcfb",
+      "label": "ProjectsScreen()",
+      "last": "2026-07-13T11:41:12.219033+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T11:41:12.219033+00:00",
+          "outcome": "useful",
+          "q": "Where does the local UIRift flow still use fixture state instead of real project, capture, run, and comparison data?"
+        }
+      ],
+      "score": 0.993812071,
+      "source_file": "apps/web/src/components/screens.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "apps_web_src_components_screens_runsscreen": {
+      "code_fingerprint": "226780bac4aa860374fa9aac6e4cdb11ef96731327190917e4afa2f2ed60bcfb",
+      "label": "RunsScreen()",
+      "last": "2026-07-13T11:41:12.219033+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T11:41:12.219033+00:00",
+          "outcome": "useful",
+          "q": "Where does the local UIRift flow still use fixture state instead of real project, capture, run, and comparison data?"
+        }
+      ],
+      "score": 0.993812071,
+      "source_file": "apps/web/src/components/screens.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "docs_architecture_url_security_boundary": {
+      "code_fingerprint": "193ad6ac09a3711b521b99304ac446c43f637bde6e464fb9cfdabe3c3dc1921e",
+      "label": "URL Security Boundary",
+      "last": "2026-07-13T11:18:44.509600+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T11:18:44.509600+00:00",
+          "outcome": "useful",
+          "q": "Why can't custom HTTPS domains continue from the new project form?"
+        }
+      ],
+      "score": 0.993453964,
+      "source_file": "docs/architecture.md",
+      "status": "tentative",
+      "uses": 1
+    },
+    "packages_validation_src_index_isapprovedpublicurl": {
+      "code_fingerprint": "654b0151899335d53ef744899e8338aac916576104746dd0aaf7d01a41ce9926",
+      "label": "isApprovedPublicUrl()",
+      "last": "2026-07-13T11:18:44.509600+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T11:18:44.509600+00:00",
+          "outcome": "useful",
+          "q": "Why can't custom HTTPS domains continue from the new project form?"
+        }
+      ],
+      "score": 0.993453964,
+      "source_file": "packages/validation/src/index.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "workers_capture_src_index_capture": {
+      "code_fingerprint": "a7db93c15c211a389b56f0a8e07b850d62700511b10b114398ba1d7f8c71d0aa",
+      "label": "capture()",
+      "last": "2026-07-13T11:50:58.747067+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-13T11:50:58.747067+00:00",
+          "outcome": "useful",
+          "q": "How should UIRift stop guessing /pricing and discover real routes shared by baseline and candidate deployments?"
+        },
+        {
+          "date": "2026-07-13T11:18:44.509600+00:00",
+          "outcome": "useful",
+          "q": "Why can't custom HTTPS domains continue from the new project form?"
+        }
+      ],
+      "score": 1.987421925,
+      "source_file": "workers/capture/src/index.ts",
+      "status": "preferred",
+      "uses": 2
+    }
+  },
+  "version": 1
+}
