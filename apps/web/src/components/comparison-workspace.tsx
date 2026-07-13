@@ -11,85 +11,46 @@ import {
   Maximize2,
   Minus,
   Monitor,
-  MoreHorizontal,
   Plus,
-  Search,
   Smartphone,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { changedRegions, type ChangedRegion, type Decision } from "@uirift/shared";
+import { changedRegions, viewportProfiles, type ChangedRegion, type Decision, type ViewportProfile } from "@uirift/shared";
 import { Button } from "@/components/ui/button";
 import { DemoSite } from "@/components/demo-site";
 import { cn } from "@/lib/cn";
 
 type CompareMode = "side-by-side" | "slider" | "overlay" | "diff";
 
-const layerGroups = [
-  {
-    name: "Pricing",
-    rows: [
-      ["Default", "desktop", 3],
-      ["Mobile", "mobile", 2],
-    ],
-  },
-  {
-    name: "Checkout",
-    rows: [
-      ["Default", "desktop", 0],
-      ["Mobile", "mobile", 1],
-    ],
-  },
-  { name: "Dashboard", rows: [["Default", "desktop", 0]] },
-] as const;
-
-function LayerPanel() {
+function LayerPanel({ projectName, routePath, viewport, regionCount }: {
+  projectName: string;
+  routePath: string;
+  viewport: ViewportProfile;
+  regionCount: number;
+}) {
   return (
     <aside className="layer-panel">
       <div className="panel-heading">
         <b>TEST LAYERS</b>
-        <span>
-          <MoreHorizontal size={14} />
-          <Plus size={14} />
-        </span>
+        <span>{projectName}</span>
       </div>
-      <label className="layer-search">
-        <Search size={13} />
-        <input aria-label="Search test layers" placeholder="Search layers…" />
-      </label>
       <div className="layer-tree" role="tree" aria-label="Comparison layers">
-        {layerGroups.map((group, groupIndex) => (
-          <div className="layer-group" key={group.name}>
-            <div className="layer-group-title">
-              <ChevronDown size={12} />
-              <FolderOpen size={14} />
-              {group.name}
-              <span>{group.rows.length}</span>
-              <Eye size={12} />
-            </div>
-            {group.rows.map(([name, device, count], rowIndex) => (
-              <button
-                type="button"
-                className={cn(
-                  "layer-row",
-                  groupIndex === 0 && rowIndex === 0 && "selected",
-                )}
-                role="treeitem"
-                aria-selected={groupIndex === 0 && rowIndex === 0}
-                key={`${group.name}-${name}-${device}`}
-              >
-                {device === "desktop" ? (
-                  <Monitor size={13} />
-                ) : (
-                  <Smartphone size={13} />
-                )}
-                <span>{name}</span>
-                <i className={count ? "changed" : "passed"} />
-                <em>{count}</em>
-                <Eye size={12} />
-              </button>
-            ))}
+        <div className="layer-group">
+          <div className="layer-group-title">
+            <ChevronDown size={12} />
+            <FolderOpen size={14} />
+            {routePath}
+            <span>1</span>
+            <Eye size={12} />
           </div>
-        ))}
+          <button type="button" className="layer-row selected" role="treeitem" aria-selected="true">
+            {viewport.id === "desktop" ? <Monitor size={13} /> : <Smartphone size={13} />}
+            <span>{viewport.label}</span>
+            <i className={regionCount ? "changed" : "passed"} />
+            <em>{regionCount}</em>
+            <Eye size={12} />
+          </button>
+        </div>
       </div>
     </aside>
   );
@@ -101,12 +62,20 @@ function DiffInspector({
   regions,
   changedPixels,
   changedRatio,
+  routePath,
+  viewport,
+  baselineLabel,
+  candidateLabel,
 }: {
   activeRegion: number;
   onRegion: (id: number) => void;
   regions: ChangedRegion[];
   changedPixels: number;
   changedRatio: number;
+  routePath: string;
+  viewport: ViewportProfile;
+  baselineLabel: string;
+  candidateLabel: string;
 }) {
   return (
     <aside className="diff-inspector">
@@ -118,7 +87,7 @@ function DiffInspector({
         <Tabs.Content value="diff">
           <section className="inspector-section selection">
             <small>SELECTION</small>
-            <p>Pricing / Pro card</p>
+            <p>{routePath} / {viewport.label}</p>
           </section>
           <section className="metric-grid">
             <div>
@@ -137,33 +106,16 @@ function DiffInspector({
           <section className="inspector-section">
             <small>DIFF HEATMAP</small>
             <div className="heatmap" aria-label="Diff heatmap">
-              <i />
-              <i />
-              <i />
-              <i />
-              <i />
-              <i />
-              <i />
+              {regions.map((region) => (
+                <i key={region.id} style={{ left: `${region.x}%`, top: `${region.y}%`, width: `${region.width}%`, height: `${region.height}%` }} />
+              ))}
             </div>
-          </section>
-          <section className="inspector-section inspector-controls">
-            <label>
-              <span>Threshold</span>
-              <select defaultValue="0.20">
-                <option>0.20</option>
-                <option>0.10</option>
-                <option>0.30</option>
-              </select>
-            </label>
-            <label>
-              <span>Ignore antialiasing</span>
-              <input type="checkbox" defaultChecked />
-            </label>
           </section>
           <section className="inspector-section findings">
             <div className="section-title">
-              FINDINGS <span>3</span>
+              FINDINGS <span>{regions.length}</span>
             </div>
+            {!regions.length && <p className="empty-findings">No changed regions detected.</p>}
             {regions.map((region) => (
               <button
                 type="button"
@@ -186,7 +138,7 @@ function DiffInspector({
             <dl>
               <div>
                 <dt>Viewport</dt>
-                <dd>1440×900</dd>
+                <dd>{viewport.width}×{viewport.height}</dd>
               </div>
               <div>
                 <dt>Browser</dt>
@@ -194,11 +146,11 @@ function DiffInspector({
               </div>
               <div>
                 <dt>Baseline</dt>
-                <dd>main@a1b2c3d</dd>
+                <dd>{baselineLabel}</dd>
               </div>
               <div>
                 <dt>Candidate</dt>
-                <dd>d4e5f6g</dd>
+                <dd>{candidateLabel}</dd>
               </div>
             </dl>
           </section>
@@ -208,12 +160,12 @@ function DiffInspector({
   );
 }
 
-function FrameLabel({ candidate = false }: { candidate?: boolean }) {
+function FrameLabel({ candidate = false, label, routePath, viewport }: { candidate?: boolean; label: string; routePath: string; viewport: ViewportProfile }) {
   return (
     <div className="frame-label">
       <b>{candidate ? "CANDIDATE" : "BASELINE"}</b>
-      <span>· {candidate ? "d4e5f6g" : "main@a1b2c3d"}</span>
-      <small>Pricing / Default · 1440×900</small>
+      <span>· {label}</span>
+      <small>{routePath} · {viewport.width}×{viewport.height}</small>
     </div>
   );
 }
@@ -239,11 +191,13 @@ function RegionOverlay({ activeRegion, regions }: { activeRegion: number; region
 function CapturedView({
   src,
   candidate = false,
+  allowFixture = false,
 }: {
   src?: string;
   candidate?: boolean;
+  allowFixture?: boolean;
 }) {
-  if (!src) return <DemoSite candidate={candidate} />;
+  if (!src) return allowFixture ? <DemoSite candidate={candidate} /> : <div className="capture-unavailable">Capture unavailable</div>;
   return (
     <Image
       className="capture-image"
@@ -268,6 +222,11 @@ export function ComparisonWorkspace({
   changedRatio = 0.0042,
   initialDecision = "pending",
   onDecision,
+  projectName = "Acme Cloud",
+  routePath = "/pricing",
+  viewport = viewportProfiles.desktop,
+  baselineLabel = "main@a1b2c3d",
+  candidateLabel = "d4e5f6g",
 }: {
   publicMode?: boolean;
   reportMode?: boolean;
@@ -280,6 +239,11 @@ export function ComparisonWorkspace({
   changedRatio?: number;
   initialDecision?: Decision;
   onDecision?: (decision: Exclude<Decision, "pending">) => Promise<void>;
+  projectName?: string;
+  routePath?: string;
+  viewport?: ViewportProfile;
+  baselineLabel?: string;
+  candidateLabel?: string;
 }) {
   const [mode, setMode] = useState<CompareMode>("side-by-side");
   const [zoom, setZoom] = useState(72);
@@ -357,7 +321,7 @@ export function ComparisonWorkspace({
         reportMode && "report-workspace",
       )}
     >
-      {!reportMode && <LayerPanel />}
+      {!reportMode && <LayerPanel projectName={projectName} routePath={routePath} viewport={viewport} regionCount={regions.length} />}
       <section
         className="comparison-canvas"
         style={canvasStyle}
@@ -367,15 +331,15 @@ export function ComparisonWorkspace({
           {mode === "side-by-side" && (
             <>
               <div className="comparison-frame">
-                <FrameLabel />
+                <FrameLabel label={baselineLabel} routePath={routePath} viewport={viewport} />
                 <div className="frame-paper">
-                  <CapturedView src={baselineSrc} />
+                  <CapturedView src={baselineSrc} allowFixture={publicMode} />
                 </div>
               </div>
               <div className="comparison-frame">
-                <FrameLabel candidate />
+                <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
                 <div className="frame-paper">
-                  <CapturedView src={candidateSrc} candidate />
+                  <CapturedView src={candidateSrc} candidate allowFixture={publicMode} />
                   <RegionOverlay activeRegion={activeRegion} regions={regions} />
                 </div>
               </div>
@@ -384,16 +348,16 @@ export function ComparisonWorkspace({
           {mode === "slider" && (
             <div className="comparison-frame single">
               <div className="dual-labels">
-                <FrameLabel />
-                <FrameLabel candidate />
+                <FrameLabel label={baselineLabel} routePath={routePath} viewport={viewport} />
+                <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
               </div>
               <div className="frame-paper slider-paper">
-                <CapturedView src={baselineSrc} />
+                <CapturedView src={baselineSrc} allowFixture={publicMode} />
                 <div
                   className="candidate-clip"
                   style={{ clipPath: `inset(0 0 0 ${slider}%)` }}
                 >
-                  <CapturedView src={candidateSrc} candidate />
+                  <CapturedView src={candidateSrc} candidate allowFixture={publicMode} />
                 </div>
                 <div className="slider-line" style={{ left: `${slider}%` }}>
                   <span>{slider}%</span>
@@ -406,13 +370,13 @@ export function ComparisonWorkspace({
           {mode === "overlay" && (
             <div className="comparison-frame single">
               <div className="dual-labels">
-                <FrameLabel />
-                <FrameLabel candidate />
+                <FrameLabel label={baselineLabel} routePath={routePath} viewport={viewport} />
+                <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
               </div>
               <div className="frame-paper overlay-paper">
-                <CapturedView src={baselineSrc} />
+                <CapturedView src={baselineSrc} allowFixture={publicMode} />
                 <div className="overlay-candidate">
-                  <CapturedView src={candidateSrc} candidate />
+                  <CapturedView src={candidateSrc} candidate allowFixture={publicMode} />
                 </div>
                 <RegionOverlay activeRegion={activeRegion} regions={regions} />
               </div>
@@ -420,9 +384,9 @@ export function ComparisonWorkspace({
           )}
           {mode === "diff" && (
             <div className="comparison-frame single diff-frame">
-              <FrameLabel candidate />
+              <FrameLabel candidate label={candidateLabel} routePath={routePath} viewport={viewport} />
               <div className="frame-paper">
-                <CapturedView src={diffSrc ?? candidateSrc} candidate />
+                <CapturedView src={diffSrc ?? candidateSrc} candidate allowFixture={publicMode} />
                 {!diffSrc && <div className="diff-film"><span /><span /><span /><span /><span /></div>}
                 <RegionOverlay activeRegion={activeRegion} regions={regions} />
               </div>
@@ -486,7 +450,7 @@ export function ComparisonWorkspace({
         )}
       </section>
       {!reportMode && (
-        <DiffInspector activeRegion={activeRegion} onRegion={setActiveRegion} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} />
+        <DiffInspector activeRegion={activeRegion} onRegion={setActiveRegion} regions={regions} changedPixels={changedPixels} changedRatio={changedRatio} routePath={routePath} viewport={viewport} baselineLabel={baselineLabel} candidateLabel={candidateLabel} />
       )}
       {!publicMode && !reportMode && (
         <footer className="decision-bar">
