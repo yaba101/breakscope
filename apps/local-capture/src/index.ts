@@ -26,6 +26,11 @@ interface CapturePageRequest {
   viewport: ViewportId;
 }
 
+interface RouteDiscoveryRequest {
+  baselineUrl: string;
+  candidateUrl: string;
+}
+
 function send(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, { "Content-Type": "application/json" });
   response.end(JSON.stringify(body));
@@ -117,6 +122,93 @@ async function capture(url: string, viewport: ViewportId) {
   }
 }
 
+const assetPath = /\.(?:avif|css|gif|ico|jpe?g|js|json|map|mp4|pdf|png|svg|webm|webp|woff2?|xml|zip)$/i;
+
+function discoveredPath(value: string, origin: string) {
+  try {
+    const url = new URL(value, origin);
+    if (url.origin !== new URL(origin).origin || !["http:", "https:"].includes(url.protocol)) return undefined;
+    if (assetPath.test(url.pathname) || url.pathname.startsWith("/api/")) return undefined;
+    return url.pathname || "/";
+  } catch {
+    return undefined;
+  }
+}
+
+async function discoverRoutes(origin: string) {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+      colorScheme: "dark",
+      reducedMotion: "reduce",
+      timezoneId: "UTC",
+      locale: "en-US",
+    });
+    const allowLocal = isLocalPreviewUrl(origin);
+    const checkedHosts = new Set<string>();
+    await context.route("**/*", async (route) => {
+      try {
+        const requested = new URL(route.request().url());
+        if (!["http:", "https:"].includes(requested.protocol)) return route.continue();
+        if (!checkedHosts.has(requested.hostname)) {
+          await assertPublicHostname(requested.hostname, allowLocal);
+          checkedHosts.add(requested.hostname);
+        }
+        return route.continue();
+      } catch {
+        return route.abort("blockedbyclient");
+      }
+    });
+    const page = await context.newPage();
+    const queue = ["/"];
+    const queued = new Set(queue);
+    const available = new Set<string>();
+    let inspected = 0;
+
+    try {
+      const sitemap = await page.goto(new URL("/sitemap.xml", origin).toString(), { waitUntil: "domcontentloaded", timeout: 8_000 });
+      if (sitemap?.ok()) {
+        const markup = await page.content();
+        for (const match of markup.matchAll(/<loc[^>]*>\s*([^<]+)\s*<\/loc>/gi)) {
+          const path = discoveredPath(match[1] ?? "", origin);
+          if (path && !queued.has(path)) {
+            queued.add(path);
+            queue.push(path);
+          }
+        }
+      }
+    } catch {
+      // Sitemaps are optional; navigation discovery below remains available.
+    }
+
+    while (queue.length && inspected < 10 && available.size < 10) {
+      const routePath = queue.shift()!;
+      inspected += 1;
+      try {
+        const navigation = await page.goto(targetUrl(origin, routePath), { waitUntil: "domcontentloaded", timeout: 6_000 });
+        const contentType = navigation?.headers()["content-type"] ?? "";
+        if (!navigation?.ok() || !contentType.includes("text/html")) continue;
+        available.add(routePath);
+        const hrefs = await page.evaluate(() => Array.from(document.querySelectorAll("a[href]"), (anchor) => anchor.getAttribute("href") ?? ""));
+        for (const href of hrefs) {
+          const path = discoveredPath(href, origin);
+          if (path && !queued.has(path) && queued.size < 40) {
+            queued.add(path);
+            queue.push(path);
+          }
+        }
+      } catch {
+        // A single unavailable route should not stop discovery for the site.
+      }
+    }
+    await context.close();
+    return [...available].sort((a, b) => a === "/" ? -1 : b === "/" ? 1 : a.localeCompare(b));
+  } finally {
+    await browser.close();
+  }
+}
+
 const server = createServer((request, response) => {
   const origin = request.headers.origin;
   if (origin && allowedOrigins.has(origin)) {
@@ -127,7 +219,7 @@ const server = createServer((request, response) => {
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   if (request.method === "OPTIONS") return response.writeHead(204).end();
   if (request.method === "GET" && request.url === "/health") return send(response, 200, { ok: true });
-  if (request.method !== "POST" || !["/capture", "/capture-page"].includes(request.url ?? "")) {
+  if (request.method !== "POST" || !["/capture", "/capture-page", "/discover-routes"].includes(request.url ?? "")) {
     return send(response, 404, { error: "Not found" });
   }
   if (origin && !allowedOrigins.has(origin)) return send(response, 403, { error: "Origin is not allowed" });
@@ -148,6 +240,20 @@ const server = createServer((request, response) => {
           return send(response, 400, { error: "Invalid route or viewport" });
         }
         return send(response, 200, await capture(targetUrl(input.url, input.routePath), input.viewport));
+      }
+
+      if (request.url === "/discover-routes") {
+        const input = JSON.parse(raw) as RouteDiscoveryRequest;
+        if (!isCaptureUrl(input.baselineUrl) || !isCaptureUrl(input.candidateUrl)) {
+          return send(response, 400, { error: "Use public HTTPS URLs or localhost" });
+        }
+        const [baselineRoutes, candidateRoutes] = await Promise.all([
+          discoverRoutes(input.baselineUrl),
+          discoverRoutes(input.candidateUrl),
+        ]);
+        const candidateSet = new Set(candidateRoutes);
+        const routes = baselineRoutes.filter((routePath) => candidateSet.has(routePath));
+        return send(response, 200, { routes, baselineRoutes, candidateRoutes });
       }
 
       const input = JSON.parse(raw) as CaptureRequest;

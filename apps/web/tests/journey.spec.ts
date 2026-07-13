@@ -21,6 +21,9 @@ test("guest can capture and compare a real local page", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page).toHaveURL(/\/app\/projects\/.+/);
+  await expect(page.getByLabel("Route path")).toHaveValue("/");
+  await expect(page.getByRole("button", { name: "Home /" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "/demo", exact: true })).toBeVisible({ timeout: 45_000 });
   await page.getByLabel("Route path").fill("/demo-pages/baseline/pricing");
   await page.getByRole("button", { name: /save and run/i }).click();
   await expect(page).toHaveURL(/\/capture$/);

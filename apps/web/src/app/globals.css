@@ -2078,6 +2078,63 @@ button {
   border-color: var(--ui-selection);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16);
 }
+.form-field > small {
+  color: var(--ui-fg-muted);
+  font-size: 9px;
+}
+.route-discovery {
+  margin-bottom: 22px;
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.015);
+  padding: 12px;
+}
+.route-discovery > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 580;
+}
+.route-discovery > div:first-child button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-selection);
+  font-size: 10px;
+}
+.route-discovery > div:first-child svg {
+  width: 12px;
+  animation: spin 1s linear infinite;
+}
+.route-discovery > p {
+  margin: 7px 0 11px;
+  color: var(--ui-fg-muted);
+  font-size: 10px;
+}
+.route-options {
+  display: flex;
+  max-height: 92px;
+  flex-wrap: wrap;
+  gap: 6px;
+  overflow: auto;
+}
+.route-options button {
+  border: 1px solid var(--ui-border);
+  border-radius: 3px;
+  background: var(--ui-raised);
+  padding: 5px 8px;
+  color: var(--ui-fg-secondary);
+  font-family: var(--font-geist-mono);
+  font-size: 9px;
+}
+.route-options button.active {
+  border-color: var(--ui-selection);
+  background: rgba(59, 130, 246, 0.1);
+  color: white;
+}
 .validation-line {
   display: flex;
   min-height: 30px;

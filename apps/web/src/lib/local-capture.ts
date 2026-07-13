@@ -22,6 +22,26 @@ interface CapturePageResponse {
   error?: string;
 }
 
+export async function discoverRoutesLocally(input: { baselineUrl: string; candidateUrl: string }) {
+  const response = await fetch("/api/local-capture/routes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json()) as {
+    routes?: string[];
+    baselineRoutes?: string[];
+    candidateRoutes?: string[];
+    error?: string;
+  };
+  if (!response.ok || !payload.routes) throw new Error(payload.error ?? "Unable to discover routes");
+  return {
+    routes: payload.routes,
+    baselineRoutes: payload.baselineRoutes ?? [],
+    candidateRoutes: payload.candidateRoutes ?? [],
+  };
+}
+
 export async function capturePageLocally(input: {
   url: string;
   routePath: string;

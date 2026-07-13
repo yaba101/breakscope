@@ -28,7 +28,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   viewportProfiles,
   type RunSummary,
@@ -40,7 +40,7 @@ import { DemoSite } from "@/components/demo-site";
 import { ComparisonWorkspace } from "@/components/comparison-workspace";
 import { cn } from "@/lib/cn";
 import { createVisualDiffFromBlobs } from "@/lib/diff-client";
-import { capturePageLocally } from "@/lib/local-capture";
+import { capturePageLocally, discoverRoutesLocally } from "@/lib/local-capture";
 import {
   createLocalProject,
   createLocalRun,
@@ -469,8 +469,11 @@ export function ProjectSetupScreen({
   existing?: boolean;
   projectId?: string;
 }) {
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => setHydrated(true), []);
+  const hydrated = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
   const projectQuery = useQuery({
     queryKey: ["project", projectId],
     queryFn: async () => {
@@ -535,6 +538,16 @@ function ProjectSetupForm({
   const [submitError, setSubmitError] = useState(initialError);
   const baselineValid = isCaptureUrl(baseline);
   const candidateValid = isCaptureUrl(candidate);
+
+  const routeQuery = useQuery({
+    queryKey: ["route-discovery", baseline, candidate],
+    queryFn: () => discoverRoutesLocally({ baselineUrl: baseline, candidateUrl: candidate }),
+    enabled: existing && baselineValid && candidateValid,
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  const discoveredRoutes = routeQuery.data?.routes ?? [];
+  const routeOptions = discoveredRoutes.includes("/") ? discoveredRoutes : ["/", ...discoveredRoutes];
 
   async function submit() {
     if (!name.trim() || !baselineValid || !candidateValid || !routePath.startsWith("/") || submitting) return;
@@ -623,11 +636,36 @@ function ProjectSetupForm({
           </FormField>
           {existing && (
             <>
+              <div className="route-discovery">
+                <div>
+                  <span>Available on both deployments</span>
+                  <button type="button" onClick={() => void routeQuery.refetch()} disabled={routeQuery.isFetching}>
+                    {routeQuery.isFetching && <LoaderCircle />} {routeQuery.isFetching ? "Scanning…" : "Scan again"}
+                  </button>
+                </div>
+                <p>
+                  {routeQuery.isFetching
+                    ? "Starting at the home page and checking internal navigation links…"
+                    : routeQuery.isSuccess
+                      ? `${routeOptions.length} common route${routeOptions.length === 1 ? "" : "s"} found.`
+                      : routeQuery.isError
+                        ? `${routeQuery.error instanceof Error ? routeQuery.error.message : "Unable to discover routes."} Home is still available as the safe default.`
+                        : "Home is selected by default."}
+                </p>
+                <div className="route-options" aria-label="Discovered routes">
+                  {routeOptions.map((route) => (
+                    <button type="button" className={routePath === route ? "active" : ""} onClick={() => setRoutePath(route)} key={route}>
+                      {route === "/" ? "Home /" : route}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <FormField label="Route path">
                 <input
                   value={routePath}
                   onChange={(event) => setRoutePath(event.target.value)}
                 />
+                <small>Enter a route manually if it is dynamic or not linked from the public site.</small>
               </FormField>
               <div className="viewport-choice">
                 <span>Viewport</span>
