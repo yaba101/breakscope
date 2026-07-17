@@ -148,7 +148,6 @@ export function BreakscopeSetup() {
           <button type="submit" disabled={rediscovering || !urlInput.trim()}>{rediscovering ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}<span>{rediscovering ? "Finding routes" : "Refresh routes"}</span></button>
           {urlError && <span className="bk-setup-url-error" role="alert">{urlError}</span>}
         </form>
-        <div className="bk-setup-discovery-state" aria-live="polite"><i />{rediscovering ? "Discovering routes" : `${routes.length} routes found`}</div>
       </header>
       <section className="bk-setup-shell">
         <header className="bk-setup-intro">
@@ -194,7 +193,6 @@ export function BreakscopeSetup() {
               <span id="setup-range-title">Responsive range</span>
               <strong>{rangeStart}–{rangeEnd}px</strong>
               <div aria-hidden="true">{deviceWidths.map((width) => <i key={width} style={{ left: `${rangeStart === rangeEnd ? 50 : (width - rangeStart) / rangeSpan * 100}%` }} />)}</div>
-              <p>Breakscope checks the selected widths, then refines any unstable range automatically.</p>
             </div>
           </section>
 

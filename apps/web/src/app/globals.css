@@ -6564,7 +6564,7 @@ button {
   transform: translateX(-50%);
 }
 .bk-setup-action { min-height: 0; }
-.bk-setup-browsers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 14px 14px; }
+.bk-setup-browsers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 14px; }
 .bk-setup-browsers button { display: grid; min-height: 58px; grid-template-columns: 28px minmax(0, 1fr) 20px; align-items: center; gap: 9px; border: 1px solid var(--setup-border); border-radius: 7px; background: var(--setup-panel); padding: 9px 10px; color: var(--setup-muted); text-align: left; cursor: pointer; }
 .bk-setup-browsers button:hover { border-color: var(--setup-ink); background: var(--setup-subtle); }
 .bk-setup-browsers button[aria-pressed="true"] { border-color: var(--setup-ink); background: var(--setup-selected); color: var(--setup-ink); }
