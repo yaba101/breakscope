@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, Check, Globe2, LoaderCircle, RefreshCw } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -11,6 +12,8 @@ import { breakscopeQueryKeys } from "@/lib/breakscope-queries";
 import { loadBreakscopeState, saveBreakscopeState } from "@/lib/breakscope-workspace";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
 
+const allBrowserEngines: BrowserEngine[] = ["chromium", "firefox", "webkit"];
+
 export function BreakscopeSetup() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -19,7 +22,6 @@ export function BreakscopeSetup() {
   const [routes, setRoutes] = useState<string[]>([]);
   const [selectedRoutes, setSelectedRoutes] = useState<string[]>([]);
   const [deviceWidths, setDeviceWidths] = useState<number[]>([]);
-  const allBrowserEngines: BrowserEngine[] = ["chromium", "firefox", "webkit"];
   const [browserEngines, setBrowserEngines] = useState<BrowserEngine[]>(allBrowserEngines);
   const [ready, setReady] = useState(false);
   const [opening, setOpening] = useState(false);
@@ -158,6 +160,8 @@ export function BreakscopeSetup() {
             <span><b>{selectedRoutes.length}</b> {selectedRoutes.length === 1 ? "route" : "routes"}</span>
             <i aria-hidden="true" />
             <span><b>{deviceWidths.length}</b> viewports</span>
+            <i aria-hidden="true" />
+            <span><b>{browserEngines.length}</b> browsers</span>
           </div>
         </header>
 
@@ -199,12 +203,13 @@ export function BreakscopeSetup() {
             <div className="bk-setup-browsers" role="group" aria-label="Browsers to test">{allBrowserEngines.map((engine) => {
               const selected = browserEngines.includes(engine);
               const label = engine === "chromium" ? "Chrome" : engine === "firefox" ? "Firefox" : "Safari";
-              return <button type="button" key={engine} aria-pressed={selected} onClick={() => toggleBrowser(engine)}><i>{selected && <Check size={12} />}</i><span><b>{label}</b><small>{engine === "chromium" ? "Chromium" : engine === "webkit" ? "WebKit" : "Gecko"}</small></span></button>;
+              const icon = engine === "chromium" ? "/icons/browsers/chrome.svg" : engine === "firefox" ? "/icons/browsers/firefox.svg" : "/icons/browsers/safari.svg";
+              return <button type="button" key={engine} aria-pressed={selected} onClick={() => toggleBrowser(engine)}><Image src={icon} width={24} height={24} alt="" /><span><b>{label}</b><small>{engine === "chromium" ? "Chromium" : engine === "webkit" ? "WebKit" : "Gecko"}</small></span><i aria-hidden="true">{selected && <Check size={12} />}</i></button>;
             })}</div>
           </section>
 
           <footer className="bk-setup-action">
-            <div><strong>Ready to inspect</strong><span>{selectedRoutes.length} {selectedRoutes.length === 1 ? "page" : "pages"} across {deviceWidths.length} viewport checkpoints</span></div>
+            <div><strong>Ready to inspect</strong><span>{selectedRoutes.length} {selectedRoutes.length === 1 ? "page" : "pages"} · {deviceWidths.length} viewports · {browserEngines.length} browsers</span></div>
             <button type="button" disabled={opening} onClick={() => void openWorkspace()}>{opening ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}{opening ? "Opening canvas..." : "Open testing canvas"}</button>
           </footer>
         </div>
