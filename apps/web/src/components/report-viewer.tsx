@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Laptop, LoaderCircle, Monitor, ScanSearch, Smartphone, Sparkles, Tablet } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard, ExternalLink, Laptop, LoaderCircle, Monitor, ScanSearch, Smartphone, Sparkles, Tablet } from "lucide-react";
 import { useMemo, useState, useEffect, type CSSProperties, type ReactNode } from "react";
 import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type DeviceOrientation, type DevicePreset } from "react-device-bezels";
 import type { BrowserEngine, ResponsiveIssue, TestTarget } from "@breakscope/shared";
@@ -91,6 +91,11 @@ function issueFamilyTitle(issue: ResponsiveIssue, count: number) {
   return `${count} occurrences · ${issue.title}`;
 }
 
+function issueTargetDescription(issue: ResponsiveIssue) {
+  const tag = String(issue.measurements.tag ?? issue.selector.split(/\s+|>/).filter(Boolean).at(-1) ?? "element").replace(/[^a-z-]/gi, "");
+  return issue.type === "image-alt" ? `${tag || "image"} missing alternative text` : `${tag || "element"} affected by this check`;
+}
+
 function groupIssueFamilies(source: ResponsiveIssue[]) {
   const families = new Map<string, ResponsiveIssue[]>();
   for (const issue of source) families.set(issueFamilyKey(issue), [...(families.get(issueFamilyKey(issue)) ?? []), issue]);
@@ -148,9 +153,9 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
       <button type="button" className="bk-viewport-issue-trigger" aria-expanded={selected} onClick={() => onSelect(issue)}><i>{startIndex + index + 1}</i><span><b>{issueFamilyTitle(issue, family.length)}</b><small>{issue.type.replaceAll("-", " ")} · {issue.severity} severity{family.length > 1 ? ` · ${family.length} occurrences` : ""}</small></span><ChevronDown size={16} /></button>
       {selected && <div className="bk-viewport-issue-detail">
         <p>{issue.description}</p>
-        <dl><div><dt>{isPageWideIssue(issue, checkpointWidths) ? "Scope" : "Fails"}</dt><dd>{isPageWideIssue(issue, checkpointWidths) ? "Every checkpoint" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div><div><dt>Selector</dt><dd><code>{issue.selector}</code></dd></div></dl>
+        <dl><div><dt>{isPageWideIssue(issue, checkpointWidths) ? "Scope" : "Fails"}</dt><dd>{isPageWideIssue(issue, checkpointWidths) ? "Every checkpoint" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div><div><dt>Target</dt><dd>{issueTargetDescription(issue)}</dd></div></dl>
         {aiAnalysis && <section className="bk-ai-issue-review"><header className="bk-ai-review-header"><span><Sparkles size={14} /> AI repair brief</span><b>{Math.round(aiAnalysis.confidence * 100)}% confidence</b></header><div className="bk-ai-result"><section><span>What&apos;s happening</span><p>{aiAnalysis.summary}</p></section><section><span>Likely cause</span><p>{aiAnalysis.likelyCause}</p></section><section className="bk-ai-recommendation"><span>Recommended fix</span><p>{aiAnalysis.recommendation}</p></section></div></section>}
-        <div className="bs-actions"><a href={issue.routePath} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Open page</a></div>
+        <div className="bs-actions"><button type="button" onClick={() => void navigator.clipboard.writeText(issue.selector)}><Clipboard size={15} /> Copy selector</button><a href={issue.routePath} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Open page</a></div>
       </div>}
     </article>;
   });

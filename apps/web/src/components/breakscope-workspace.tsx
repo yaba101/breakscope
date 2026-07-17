@@ -265,6 +265,11 @@ function issueFamilyTitle(issue: ResponsiveIssue, count: number) {
   return `${count} occurrences · ${issue.title}`;
 }
 
+function issueTargetDescription(issue: ResponsiveIssue) {
+  const tag = String(issue.measurements.tag ?? issue.selector.split(/\s+|>/).filter(Boolean).at(-1) ?? "element").replace(/[^a-z-]/gi, "");
+  return issue.type === "image-alt" ? `${tag || "image"} missing alternative text` : `${tag || "element"} affected by this check`;
+}
+
 function groupIssueFamilies(source: ResponsiveIssue[]) {
   const families = new Map<string, ResponsiveIssue[]>();
   for (const issue of source) families.set(issueFamilyKey(issue), [...(families.get(issueFamilyKey(issue)) ?? []), issue]);
@@ -285,7 +290,7 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
       {selected && <div className="bk-viewport-issue-detail">
         {family.length > 1 && <div className="bk-occurrence-nav"><span>Affected element</span><div><button type="button" aria-label="Previous affected element" onClick={() => selectOccurrence(-1)}><ChevronLeft size={15} /></button><output>{occurrenceIndex + 1} of {family.length}</output><button type="button" aria-label="Next affected element" onClick={() => selectOccurrence(1)}><ChevronRight size={15} /></button></div></div>}
         <p>{issue.description}</p>
-        <dl><div><dt>{isPageWideIssue(issue, checkpointWidths) ? "Scope" : "Fails"}</dt><dd>{isPageWideIssue(issue, checkpointWidths) ? "Every checkpoint" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div><div><dt>Selector</dt><dd><code>{issue.selector}</code></dd></div><div><dt>Status</dt><dd>{issue.verification.replace("-", " ")}</dd></div></dl>
+        <dl><div><dt>{isPageWideIssue(issue, checkpointWidths) ? "Scope" : "Fails"}</dt><dd>{isPageWideIssue(issue, checkpointWidths) ? "Every checkpoint" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div><div><dt>Target</dt><dd>{issueTargetDescription(issue)}</dd></div><div><dt>Status</dt><dd>{issue.verification.replace("-", " ")}</dd></div></dl>
         <div className="bk-measurements"><span>Detector evidence</span>{Object.entries(issue.measurements).slice(0, 4).map(([key, value]) => <div key={key}><code>{key}</code><b>{String(value)}</b></div>)}</div>
         <section className={`bk-ai-issue-review ${aiPending ? "is-loading" : ""}`} aria-busy={aiPending}>
           <header className="bk-ai-review-header"><span><Sparkles size={14} /> AI repair brief</span>{aiAnalysis && <b>{Math.round(aiAnalysis.confidence * 100)}% confidence</b>}</header>
@@ -299,7 +304,7 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
           <div className={`bs-actions bk-ai-result-actions ${aiAnalysis ? "" : "single"}`}><button type="button" disabled={aiPending} onClick={() => onAnalyze(issue)}>{aiPending ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}{aiPending ? "Analyzing…" : aiAnalysis ? "Refresh analysis" : "Run AI analysis"}</button>{aiAnalysis && <button type="button" onClick={() => void navigator.clipboard.writeText(repairPrompt(issue, url, aiAnalysis)).then(() => setCopiedPromptFor(issue.fingerprint))}>{copiedPromptFor === issue.fingerprint ? <Check size={15} /> : <Clipboard size={15} />}{copiedPromptFor === issue.fingerprint ? "Prompt copied" : "Copy fix prompt"}</button>}</div>
           <small>Opt-in: this issue and screenshot are sent only when you click.</small>
         </section>
-        <div className="bs-actions"><button type="button" onClick={() => void navigator.clipboard.writeText(issueMarkdown(issue, url))}><Clipboard size={15} /> Copy issue</button><a href={new URL(issue.routePath, url).toString()} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Open page</a></div>
+        <div className="bs-actions"><button type="button" onClick={() => void navigator.clipboard.writeText(issue.selector)}><Clipboard size={15} /> Copy selector</button><button type="button" onClick={() => void navigator.clipboard.writeText(issueMarkdown(issue, url))}><Clipboard size={15} /> Copy issue</button><a href={new URL(issue.routePath, url).toString()} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Open page</a></div>
       </div>}
     </article>;
   });
