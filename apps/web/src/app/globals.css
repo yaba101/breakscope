@@ -7271,6 +7271,16 @@ button {
   color: var(--stratum-secondary-0);
   font: 650 12px/1 var(--font-stratum-mono), monospace;
 }
+
+/* Keep the environment controls readable as distinct task groups. */
+.bk-preview-toolbar { gap: 18px; }
+.bk-preview-toolbar .bk-environment-controls { gap: 14px; }
+.bk-preview-toolbar .bk-browser-control { padding-left: 14px; border-left: 1px solid var(--stratum-border-300); }
+.bk-preview-scale { margin-left: auto; }
+@media (max-width: 900px) {
+  .bk-preview-toolbar { gap: 8px; }
+  .bk-preview-toolbar .bk-browser-control { padding-left: 0; border-left: 0; }
+}
 .bk-viewport-issue-list { display: grid; gap: 7px; }
 .bk-viewport-issue-list > article {
   overflow: hidden;
