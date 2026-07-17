@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Laptop, LoaderCircle, Monitor, ScanSearch, Smartphone, Sparkles, Tablet } from "lucide-react";
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useState, useEffect, type CSSProperties, type ReactNode } from "react";
 import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type DeviceOrientation, type DevicePreset } from "react-device-bezels";
 import type { BrowserEngine, ResponsiveIssue, TestTarget } from "@breakscope/shared";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
@@ -97,10 +97,30 @@ function groupIssueFamilies(source: ResponsiveIssue[]) {
   return [...families.values()];
 }
 
-function ResultImage({ image, alt }: { image?: string; alt: string }) {
-  if (!image) return <div className="bk-preview-unavailable"><ScanSearch size={28} /><b>Capture unavailable</b></div>;
+function ResultImage({ image, alt }: { image?: ArrayBuffer | string; alt: string }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let disposed = false;
+    if (!image) {
+      queueMicrotask(() => { if (!disposed) setUrl(""); });
+      return;
+    }
+    if (typeof image === "string") {
+      queueMicrotask(() => { if (!disposed) setUrl(image); });
+      return;
+    }
+    if (!image.byteLength) {
+      queueMicrotask(() => { if (!disposed) setUrl(""); });
+      return;
+    }
+    const blobUrl = URL.createObjectURL(new Blob([image], { type: "image/png" }));
+    queueMicrotask(() => { if (!disposed) setUrl(blobUrl); });
+    return () => { disposed = true; URL.revokeObjectURL(blobUrl); };
+  }, [image]);
+  if (image && !url) return <div className="bk-preview-image-loading" role="status"><span /><span /><span /><b>Preparing captured viewport…</b></div>;
+  if (!url) return <div className="bk-preview-unavailable"><ScanSearch size={28} /><b>Capture unavailable</b></div>;
   // eslint-disable-next-line @next/next/no-img-element
-  return <div className="bk-result-image-layer"><img src={image} alt={alt} /></div>;
+  return <div className="bk-result-image-layer"><img src={url} alt={alt} /></div>;
 }
 
 function PreviewSurface({ children }: { children: ReactNode }) {
@@ -180,7 +200,7 @@ export function ReportViewer({ token }: { token: string }) {
   const selectedModel = deviceModels.find((model) => model.id === activeDeviceModelId) ?? deviceModels[0]!;
   const displayedModel = selectedModel.kind === displayedDevice && (displayedDevice !== "desktop" || (displayedWidth >= 1440 ? selectedModel.checkpointWidth >= 1440 : selectedModel.checkpointWidth < 1440)) ? selectedModel : modelForWidth(displayedWidth);
   const hasExactIssueEvidence = activeIssue?.evidenceWidth === displayedWidth;
-  const issueImage = (comparisonMode === "passing" ? activeIssue?.passingScreenshot : hasExactIssueEvidence ? activeIssue?.screenshot : activePreview?.image) as string | undefined;
+  const issueImage = (comparisonMode === "passing" ? activeIssue?.passingScreenshot : hasExactIssueEvidence ? activeIssue?.screenshot : activePreview?.image) as ArrayBuffer | undefined;
 
   function selectIssue(issue: ResponsiveIssue) {
     const checkpoint = issueAffectsWidth(issue, activePreviewWidth) ? activePreviewWidth : deviceWidths.reduce((closest, width) => Math.abs(width - issue.evidenceWidth) < Math.abs(closest - issue.evidenceWidth) ? width : closest, deviceWidths[0] ?? issue.evidenceWidth);

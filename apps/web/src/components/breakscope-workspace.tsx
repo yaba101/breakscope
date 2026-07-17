@@ -707,14 +707,14 @@ export function BreakscopeWorkspace() {
     setShareUrl("");
     try {
       const issueScreenshots = await Promise.all(
-        issues.slice(0, 3).map(async (issue) => ({
+        issues.map(async (issue) => ({
           fingerprint: issue.fingerprint,
           screenshot: issue.screenshot ? await imageDataUrl(issue.screenshot) : undefined,
           passingScreenshot: issue.passingScreenshot ? await imageDataUrl(issue.passingScreenshot) : undefined,
         })),
       );
       const previewImages = await Promise.all(
-        previews.slice(0, 12).map(async (preview) => ({
+        previews.map(async (preview) => ({
           width: preview.width,
           label: preview.label,
           routePath: preview.routePath,
