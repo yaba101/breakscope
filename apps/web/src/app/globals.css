@@ -6526,10 +6526,11 @@ button {
   min-height: 0;
   grid-template-areas:
     "routes viewports"
+    "routes browsers"
     "routes range"
     "routes action";
   grid-template-columns: minmax(360px, .92fr) minmax(500px, 1.08fr);
-  grid-template-rows: minmax(218px, 1fr) auto 76px;
+  grid-template-rows: minmax(178px, 1fr) minmax(104px, auto) auto 76px;
   gap: 12px;
   overflow: visible;
 }
@@ -6538,6 +6539,7 @@ button {
   grid-area: viewports;
   grid-template-rows: auto auto;
 }
+.bk-setup-browsers-panel { grid-area: browsers; }
 .bk-setup-range-panel { grid-area: range; }
 .bk-setup-action { grid-area: action; }
 .bk-setup-viewports-panel .bk-setup-devices { padding: 14px; }
@@ -6557,6 +6559,15 @@ button {
   transform: translateX(-50%);
 }
 .bk-setup-action { min-height: 0; }
+.bk-setup-browsers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 14px 14px; }
+.bk-setup-browsers button { display: grid; min-height: 52px; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 7px; border: 1px solid var(--stratum-border-300); border-radius: 7px; background: var(--stratum-surface-base); padding: 8px; color: var(--stratum-text-secondary); text-align: left; cursor: pointer; }
+.bk-setup-browsers button:hover { border-color: var(--color-brand); }
+.bk-setup-browsers button[aria-pressed="true"] { border-color: var(--color-brand); background: var(--stratum-surface-soft); color: var(--stratum-text-primary); }
+.bk-setup-browsers button > i { display: grid; width: 20px; height: 20px; place-items: center; border: 1px solid var(--stratum-border-300); border-radius: 50%; font-style: normal; }
+.bk-setup-browsers button[aria-pressed="true"] > i { border-color: var(--color-brand); background: var(--color-brand); color: white; }
+.bk-setup-browsers button > span { display: grid; gap: 2px; }
+.bk-setup-browsers button b { font-size: 12px; }
+.bk-setup-browsers button small { color: var(--stratum-text-muted); font: 9px/1 var(--font-stratum-mono), monospace; }
 
 @media (max-width: 900px) {
   .bk-setup-header { grid-template-columns: auto minmax(330px, 1fr) auto; }
@@ -6580,14 +6591,15 @@ button {
   .bk-setup-options {
     display: grid;
     height: auto;
-    grid-template-areas: "viewports" "range" "routes" "action";
+    grid-template-areas: "viewports" "browsers" "range" "routes" "action";
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto minmax(300px, 1fr) 64px;
+    grid-template-rows: auto auto auto minmax(300px, 1fr) 64px;
     overflow-y: auto;
   }
   .bk-setup-panel + .bk-setup-panel { margin-top: 0; }
   .bk-setup-routes-panel,
-  .bk-setup-viewports-panel { min-height: 0; }
+  .bk-setup-viewports-panel,
+  .bk-setup-browsers-panel { min-height: 0; }
   .bk-setup-range-panel { min-height: auto; }
 }
 

@@ -228,8 +228,8 @@ function CheckpointSwitcher({ widths, activeWidth, browserEngine, previews, issu
   })}</div></div>;
 }
 
-function BrowserSwitcher({ activeEngine, activeWidth, routePath, previews, issues, onSelect }: { activeEngine: BrowserEngine; activeWidth: number; routePath: string; previews: PersistedViewportPreview[]; issues: ResponsiveIssue[]; onSelect: (engine: BrowserEngine) => void }) {
-  return <div className="bk-browser-control"><span>Browser</span><div className="bk-browser-switcher" role="group" aria-label="Test browser">{allBrowserEngines.map((engine) => {
+function BrowserSwitcher({ engines, activeEngine, activeWidth, routePath, previews, issues, onSelect }: { engines: BrowserEngine[]; activeEngine: BrowserEngine; activeWidth: number; routePath: string; previews: PersistedViewportPreview[]; issues: ResponsiveIssue[]; onSelect: (engine: BrowserEngine) => void }) {
+  return <div className="bk-browser-control"><span>Browser</span><div className="bk-browser-switcher" role="group" aria-label="Test browser">{engines.map((engine) => {
     const ready = previews.some((preview) => preview.width === activeWidth && preview.routePath === routePath && (preview.browserEngine ?? "chromium") === engine);
     const failed = issues.some((issue) => issue.routePath === routePath && (issue.browserEngine ?? "chromium") === engine && issueAffectsWidth(issue, activeWidth));
     const status = failed ? "issues found" : ready ? "capture ready" : "capture unavailable";
@@ -327,6 +327,7 @@ export function BreakscopeWorkspace() {
   const [previews, setPreviews] = useState<PersistedViewportPreview[]>([]);
   const [activePreviewWidth, setActivePreviewWidth] = useState(375);
   const [activeBrowserEngine, setActiveBrowserEngine] = useState<BrowserEngine>("chromium");
+  const [browserEngines, setBrowserEngines] = useState<BrowserEngine[]>(allBrowserEngines);
   const [activeDeviceModelId, setActiveDeviceModelId] = useState<DeviceModelId>("iphone-17-pro");
   const [deviceOrientation, setDeviceOrientation] = useState<DeviceOrientation>("portrait");
   const [previewScaleMode, setPreviewScaleMode] = useState<PreviewScaleMode>("fit-device");
@@ -421,6 +422,9 @@ export function BreakscopeWorkspace() {
     if (state.target) {
       setUrl(state.target.url); setRoutes(state.availableRoutes?.length ? state.availableRoutes : state.target.selectedRoutes); setSelectedRoutes(state.target.selectedRoutes); setMinWidth(state.target.minWidth); setMaxWidth(state.target.maxWidth);
       if (state.target.deviceWidths?.length) { setDeviceWidths(state.target.deviceWidths); setActivePreviewWidth(state.target.deviceWidths[0]!); }
+      const configuredBrowsers = state.target.browserEngines?.length ? state.target.browserEngines : allBrowserEngines;
+      setBrowserEngines(configuredBrowsers);
+      setActiveBrowserEngine(state.ui?.activeBrowserEngine && configuredBrowsers.includes(state.ui.activeBrowserEngine) ? state.ui.activeBrowserEngine : configuredBrowsers[0]!);
       if (!state.availableRoutes?.length) void discoverRoutesLocally({ url: state.target.url }).then(({ routes: discovered }) => {
         const restoredRoutes = [...new Set([...state.target!.selectedRoutes, ...discovered])].slice(0, 10);
         setRoutes(restoredRoutes);
@@ -436,7 +440,7 @@ export function BreakscopeWorkspace() {
     if (state.ui?.deviceOrientation) setDeviceOrientation(state.ui.deviceOrientation);
     if (state.ui?.previewScaleMode) setPreviewScaleMode(state.ui.previewScaleMode);
     if (state.ui?.previewZoom) setPreviewZoom(state.ui.previewZoom);
-    if (state.ui?.activeBrowserEngine) setActiveBrowserEngine(state.ui.activeBrowserEngine);
+
     if (state.ui?.recentDeviceIds) setRecentDeviceIds(state.ui.recentDeviceIds.filter((id): id is DeviceModelId => deviceModels.some((model) => model.id === id)).slice(0, 8));
     if (state.ui?.pinnedDeviceIds) setPinnedDeviceIds(state.ui.pinnedDeviceIds.filter((id): id is DeviceModelId => deviceModels.some((model) => model.id === id)));
     const firstIssue = state.latestIssues[0];
@@ -552,8 +556,8 @@ export function BreakscopeWorkspace() {
     const controller = new AbortController(); scanController.current = controller;
     try {
       const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
-      const resumable = stored.scanJob && ["running", "paused", "failed"].includes(stored.scanJob.status) && stored.scanJob.url === url && stored.scanJob.routes.join("|") === selectedRoutes.join("|");
-      let scanJob: PersistedScanJob = resumable ? { ...stored.scanJob!, status: "running", updatedAt: Date.now() } : { id: crypto.randomUUID(), status: "running", url, routes: selectedRoutes, widths: deviceWidths, browserEngines: allBrowserEngines, completedCheckpoints: [], completedRouteScans: [], samples: [], errors: [], createdAt: Date.now(), updatedAt: Date.now() };
+      const resumable = stored.scanJob && ["running", "paused", "failed"].includes(stored.scanJob.status) && stored.scanJob.url === url && stored.scanJob.routes.join("|") === selectedRoutes.join("|") && stored.scanJob.browserEngines.join("|") === browserEngines.join("|");
+      let scanJob: PersistedScanJob = resumable ? { ...stored.scanJob!, status: "running", updatedAt: Date.now() } : { id: crypto.randomUUID(), status: "running", url, routes: selectedRoutes, widths: deviceWidths, browserEngines, completedCheckpoints: [], completedRouteScans: [], samples: [], errors: [], createdAt: Date.now(), updatedAt: Date.now() };
       let persistChain = Promise.resolve();
       const persistJob = () => {
         scanJob = { ...scanJob, updatedAt: Date.now() };
@@ -571,7 +575,7 @@ export function BreakscopeWorkspace() {
       const samples: ViewportSample[] = [...scanJob.samples]; const routeErrors: string[] = [...scanJob.errors]; const capturedPreviews: PersistedViewportPreview[] = resumable ? [...(stored.latestPreviews ?? [])] : [];
       setProgress({ current: 0, total: selectedRoutes.length, width: minWidth, route: selectedRoutes[0]!, phase: resumable ? "Resuming scan" : "Sweeping geometry" }); setPreviews(capturedPreviews);
       const previewTask = (async () => {
-        for (const browserEngine of allBrowserEngines) for (const width of deviceWidths) {
+        for (const browserEngine of browserEngines) for (const width of deviceWidths) {
           if (controller.signal.aborted) break;
           const checkpointKey = `${browserEngine}:${selectedRoutes[0]}:${width}`;
           if (scanJob.completedCheckpoints.includes(checkpointKey)) continue;
@@ -590,7 +594,7 @@ export function BreakscopeWorkspace() {
           } catch (reason) { if (reason instanceof DOMException && reason.name === "AbortError") break; }
         }
       })();
-      const routeTasks = allBrowserEngines.flatMap((browserEngine) => selectedRoutes.map((routePath, index) => ({ browserEngine, routePath, index })));
+      const routeTasks = browserEngines.flatMap((browserEngine) => selectedRoutes.map((routePath, index) => ({ browserEngine, routePath, index })));
       await previewTask;
       setScanStage(2);
       const settled = await Promise.allSettled(routeTasks.map(async ({ browserEngine, routePath, index }) => {
@@ -626,7 +630,7 @@ export function BreakscopeWorkspace() {
       setResult({ issues: withEvidence, fixed: fixedIssues, suppressedCount: analysis.suppressedCount, checks: analysis.checks, activeIssue: firstIssue, hasScanned: true });
       setInspectorTab(firstIssue ? "issue" : "checks"); setComparisonMode("failing");
       const now = Date.now();
-      const target: TestTarget = { id: "current", name: new URL(url).host, url, selectedRoutes, minWidth, maxWidth, executionMode: "local", deviceWidths, browserEngines: allBrowserEngines, createdAt: stored.target?.createdAt ?? now, updatedAt: now };
+      const target: TestTarget = { id: "current", name: new URL(url).host, url, selectedRoutes, minWidth, maxWidth, executionMode: "local", deviceWidths, browserEngines, createdAt: stored.target?.createdAt ?? now, updatedAt: now };
       scanJob = { ...scanJob, status: "completed", updatedAt: now };
       const nextState: BreakscopeState = { availableRoutes: routes, target, latestIssues: withEvidence, latestManifest: analysis.allIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), latestPreviews: capturedPreviews, scanJob, ui: { selectedDeviceModelId: activeDeviceModelId, deviceOrientation, recentDeviceIds, pinnedDeviceIds, previewScaleMode, previewZoom, activeBrowserEngine }, updatedAt: now };
       queryClient.setQueryData(breakscopeQueryKeys.workspace(), nextState);
@@ -664,8 +668,8 @@ export function BreakscopeWorkspace() {
   const reviewedRoute = activeIssue?.routePath ?? selectedRoutes[0];
   const navigableIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && issue.routePath === reviewedRoute);
   const activeIssueIndex = activeIssue ? navigableIssues.findIndex((issue) => issue.fingerprint === activeIssue.fingerprint) : -1;
-  const checkpointTotal = deviceWidths.length * allBrowserEngines.length;
-  const readyCheckpointCount = Math.min(checkpointTotal, new Set(previews.filter((preview) => preview.routePath === selectedRoutes[0] && deviceWidths.includes(preview.width)).map((preview) => `${preview.browserEngine ?? "chromium"}:${preview.width}`)).size);
+  const checkpointTotal = deviceWidths.length * browserEngines.length;
+  const readyCheckpointCount = Math.min(checkpointTotal, new Set(previews.filter((preview) => browserEngines.includes(preview.browserEngine ?? "chromium") && preview.routePath === selectedRoutes[0] && deviceWidths.includes(preview.width)).map((preview) => `${preview.browserEngine ?? "chromium"}:${preview.width}`)).size);
   const scanStageLabels = ["Connecting to page", "Rendering browser checkpoints", "Sweeping responsive range", "Refining breakpoints", "Capturing issue evidence"];
   const scanHeadline = scanStageLabels[scanStage] ?? scanStageLabels[0]!;
   const activitySteps = [
@@ -801,7 +805,7 @@ export function BreakscopeWorkspace() {
       </aside>
       <section className="bk-stage-main">
         <div className="bk-canvas-toolbar"><span><i className={activeIssue ? "fail" : scanning ? "scan" : ""} />{activeIssue ? "Failure evidence" : scanning ? `Scanning section ${scanSection} of 8` : hasScanned ? "Captured evidence" : "Ready to test"}</span><CheckpointSwitcher widths={deviceWidths} activeWidth={displayedWidth} browserEngine={activeBrowserEngine} previews={previews} issues={issues} onSelect={(width) => { setActivePreviewWidth(width); setIssueDisplayWidth(undefined); setActiveDeviceModelId(modelForWidth(width).id); setResult((current) => ({ ...current, activeIssue: undefined })); setComparisonMode("failing"); setInspectorTab(hasScanned ? "findings" : "activity"); }} /><b><small>Evidence</small>{displayedWidth}px</b></div>
-        <div className="bk-preview-toolbar"><div className="bk-environment-controls"><DevicePicker activeModel={displayedModel} orientation={deviceOrientation} recentIds={recentDeviceIds} pinnedIds={pinnedDeviceIds} onModelSelect={selectModel} onOrientationChange={setDeviceOrientation} onTogglePin={togglePin} /><BrowserSwitcher activeEngine={activeBrowserEngine} activeWidth={activePreviewWidth} routePath={selectedRoutes[0] ?? "/"} previews={previews} issues={issues} onSelect={(engine) => { setActiveBrowserEngine(engine); setIssueDisplayWidth(undefined); setResult((current) => ({ ...current, activeIssue: undefined })); setComparisonMode("failing"); }} /></div><div className="bk-preview-scale"><span>Preview</span><div role="group" aria-label="Preview scale mode"><button type="button" className={previewScaleMode === "fit-device" ? "active" : ""} aria-pressed={previewScaleMode === "fit-device"} onClick={() => setPreviewScaleMode("fit-device")}><Maximize2 size={14} /> Fit device</button><button type="button" className={previewScaleMode === "fit-screen" ? "active" : ""} aria-pressed={previewScaleMode === "fit-screen"} onClick={() => setPreviewScaleMode("fit-screen")}>Fit screen</button><button type="button" className={previewScaleMode === "actual" ? "active" : ""} aria-pressed={previewScaleMode === "actual"} onClick={() => setPreviewScaleMode("actual")}>100%</button></div><div className="bk-zoom-stepper"><button type="button" aria-label="Zoom out" onClick={() => { setPreviewScaleMode("custom"); setPreviewZoom((value) => Math.max(40, value - 10)); }}><Minus size={14} /></button><output>{previewScaleMode === "actual" ? 100 : previewScaleMode === "custom" ? previewZoom : previewScaleMode === "fit-screen" ? "Fill" : "Fit"}</output><button type="button" aria-label="Zoom in" onClick={() => { setPreviewScaleMode("custom"); setPreviewZoom((value) => Math.min(140, value + 10)); }}><Plus size={14} /></button></div></div></div>
+        <div className="bk-preview-toolbar"><div className="bk-environment-controls"><DevicePicker activeModel={displayedModel} orientation={deviceOrientation} recentIds={recentDeviceIds} pinnedIds={pinnedDeviceIds} onModelSelect={selectModel} onOrientationChange={setDeviceOrientation} onTogglePin={togglePin} /><BrowserSwitcher engines={browserEngines} activeEngine={activeBrowserEngine} activeWidth={activePreviewWidth} routePath={selectedRoutes[0] ?? "/"} previews={previews} issues={issues} onSelect={(engine) => { setActiveBrowserEngine(engine); setIssueDisplayWidth(undefined); setResult((current) => ({ ...current, activeIssue: undefined })); setComparisonMode("failing"); }} /></div><div className="bk-preview-scale"><span>Preview</span><div role="group" aria-label="Preview scale mode"><button type="button" className={previewScaleMode === "fit-device" ? "active" : ""} aria-pressed={previewScaleMode === "fit-device"} onClick={() => setPreviewScaleMode("fit-device")}><Maximize2 size={14} /> Fit device</button><button type="button" className={previewScaleMode === "fit-screen" ? "active" : ""} aria-pressed={previewScaleMode === "fit-screen"} onClick={() => setPreviewScaleMode("fit-screen")}>Fit screen</button><button type="button" className={previewScaleMode === "actual" ? "active" : ""} aria-pressed={previewScaleMode === "actual"} onClick={() => setPreviewScaleMode("actual")}>100%</button></div><div className="bk-zoom-stepper"><button type="button" aria-label="Zoom out" onClick={() => { setPreviewScaleMode("custom"); setPreviewZoom((value) => Math.max(40, value - 10)); }}><Minus size={14} /></button><output>{previewScaleMode === "actual" ? 100 : previewScaleMode === "custom" ? previewZoom : previewScaleMode === "fit-screen" ? "Fill" : "Fit"}</output><button type="button" aria-label="Zoom in" onClick={() => { setPreviewScaleMode("custom"); setPreviewZoom((value) => Math.min(140, value + 10)); }}><Plus size={14} /></button></div></div></div>
         <div className={`bk-stage-canvas ${displayedDevice === "phone" ? "phone-preview" : ""}`}>
           {scanning && activePreview ? <DeviceFrame model={displayedModel} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} previewZoom={previewZoom} url={url} scanning previewRef={scanPreviewRef} scrollProgress={scrollProgress} onScroll={updatePreviewProgress} onUserInteraction={pauseStagedScan}><ResultImage image={activePreview.image} alt={`${activePreview.label} checkpoint at ${activePreview.width}px`} /></DeviceFrame>
           : scanning ? <ScanSkeleton phase={scanHeadline} width={progress.width || minWidth} />

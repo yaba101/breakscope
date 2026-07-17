@@ -4,6 +4,7 @@ import { ArrowRight, Clock3, LoaderCircle, Search, Trash2, X } from "lucide-reac
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import type { BrowserEngine } from "@breakscope/shared";
 import { isCaptureUrl } from "@breakscope/validation";
 import { discoverRoutesLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys } from "@/lib/breakscope-queries";
@@ -64,7 +65,7 @@ export function BreakscopeLanding() {
         ...previous,
         availableRoutes: routes,
         recentTargets: nextRecentTargets,
-        draft: { url: value, routes, deviceWidths: defaultDeviceWidths, discoveredAt: now },
+        draft: { url: value, routes, deviceWidths: defaultDeviceWidths, browserEngines: ["chromium", "firefox", "webkit"] as BrowserEngine[], discoveredAt: now },
         updatedAt: now,
       };
       await saveBreakscopeState(nextState);

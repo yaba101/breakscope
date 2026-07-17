@@ -44,6 +44,7 @@ export interface BreakscopeState {
     url: string;
     routes: string[];
     deviceWidths: number[];
+    browserEngines?: BrowserEngine[];
     discoveredAt: number;
   };
   target?: TestTarget;

@@ -4,7 +4,7 @@ import { ArrowRight, Check, Globe2, LoaderCircle, RefreshCw } from "lucide-react
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import type { TestTarget } from "@breakscope/shared";
+import type { BrowserEngine, TestTarget } from "@breakscope/shared";
 import { isCaptureUrl } from "@breakscope/validation";
 import { discoverRoutesLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys } from "@/lib/breakscope-queries";
@@ -19,6 +19,8 @@ export function BreakscopeSetup() {
   const [routes, setRoutes] = useState<string[]>([]);
   const [selectedRoutes, setSelectedRoutes] = useState<string[]>([]);
   const [deviceWidths, setDeviceWidths] = useState<number[]>([]);
+  const allBrowserEngines: BrowserEngine[] = ["chromium", "firefox", "webkit"];
+  const [browserEngines, setBrowserEngines] = useState<BrowserEngine[]>(allBrowserEngines);
   const [ready, setReady] = useState(false);
   const [opening, setOpening] = useState(false);
   const [rediscovering, setRediscovering] = useState(false);
@@ -40,6 +42,7 @@ export function BreakscopeSetup() {
       setUrlInput(state.draft.url);
       setRoutes(state.draft.routes);
       setDeviceWidths(state.draft.deviceWidths);
+      setBrowserEngines(state.draft.browserEngines?.length ? state.draft.browserEngines : state.target?.browserEngines?.length ? state.target.browserEngines : allBrowserEngines);
       setSelectedRoutes(state.draft.routes.includes("/") ? ["/"] : state.draft.routes.slice(0, 1));
       setReady(true);
     }).catch(() => router.replace("/"));
@@ -56,6 +59,12 @@ export function BreakscopeSetup() {
     setDeviceWidths((current) => current.includes(width)
       ? current.length > 1 ? current.filter((item) => item !== width) : current
       : [...current, width].sort((a, b) => a - b));
+  }
+
+  function toggleBrowser(engine: BrowserEngine) {
+    setBrowserEngines((current) => current.includes(engine)
+      ? current.length > 1 ? current.filter((item) => item !== engine) : current
+      : [...current, engine]);
   }
 
   async function updateTarget(event: React.FormEvent<HTMLFormElement>) {
@@ -76,7 +85,7 @@ export function BreakscopeSetup() {
       await saveBreakscopeState({
         ...previous,
         availableRoutes: discoveredRoutes,
-        draft: { url: value, routes: discoveredRoutes, deviceWidths, discoveredAt: now },
+        draft: { url: value, routes: discoveredRoutes, deviceWidths, browserEngines, discoveredAt: now },
         updatedAt: now,
       });
       setUrl(value);
@@ -107,7 +116,7 @@ export function BreakscopeSetup() {
       maxWidth: Math.max(...deviceWidths),
       executionMode: "local",
       deviceWidths,
-      browserEngines: ["chromium", "firefox", "webkit"],
+      browserEngines,
       createdAt: previous.target?.url === url ? previous.target.createdAt : now,
       updatedAt: now,
     };
@@ -183,6 +192,15 @@ export function BreakscopeSetup() {
               <div aria-hidden="true">{deviceWidths.map((width) => <i key={width} style={{ left: `${rangeStart === rangeEnd ? 50 : (width - rangeStart) / rangeSpan * 100}%` }} />)}</div>
               <p>Breakscope checks the selected widths, then refines any unstable range automatically.</p>
             </div>
+          </section>
+
+          <section className="bk-setup-panel bk-setup-browsers-panel" aria-labelledby="setup-browsers-title">
+            <div className="bk-setup-section-heading"><div><h2 id="setup-browsers-title">Browsers to test</h2><p>Choose the rendering engines for this run.</p></div><span>{browserEngines.length} selected</span></div>
+            <div className="bk-setup-browsers" role="group" aria-label="Browsers to test">{allBrowserEngines.map((engine) => {
+              const selected = browserEngines.includes(engine);
+              const label = engine === "chromium" ? "Chrome" : engine === "firefox" ? "Firefox" : "Safari";
+              return <button type="button" key={engine} aria-pressed={selected} onClick={() => toggleBrowser(engine)}><i>{selected && <Check size={12} />}</i><span><b>{label}</b><small>{engine === "chromium" ? "Chromium" : engine === "webkit" ? "WebKit" : "Gecko"}</small></span></button>;
+            })}</div>
           </section>
 
           <footer className="bk-setup-action">
