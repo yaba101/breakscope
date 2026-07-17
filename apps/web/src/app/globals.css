@@ -7281,6 +7281,14 @@ button {
   .bk-preview-toolbar { gap: 8px; }
   .bk-preview-toolbar .bk-browser-control { padding-left: 0; border-left: 0; }
 }
+
+/* Routes are source paths, so preserve their full value instead of ellipsizing it. */
+.bk-workspace-page .bs-route-list button code {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
 .bk-viewport-issue-list { display: grid; gap: 7px; }
 .bk-viewport-issue-list > article {
   overflow: hidden;
