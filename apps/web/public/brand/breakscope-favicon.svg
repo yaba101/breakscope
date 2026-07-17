@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>Breakscope</title>
+  <rect width="64" height="64" rx="14" fill="#F4F0E8"/>
+  <path d="M12 11H35.5C45.165 11 53 18.835 53 28.5V35.5C53 45.165 45.165 53 35.5 53H12V11Z" stroke="#171717" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M28 14V28H40V36H28V50" stroke="#171717" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M28 28H40V36H28" stroke="#C5543D" stroke-width="7" stroke-linejoin="round"/>
+</svg>

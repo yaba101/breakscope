@@ -1,8 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Laptop, LoaderCircle, Monitor, ScanSearch, Smartphone, Sparkles, Tablet } from "lucide-react";
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard, ExternalLink, Laptop, LoaderCircle, Monitor, ScanSearch, Smartphone, Sparkles, Tablet } from "lucide-react";
+import { useMemo, useState, useEffect, type CSSProperties, type ReactNode } from "react";
 import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type DeviceOrientation, type DevicePreset } from "react-device-bezels";
 import type { BrowserEngine, ResponsiveIssue, TestTarget } from "@breakscope/shared";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
@@ -91,16 +91,41 @@ function issueFamilyTitle(issue: ResponsiveIssue, count: number) {
   return `${count} occurrences · ${issue.title}`;
 }
 
+function issueTargetDescription(issue: ResponsiveIssue) {
+  const tag = String(issue.measurements.tag ?? issue.selector.split(/\s+|>/).filter(Boolean).at(-1) ?? "element").replace(/[^a-z-]/gi, "");
+  return issue.type === "image-alt" ? `${tag || "image"} missing alternative text` : `${tag || "element"} affected by this check`;
+}
+
 function groupIssueFamilies(source: ResponsiveIssue[]) {
   const families = new Map<string, ResponsiveIssue[]>();
   for (const issue of source) families.set(issueFamilyKey(issue), [...(families.get(issueFamilyKey(issue)) ?? []), issue]);
   return [...families.values()];
 }
 
-function ResultImage({ image, alt }: { image?: string; alt: string }) {
-  if (!image) return <div className="bk-preview-unavailable"><ScanSearch size={28} /><b>Capture unavailable</b></div>;
+function ResultImage({ image, alt }: { image?: ArrayBuffer | string; alt: string }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let disposed = false;
+    if (!image) {
+      queueMicrotask(() => { if (!disposed) setUrl(""); });
+      return;
+    }
+    if (typeof image === "string") {
+      queueMicrotask(() => { if (!disposed) setUrl(image); });
+      return;
+    }
+    if (!image.byteLength) {
+      queueMicrotask(() => { if (!disposed) setUrl(""); });
+      return;
+    }
+    const blobUrl = URL.createObjectURL(new Blob([image], { type: "image/png" }));
+    queueMicrotask(() => { if (!disposed) setUrl(blobUrl); });
+    return () => { disposed = true; URL.revokeObjectURL(blobUrl); };
+  }, [image]);
+  if (image && !url) return <div className="bk-preview-image-loading" role="status"><span /><span /><span /><b>Preparing captured viewport…</b></div>;
+  if (!url) return <div className="bk-preview-unavailable"><ScanSearch size={28} /><b>Capture unavailable</b></div>;
   // eslint-disable-next-line @next/next/no-img-element
-  return <div className="bk-result-image-layer"><img src={image} alt={alt} /></div>;
+  return <div className="bk-result-image-layer"><img src={url} alt={alt} /></div>;
 }
 
 function PreviewSurface({ children }: { children: ReactNode }) {
@@ -112,7 +137,7 @@ function DeviceFrame({ model, browserEngine, orientation, scaleMode, url, childr
   if (model.preset) {
     const fittedZoom = model.kind === "phone" ? orientation === "portrait" ? .72 : .7 : orientation === "portrait" ? .48 : .58;
     const zoom = scaleMode === "actual" ? 1 : scaleMode === "custom" ? .72 : scaleMode === "fit-screen" ? fittedZoom * 1.18 : fittedZoom;
-    return <div className={`bk-library-device ${model.kind} scale-${scaleMode}`} aria-label={`${model.label} device frame`}><BezelDeviceFrame device={model.preset.name} orientation={orientation} color={model.preset.defaultColor} zoom={zoom} contentClassName="bk-bezel-content">{preview}</BezelDeviceFrame></div>;
+    return <div className={`bk-library-device ${model.kind} scale-${scaleMode}`} aria-label={`${model.label} device frame`}><BezelDeviceFrame className="bk-native-device-frame" device={model.preset.name} orientation={orientation} color={model.preset.defaultColor} zoom={zoom} contentClassName="bk-bezel-content">{preview}</BezelDeviceFrame></div>;
   }
   const browserClass = browserEngine === "webkit" ? "safari" : browserEngine === "firefox" ? "firefox" : "chrome";
   return <div className={`bk-browser-frame ${browserClass} scale-${scaleMode}`} aria-label={`${model.label} in ${browserLabels[browserEngine]}`}><div className="bk-browser-chrome"><span><i /><i /><i /></span><code>{url}</code><b /></div>{preview}</div>;
@@ -128,14 +153,14 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
       <button type="button" className="bk-viewport-issue-trigger" aria-expanded={selected} onClick={() => onSelect(issue)}><i>{startIndex + index + 1}</i><span><b>{issueFamilyTitle(issue, family.length)}</b><small>{issue.type.replaceAll("-", " ")} · {issue.severity} severity{family.length > 1 ? ` · ${family.length} occurrences` : ""}</small></span><ChevronDown size={16} /></button>
       {selected && <div className="bk-viewport-issue-detail">
         <p>{issue.description}</p>
-        <dl><div><dt>{isPageWideIssue(issue, checkpointWidths) ? "Scope" : "Fails"}</dt><dd>{isPageWideIssue(issue, checkpointWidths) ? "Every checkpoint" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div><div><dt>Selector</dt><dd><code>{issue.selector}</code></dd></div></dl>
+        <dl><div><dt>{isPageWideIssue(issue, checkpointWidths) ? "Scope" : "Fails"}</dt><dd>{isPageWideIssue(issue, checkpointWidths) ? "Every checkpoint" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div><div><dt>Target</dt><dd>{issueTargetDescription(issue)}</dd></div></dl>
         {aiAnalysis && <section className="bk-ai-issue-review"><header className="bk-ai-review-header"><span><Sparkles size={14} /> AI repair brief</span><b>{Math.round(aiAnalysis.confidence * 100)}% confidence</b></header><div className="bk-ai-result"><section><span>What&apos;s happening</span><p>{aiAnalysis.summary}</p></section><section><span>Likely cause</span><p>{aiAnalysis.likelyCause}</p></section><section className="bk-ai-recommendation"><span>Recommended fix</span><p>{aiAnalysis.recommendation}</p></section></div></section>}
-        <div className="bs-actions"><a href={issue.routePath} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Open page</a></div>
+        <div className="bs-actions"><button type="button" onClick={() => void navigator.clipboard.writeText(issue.selector)}><Clipboard size={15} /> Copy selector</button><a href={issue.routePath} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Open page</a></div>
       </div>}
     </article>;
   });
   return <div className="bk-viewport-inspector">
-    <header><div><span>Viewport review</span><h2>{width}px review</h2><p><code>{routePath}</code> · {issues.length ? `${issueFamilies.length} responsive ${issueFamilies.length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b>{issueFamilies.length}</b></header>
+    <header><div><span>Viewport status</span><h2>{width}px · {issues.length ? "Needs attention" : "Passed"}</h2><p><code>{routePath}</code> · {issues.length ? `${issueFamilies.length} responsive ${issueFamilies.length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b aria-label={issues.length ? `${issueFamilies.length} responsive issues` : "Responsive checks passed"}>{issues.length || "OK"}</b></header>
     {issues.length ? <div className="bk-viewport-issue-list">{renderFamilies(issueFamilies)}</div> : <div className="bk-viewport-clear"><Check size={22} /><b>No responsive issues at {width}px</b><p>This checkpoint passed every width-dependent detector.</p></div>}
     {pageWideIssues.length > 0 && <section className="bk-page-wide-findings"><header><div><b>Page-wide checks</b><span>Independent of viewport size</span></div><em>{pageWideFamilies.length} {pageWideFamilies.length === 1 ? "family" : "families"} · {pageWideIssues.length} {pageWideIssues.length === 1 ? "element" : "elements"}</em></header><div className="bk-viewport-issue-list">{renderFamilies(pageWideFamilies, issueFamilies.length)}</div></section>}
   </div>;
@@ -172,7 +197,8 @@ export function ReportViewer({ token }: { token: string }) {
   const pageWideIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && isPageWideIssue(issue, deviceWidths) && issue.routePath === reviewedRoute && issueAffectsWidth(issue, activePreviewWidth));
   const navigableIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && issue.routePath === reviewedRoute);
   const activeIssueIndex = activeIssue ? navigableIssues.findIndex((issue) => issue.fingerprint === activeIssue.fingerprint) : -1;
-  const issueFamilyCount = useMemo(() => new Set(issues.map(issueFamilyKey)).size, [issues]);
+  const responsiveIssueFamilyCount = useMemo(() => new Set(issues.filter((issue) => !isPageWideIssue(issue, deviceWidths)).map(issueFamilyKey)).size, [issues, deviceWidths]);
+  const pageWideIssueFamilyCount = useMemo(() => new Set(issues.filter((issue) => isPageWideIssue(issue, deviceWidths)).map(issueFamilyKey)).size, [issues, deviceWidths]);
 
   const activePreview = previews.find((preview) => preview.width === activePreviewWidth && (preview.browserEngine ?? "chromium") === activeBrowserEngine);
   const displayedWidth = activeIssue ? (comparisonMode === "passing" && activeIssue.lastWorkingWidth ? activeIssue.lastWorkingWidth : activeIssue.evidenceWidth) : activePreviewWidth;
@@ -180,7 +206,7 @@ export function ReportViewer({ token }: { token: string }) {
   const selectedModel = deviceModels.find((model) => model.id === activeDeviceModelId) ?? deviceModels[0]!;
   const displayedModel = selectedModel.kind === displayedDevice && (displayedDevice !== "desktop" || (displayedWidth >= 1440 ? selectedModel.checkpointWidth >= 1440 : selectedModel.checkpointWidth < 1440)) ? selectedModel : modelForWidth(displayedWidth);
   const hasExactIssueEvidence = activeIssue?.evidenceWidth === displayedWidth;
-  const issueImage = (comparisonMode === "passing" ? activeIssue?.passingScreenshot : hasExactIssueEvidence ? activeIssue?.screenshot : activePreview?.image) as string | undefined;
+  const issueImage = (comparisonMode === "passing" ? activeIssue?.passingScreenshot : hasExactIssueEvidence ? activeIssue?.screenshot : activePreview?.image) as ArrayBuffer | undefined;
 
   function selectIssue(issue: ResponsiveIssue) {
     const checkpoint = issueAffectsWidth(issue, activePreviewWidth) ? activePreviewWidth : deviceWidths.reduce((closest, width) => Math.abs(width - issue.evidenceWidth) < Math.abs(closest - issue.evidenceWidth) ? width : closest, deviceWidths[0] ?? issue.evidenceWidth);
@@ -201,7 +227,7 @@ export function ReportViewer({ token }: { token: string }) {
   if (reportQuery.isError) return <main id="main-content" className="breakscope-shell bk-workspace-page"><div className="bk-workspace-empty"><AlertTriangle size={32} /><h2>Report not found</h2><p>This report may have expired or been revoked.</p></div></main>;
 
   return <main id="main-content" className="breakscope-shell bk-workspace-page">
-    <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Report</span></div><div className="bk-command-target"><span>{target ? new URL(target.url).host : "Unknown"}</span><code>{target?.url ?? ""}</code></div><div className="bk-command-actions"><span className={`bk-command-state complete`}>{issueFamilyCount ? `${issueFamilyCount} issue ${issueFamilyCount === 1 ? "family" : "families"}` : "All checks passed"}</span></div></header>
+    <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Report</span></div><div className="bk-command-target"><span>{target ? new URL(target.url).host : "Unknown"}</span><code>{target?.url ?? ""}</code></div><div className="bk-command-actions"><span className="bk-command-state complete">{responsiveIssueFamilyCount ? `${responsiveIssueFamilyCount} responsive ${responsiveIssueFamilyCount === 1 ? "issue" : "issues"}` : pageWideIssueFamilyCount ? `${pageWideIssueFamilyCount} page-wide ${pageWideIssueFamilyCount === 1 ? "check" : "checks"}` : "All checks passed"}</span></div></header>
     <section className="bs-workspace" style={{ "--bk-inspector-width": `${inspectorWidth}px` } as CSSProperties}>
       <section className="bk-stage-main">
         <div className="bk-canvas-toolbar"><span><i className={activeIssue ? "fail" : ""} />{activeIssue ? "Failure evidence" : "Captured evidence"}</span><div className="bk-checkpoint-control"><span>Captured checkpoints</span><div className="bk-device-switcher" role="group" aria-label="Captured checkpoints">{deviceWidths.map((width) => {
@@ -216,7 +242,7 @@ export function ReportViewer({ token }: { token: string }) {
           const failed = issues.some((issue) => (issue.browserEngine ?? "chromium") === engine && issueAffectsWidth(issue, activePreviewWidth));
           return <button type="button" key={engine} className={`${activeBrowserEngine === engine ? "active" : ""} ${failed ? "failed" : ready ? "ready" : "unavailable"}`} aria-pressed={activeBrowserEngine === engine} onClick={() => { setActiveBrowserEngine(engine); setActiveIssue(undefined); setComparisonMode("failing"); }}><span><b>{browserLabels[engine]}</b><small>{failed ? "Issues" : ready ? "Ready" : "Not captured"}</small></span><i aria-hidden="true" /></button>;
         })}</div></div></div></div>
-        <div className={`bk-stage-canvas ${displayedDevice === "phone" ? "phone-preview" : ""}`}>
+        <div className="bk-stage-canvas checkpoint-grid">
           {activeIssue ? <div className="bk-evidence-view"><div className="bk-evidence-bar"><span className={comparisonMode}>{comparisonMode === "passing" ? <Check size={14} /> : <AlertTriangle size={14} />}{comparisonMode === "passing" ? `Passing · ${activeIssue.lastWorkingWidth}px` : `Failing · ${displayedWidth}px`}<small>{activeIssue.selector}</small></span><div className="bk-issue-stepper" aria-label={`Issue ${activeIssueIndex + 1} of ${navigableIssues.length}`}><button type="button" aria-label="Previous issue" onClick={() => stepIssue(-1)}><ChevronLeft size={15} /></button><em><span>Issue</span> {activeIssueIndex + 1} of {navigableIssues.length}</em><button type="button" aria-label="Next issue" onClick={() => stepIssue(1)}><ChevronRight size={15} /></button></div>{activeIssue.passingScreenshot && <div><button className={comparisonMode === "failing" ? "active" : ""} onClick={() => setComparisonMode("failing")}>Failing</button><button className={comparisonMode === "passing" ? "active" : ""} onClick={() => setComparisonMode("passing")}>Passing</button></div>}</div><DeviceFrame model={displayedModel} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} url={target?.url ?? ""}><ResultImage image={issueImage} alt={`${comparisonMode} evidence for ${activeIssue.title}`} /></DeviceFrame></div>
           : activePreview ? <DeviceFrame model={displayedModel} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} url={target?.url ?? ""}><ResultImage image={activePreview.image} alt={`${activePreview.label} checkpoint at ${activePreview.width}px`} /></DeviceFrame>
           : <div className="bk-missing-checkpoint"><ScanSearch size={32} /><h2>No capture at {displayedWidth}px</h2></div>}

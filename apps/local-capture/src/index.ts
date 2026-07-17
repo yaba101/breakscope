@@ -12,6 +12,13 @@ const allowedOrigins = new Set([
   "http://localhost:3100",
   "http://127.0.0.1:3100",
 ]);
+let activeCaptures = 0;
+let completedCaptures = 0;
+
+function runtimeStats() {
+  const memory = process.memoryUsage();
+  return { activeCaptures, completedCaptures, rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, externalBytes: memory.external };
+}
 
 interface CapturePageRequest {
   url: string;
@@ -319,7 +326,9 @@ async function captureWithBrowser(
     }
   }
   if (!snapshotData) throw new Error("Unable to read the settled page snapshot");
-  const png = includeImage ? await page.screenshot({ fullPage: true, animations: "disabled", type: "png" }) : undefined;
+  // Full-page PNGs are unbounded and are retained by the workspace while a scan is open.
+  // Capture the inspected viewport instead, keeping evidence bounded by the configured checkpoint.
+  const png = includeImage ? await page.screenshot({ fullPage: false, animations: "disabled", type: "png" }) : undefined;
   const finalUrl = page.url();
   const snapshot: PageSnapshot = {
     ...snapshotData,
@@ -338,10 +347,13 @@ async function captureWithBrowser(
 
 async function capture(url: string, viewport: ViewportId, width?: number, height?: number, includeImage = true, profile?: CaptureProfile) {
   const browser = await browserType(profile?.browserEngine).launch({ headless: true });
+  activeCaptures += 1;
   try {
     return await captureWithBrowser(browser, url, viewport, width, height, includeImage, profile);
   } finally {
     await browser.close();
+    activeCaptures -= 1;
+    completedCaptures += 1;
   }
 }
 
@@ -349,6 +361,7 @@ async function scanRoute(input: ScanRouteRequest) {
   const widths = [...new Set(input.widths)].sort((a, b) => a - b);
   if (!widths.length || widths.length > 32) throw new Error("Scan requires between 1 and 32 viewport widths");
   const browser = await browserType(input.profile?.browserEngine).launch({ headless: true });
+  activeCaptures += 1;
   try {
     const samples = [];
     for (const width of widths) {
@@ -372,6 +385,8 @@ async function scanRoute(input: ScanRouteRequest) {
     return { routePath: input.routePath, samples };
   } finally {
     await browser.close();
+    activeCaptures -= 1;
+    completedCaptures += 1;
   }
 }
 
@@ -476,7 +491,7 @@ const server = createServer((request, response) => {
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   if (request.method === "OPTIONS") return response.writeHead(204).end();
-  if (request.method === "GET" && request.url === "/health") return send(response, 200, { ok: true });
+  if (request.method === "GET" && request.url === "/health") return send(response, 200, { ok: true, ...runtimeStats() });
   if (request.method !== "POST" || !["/capture-page", "/discover-routes", "/scan-route"].includes(request.url ?? "")) {
     return send(response, 404, { error: "Not found" });
   }

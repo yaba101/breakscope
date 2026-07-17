@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResponsiveIssue } from "@breakscope/shared";
 import { BreakscopeWorkspace } from "./breakscope-workspace";
 
-const { loadBreakscopeState, saveBreakscopeState, capturePageLocally, discoverRoutesLocally, scanRouteLocally } = vi.hoisted(() => ({
+const { clearBreakscopeState, loadBreakscopeState, saveBreakscopeState, capturePageLocally, discoverRoutesLocally, scanRouteLocally } = vi.hoisted(() => ({
+  clearBreakscopeState: vi.fn(),
   loadBreakscopeState: vi.fn(),
   saveBreakscopeState: vi.fn(),
   capturePageLocally: vi.fn(),
@@ -12,7 +13,7 @@ const { loadBreakscopeState, saveBreakscopeState, capturePageLocally, discoverRo
   scanRouteLocally: vi.fn(),
 }));
 
-vi.mock("@/lib/breakscope-workspace", () => ({ loadBreakscopeState, saveBreakscopeState }));
+vi.mock("@/lib/breakscope-workspace", () => ({ clearBreakscopeState, loadBreakscopeState, saveBreakscopeState }));
 vi.mock("@/lib/local-capture", () => ({ capturePageLocally, discoverRoutesLocally, scanRouteLocally }));
 
 const target = {
@@ -64,6 +65,7 @@ describe("BreakscopeWorkspace", () => {
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     discoverRoutesLocally.mockResolvedValue({ routes: ["/", "/pricing", "/blog"] });
     saveBreakscopeState.mockResolvedValue(undefined);
+    clearBreakscopeState.mockResolvedValue(undefined);
     loadBreakscopeState.mockResolvedValue({ target, availableRoutes: ["/", "/pricing", "/blog"], latestIssues: [], updatedAt: 1 });
   });
 
@@ -87,17 +89,18 @@ describe("BreakscopeWorkspace", () => {
     loadBreakscopeState.mockResolvedValue({ target, latestIssues: [issue], updatedAt: 1 });
     renderWorkspace();
 
-    expect(await screen.findByRole("heading", { name: "320px review" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "320px · Needs attention" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "failing evidence for Horizontal overflow" })).toBeInTheDocument();
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Horizontal overflow/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getAllByText("main").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("main affected by this check").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Highlighted target: main affected by this check")).toBeInTheDocument();
     expect(screen.getByText("Detector evidence")).toBeInTheDocument();
     const issueHighlight = document.querySelector(".bk-result-image-layer > .bs-highlight");
-    expect(issueHighlight).toHaveTextContent("Issue 1");
+    expect(issueHighlight).toHaveTextContent("main affected by this check");
     expect(issueHighlight).toHaveStyle({ top: "60%", left: "5%", width: "90%" });
     expect(document.querySelector(".bk-minimap-issue")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Run AI analysis" })).toBeInTheDocument();
+    expect(await screen.findByText("Building a focused repair", { selector: "b" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open page/i })).toHaveAttribute("href", "https://example.com/");
     expect(screen.getByRole("button", { name: "Phone 375px" })).toHaveClass("failed");
 
@@ -106,10 +109,13 @@ describe("BreakscopeWorkspace", () => {
     fireEvent.keyDown(inspectorResizer, { key: "ArrowLeft" });
     expect(inspectorResizer).toHaveAttribute("aria-valuenow", "400");
 
+    fireEvent.click(screen.getByRole("button", { name: /Horizontal overflow/ }));
+    expect(screen.getByRole("button", { name: /Horizontal overflow/ })).toHaveAttribute("aria-expanded", "false");
+
     fireEvent.click(screen.getByRole("button", { name: "Tablet 768px" }));
-    expect(screen.getByRole("heading", { name: "768px review" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "768px · Passed" })).toBeInTheDocument();
     expect(screen.getByText("No responsive issues at 768px")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Run AI analysis" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Regenerate repair plan" })).not.toBeInTheDocument();
   });
 
   it("groups repeated detector findings while preserving each affected element", async () => {
@@ -127,7 +133,7 @@ describe("BreakscopeWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Next affected element" }));
     expect(await screen.findByText("2 of 2", { selector: ".bk-occurrence-nav output" })).toBeInTheDocument();
-    expect(screen.getAllByText("main img:nth-of-type(2)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("img missing alternative text").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Tablet 768px" }));
     expect(screen.getByText("No responsive issues at 768px")).toBeInTheDocument();
@@ -161,12 +167,12 @@ describe("BreakscopeWorkspace", () => {
     loadBreakscopeState.mockResolvedValue({ target, latestIssues: [phoneOnlyImage], updatedAt: 1 });
     renderWorkspace();
 
-    expect(await screen.findByRole("heading", { name: "375px review" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "375px · Needs attention" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Image has no text alternative/i })).toBeInTheDocument();
     expect(screen.queryByText("Page-wide checks")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Tablet 768px" }));
-    expect(screen.getByRole("heading", { name: "768px review" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "768px · Passed" })).toBeInTheDocument();
     expect(screen.getByText("No responsive issues at 768px")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Image has no text alternative/i })).not.toBeInTheDocument();
   });
@@ -177,17 +183,14 @@ describe("BreakscopeWorkspace", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { finishRequest = resolve; })));
     renderWorkspace();
 
-    await screen.findByRole("heading", { name: "320px review" });
-    const explainButton = screen.getByRole("button", { name: "Run AI analysis" });
-    expect(explainButton.closest(".bk-ai-result-actions")).toHaveClass("single");
-    fireEvent.click(explainButton);
-
+    await screen.findByRole("heading", { name: "320px · Needs attention" });
     expect(await screen.findByText("Building a focused repair", { selector: "b" })).toBeInTheDocument();
     expect(screen.getByText(/Reading the screenshot and detector evidence/).closest('[role="status"]')).toBeInTheDocument();
     finishRequest?.(new Response(JSON.stringify({ error: '[{"code":"invalid_type","path":["summary"]}]' }), { status: 502, headers: { "Content-Type": "application/json" } }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("The AI explanation could not be generated. Please try again.");
     expect(screen.queryByText(/invalid_type/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
   it("builds a copyable repair prompt from the issue and AI analysis", async () => {
@@ -205,13 +208,13 @@ describe("BreakscopeWorkspace", () => {
     } }), { status: 200, headers: { "Content-Type": "application/json" } })));
     renderWorkspace();
 
-    await screen.findByRole("heading", { name: "320px review" });
-    fireEvent.click(screen.getByRole("button", { name: "Run AI analysis" }));
+    await screen.findByRole("heading", { name: "320px · Needs attention" });
     expect(await screen.findByText("What’s happening")).toBeInTheDocument();
     expect(screen.getByText("A fixed width is wider than its container.")).toBeInTheDocument();
     expect(screen.getByText("Replace the fixed width with a constrained fluid width.")).toBeInTheDocument();
     const copyPromptButton = await screen.findByRole("button", { name: "Copy fix prompt" });
     expect(copyPromptButton.closest(".bk-ai-result-actions")).toHaveClass("bs-actions");
+    expect(screen.getByRole("button", { name: "Regenerate repair plan" })).toBeInTheDocument();
     fireEvent.click(copyPromptButton);
 
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Selector: main"));
@@ -366,5 +369,25 @@ describe("BreakscopeWorkspace", () => {
 
     await waitFor(() => expect(capturePageLocally).toHaveBeenCalledWith(expect.objectContaining({ width: 768, routePath: "/" })));
     await waitFor(() => expect(saveBreakscopeState).toHaveBeenCalledWith(expect.objectContaining({ latestPreviews: expect.arrayContaining([expect.objectContaining({ width: 768 })]) })));
+  });
+
+  it("clears retained evidence without discarding the configured test", async () => {
+    loadBreakscopeState.mockResolvedValue({
+      target,
+      latestIssues: [issue],
+      latestPreviews: [{ width: 375, label: "Phone", routePath: "/", image: new ArrayBuffer(8) }],
+      updatedAt: 1,
+    });
+    renderWorkspace();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open workspace controls" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Clear captured evidence/i }));
+
+    await waitFor(() => expect(saveBreakscopeState).toHaveBeenCalledWith(expect.objectContaining({
+      target,
+      latestIssues: [],
+      latestPreviews: [],
+      scanJob: undefined,
+    })));
   });
 });

@@ -1,15 +1,18 @@
 "use client";
 
 import { ArrowRight, Check, Globe2, LoaderCircle, RefreshCw } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import type { TestTarget } from "@breakscope/shared";
+import type { BrowserEngine, TestTarget } from "@breakscope/shared";
 import { isCaptureUrl } from "@breakscope/validation";
 import { discoverRoutesLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys } from "@/lib/breakscope-queries";
 import { loadBreakscopeState, saveBreakscopeState } from "@/lib/breakscope-workspace";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
+
+const allBrowserEngines: BrowserEngine[] = ["chromium", "firefox", "webkit"];
 
 export function BreakscopeSetup() {
   const router = useRouter();
@@ -19,14 +22,12 @@ export function BreakscopeSetup() {
   const [routes, setRoutes] = useState<string[]>([]);
   const [selectedRoutes, setSelectedRoutes] = useState<string[]>([]);
   const [deviceWidths, setDeviceWidths] = useState<number[]>([]);
+  const [browserEngines, setBrowserEngines] = useState<BrowserEngine[]>(allBrowserEngines);
   const [ready, setReady] = useState(false);
   const [opening, setOpening] = useState(false);
   const [rediscovering, setRediscovering] = useState(false);
   const [urlError, setUrlError] = useState("");
   const selectedSet = useMemo(() => new Set(selectedRoutes), [selectedRoutes]);
-  const rangeStart = deviceWidths.length ? Math.min(...deviceWidths) : 320;
-  const rangeEnd = deviceWidths.length ? Math.max(...deviceWidths) : 1440;
-  const rangeSpan = Math.max(1, rangeEnd - rangeStart);
 
   useEffect(() => {
     let active = true;
@@ -40,6 +41,7 @@ export function BreakscopeSetup() {
       setUrlInput(state.draft.url);
       setRoutes(state.draft.routes);
       setDeviceWidths(state.draft.deviceWidths);
+      setBrowserEngines(state.draft.browserEngines?.length ? state.draft.browserEngines : state.target?.browserEngines?.length ? state.target.browserEngines : allBrowserEngines);
       setSelectedRoutes(state.draft.routes.includes("/") ? ["/"] : state.draft.routes.slice(0, 1));
       setReady(true);
     }).catch(() => router.replace("/"));
@@ -56,6 +58,12 @@ export function BreakscopeSetup() {
     setDeviceWidths((current) => current.includes(width)
       ? current.length > 1 ? current.filter((item) => item !== width) : current
       : [...current, width].sort((a, b) => a - b));
+  }
+
+  function toggleBrowser(engine: BrowserEngine) {
+    setBrowserEngines((current) => current.includes(engine)
+      ? current.length > 1 ? current.filter((item) => item !== engine) : current
+      : [...current, engine]);
   }
 
   async function updateTarget(event: React.FormEvent<HTMLFormElement>) {
@@ -76,7 +84,7 @@ export function BreakscopeSetup() {
       await saveBreakscopeState({
         ...previous,
         availableRoutes: discoveredRoutes,
-        draft: { url: value, routes: discoveredRoutes, deviceWidths, discoveredAt: now },
+        draft: { url: value, routes: discoveredRoutes, deviceWidths, browserEngines, discoveredAt: now },
         updatedAt: now,
       });
       setUrl(value);
@@ -107,7 +115,7 @@ export function BreakscopeSetup() {
       maxWidth: Math.max(...deviceWidths),
       executionMode: "local",
       deviceWidths,
-      browserEngines: ["chromium", "firefox", "webkit"],
+      browserEngines,
       createdAt: previous.target?.url === url ? previous.target.createdAt : now,
       updatedAt: now,
     };
@@ -137,7 +145,6 @@ export function BreakscopeSetup() {
           <button type="submit" disabled={rediscovering || !urlInput.trim()}>{rediscovering ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}<span>{rediscovering ? "Finding routes" : "Refresh routes"}</span></button>
           {urlError && <span className="bk-setup-url-error" role="alert">{urlError}</span>}
         </form>
-        <div className="bk-setup-discovery-state" aria-live="polite"><i />{rediscovering ? "Discovering routes" : `${routes.length} routes found`}</div>
       </header>
       <section className="bk-setup-shell">
         <header className="bk-setup-intro">
@@ -149,6 +156,8 @@ export function BreakscopeSetup() {
             <span><b>{selectedRoutes.length}</b> {selectedRoutes.length === 1 ? "route" : "routes"}</span>
             <i aria-hidden="true" />
             <span><b>{deviceWidths.length}</b> viewports</span>
+            <i aria-hidden="true" />
+            <span><b>{browserEngines.length}</b> browsers</span>
           </div>
         </header>
 
@@ -168,7 +177,6 @@ export function BreakscopeSetup() {
           <section className="bk-setup-panel bk-setup-viewports-panel" aria-labelledby="setup-viewports-title">
             <div className="bk-setup-section-heading">
               <div><h2 id="setup-viewports-title">Viewport checkpoints</h2><p>Compare the same page across key responsive widths.</p></div>
-              <span>{deviceWidths.length} selected</span>
             </div>
             <div className="bk-setup-devices">{deviceChoices.map(({ width, label, detail, icon: Icon }) => {
               const selected = deviceWidths.includes(width);
@@ -176,17 +184,18 @@ export function BreakscopeSetup() {
             })}</div>
           </section>
 
-          <section className="bk-setup-panel bk-setup-range-panel" aria-labelledby="setup-range-title">
-            <div className="bk-setup-range-note">
-              <span id="setup-range-title">Responsive range</span>
-              <strong>{rangeStart}–{rangeEnd}px</strong>
-              <div aria-hidden="true">{deviceWidths.map((width) => <i key={width} style={{ left: `${rangeStart === rangeEnd ? 50 : (width - rangeStart) / rangeSpan * 100}%` }} />)}</div>
-              <p>Breakscope checks the selected widths, then refines any unstable range automatically.</p>
-            </div>
+          <section className="bk-setup-panel bk-setup-browsers-panel" aria-labelledby="setup-browsers-title">
+            <div className="bk-setup-section-heading"><div><h2 id="setup-browsers-title">Browsers to test</h2><p>Choose the rendering engines for this run.</p></div></div>
+            <div className="bk-setup-browsers" role="group" aria-label="Browsers to test">{allBrowserEngines.map((engine) => {
+              const selected = browserEngines.includes(engine);
+              const label = engine === "chromium" ? "Chrome" : engine === "firefox" ? "Firefox" : "Safari";
+              const icon = engine === "chromium" ? "/icons/browsers/chrome.svg" : engine === "firefox" ? "/icons/browsers/firefox.svg" : "/icons/browsers/safari.svg";
+              return <button type="button" key={engine} aria-pressed={selected} onClick={() => toggleBrowser(engine)}><Image src={icon} width={24} height={24} alt="" /><span><b>{label}</b><small>{engine === "chromium" ? "Chromium" : engine === "webkit" ? "WebKit" : "Gecko"}</small></span><i aria-hidden="true">{selected && <Check size={12} />}</i></button>;
+            })}</div>
           </section>
 
           <footer className="bk-setup-action">
-            <div><strong>Ready to inspect</strong><span>{selectedRoutes.length} {selectedRoutes.length === 1 ? "page" : "pages"} across {deviceWidths.length} viewport checkpoints</span></div>
+            <div><strong>Ready to inspect</strong><span>{selectedRoutes.length} {selectedRoutes.length === 1 ? "page" : "pages"} · {deviceWidths.length} viewports · {browserEngines.length} browsers</span></div>
             <button type="button" disabled={opening} onClick={() => void openWorkspace()}>{opening ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}{opening ? "Opening canvas..." : "Open testing canvas"}</button>
           </footer>
         </div>

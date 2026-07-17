@@ -1,4 +1,4 @@
-import type { CaptureProfile, PageSnapshot, ViewportId, ViewportSample } from "@breakscope/shared";
+import type { CaptureProfile, PageSnapshot, ViewportId } from "@breakscope/shared";
 
 interface CapturePageResponse {
   image?: string;
