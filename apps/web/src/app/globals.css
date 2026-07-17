@@ -6148,27 +6148,6 @@ button {
 .bk-setup-devices button b { color: var(--setup-ink); font-size: 13px; }
 .bk-setup-devices button small { color: var(--setup-muted); font: 10px/1 var(--font-stratum-mono), monospace; }
 .bk-setup-devices button > i { background: var(--setup-ink); color: white; }
-.bk-setup-range-note {
-  align-self: stretch;
-  margin: 16px;
-  border: 1px solid var(--setup-border);
-  border-radius: var(--stratum-radius-control);
-  background: var(--setup-subtle);
-  padding: 16px;
-}
-.bk-setup-range-note > span { color: var(--setup-muted); font-size: 12px; }
-.bk-setup-range-note > strong { float: right; color: var(--setup-ink); font: 600 11px/1.4 var(--font-stratum-mono), monospace; }
-.bk-setup-range-note > div {
-  position: relative;
-  display: flex;
-  height: 22px;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
-}
-.bk-setup-range-note > div::before { position: absolute; right: 4px; left: 4px; height: 2px; background: #9e978b; content: ""; }
-.bk-setup-range-note > div i { z-index: 1; width: 10px; height: 10px; border: 2px solid var(--setup-subtle); border-radius: 50%; background: var(--setup-ink); box-shadow: 0 0 0 1px var(--setup-ink); }
-.bk-setup-range-note p { max-width: 470px; margin: 7px 0 0; color: var(--setup-muted); font-size: 12px; line-height: 1.45; }
 .bk-setup-action {
   display: flex;
   min-height: 72px;
@@ -6222,8 +6201,6 @@ button {
   .bk-setup-intro p { display: none; }
   .bk-setup-section-heading { min-height: 64px; }
   .bk-setup-devices button { min-height: 88px; }
-  .bk-setup-range-note { margin-block: 10px; padding-block: 11px; }
-  .bk-setup-range-note p { display: none; }
   .bk-setup-action { min-height: 62px; }
   .bk-setup-action button { min-height: 44px; }
 }
@@ -6428,7 +6405,6 @@ button {
 .bk-setup-panel,
 .bk-setup-action,
 .bk-setup-devices button,
-.bk-setup-range-note,
 .bk-command-target,
 .bk-command-run,
 .bk-command-state,
@@ -6532,10 +6508,9 @@ button {
   grid-template-areas:
     "routes viewports"
     "routes browsers"
-    "routes range"
     "routes action";
   grid-template-columns: minmax(360px, .92fr) minmax(500px, 1.08fr);
-  grid-template-rows: minmax(178px, 1fr) minmax(104px, auto) auto 76px;
+  grid-template-rows: minmax(178px, 1fr) minmax(104px, auto) 76px;
   gap: 12px;
   overflow: visible;
 }
@@ -6545,24 +6520,9 @@ button {
   grid-template-rows: auto auto;
 }
 .bk-setup-browsers-panel { grid-area: browsers; }
-.bk-setup-range-panel { grid-area: range; }
 .bk-setup-action { grid-area: action; }
 .bk-setup-viewports-panel .bk-setup-devices { padding: 14px; }
 .bk-setup-viewports-panel .bk-setup-devices button { min-height: 105px; }
-.bk-setup-range-panel .bk-setup-range-note {
-  width: 100%;
-  margin: 0;
-  border: 0;
-  background: transparent;
-  padding: 16px 18px;
-}
-.bk-setup-range-note > div { margin-inline: 5px; }
-.bk-setup-range-note > div::before { right: 0; left: 0; }
-.bk-setup-range-note > div i {
-  position: absolute;
-  border-color: var(--color-surface);
-  transform: translateX(-50%);
-}
 .bk-setup-action { min-height: 0; }
 .bk-setup-browsers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 16px 18px 18px; }
 .bk-setup-browsers button { display: grid; min-height: 58px; grid-template-columns: 28px minmax(0, 1fr) 20px; align-items: center; gap: 9px; border: 1px solid var(--setup-border); border-radius: 7px; background: var(--setup-panel); padding: 9px 10px; color: var(--setup-muted); text-align: left; cursor: pointer; }
@@ -6597,16 +6557,15 @@ button {
   .bk-setup-options {
     display: grid;
     height: auto;
-    grid-template-areas: "viewports" "browsers" "range" "routes" "action";
+    grid-template-areas: "viewports" "browsers" "routes" "action";
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto minmax(300px, 1fr) 64px;
+    grid-template-rows: auto auto minmax(300px, 1fr) 64px;
     overflow-y: auto;
   }
   .bk-setup-panel + .bk-setup-panel { margin-top: 0; }
   .bk-setup-routes-panel,
   .bk-setup-viewports-panel,
   .bk-setup-browsers-panel { min-height: 0; }
-  .bk-setup-range-panel { min-height: auto; }
 }
 
 @media (max-width: 520px) {
@@ -7162,7 +7121,7 @@ button {
   pointer-events: none;
   transform: translateX(-50%);
 }
-.bk-stage-canvas.phone-preview::before {
+.bk-stage-canvas.checkpoint-grid::before {
   inset: 0;
   width: auto;
   background-color: transparent;

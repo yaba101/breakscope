@@ -28,9 +28,6 @@ export function BreakscopeSetup() {
   const [rediscovering, setRediscovering] = useState(false);
   const [urlError, setUrlError] = useState("");
   const selectedSet = useMemo(() => new Set(selectedRoutes), [selectedRoutes]);
-  const rangeStart = deviceWidths.length ? Math.min(...deviceWidths) : 320;
-  const rangeEnd = deviceWidths.length ? Math.max(...deviceWidths) : 1440;
-  const rangeSpan = Math.max(1, rangeEnd - rangeStart);
 
   useEffect(() => {
     let active = true;
@@ -185,14 +182,6 @@ export function BreakscopeSetup() {
               const selected = deviceWidths.includes(width);
               return <button type="button" key={width} aria-pressed={selected} onClick={() => toggleDevice(width)}><Icon size={18} /><span><b>{label}</b><small>{detail}</small></span><i>{selected && <Check size={12} />}</i></button>;
             })}</div>
-          </section>
-
-          <section className="bk-setup-panel bk-setup-range-panel" aria-labelledby="setup-range-title">
-            <div className="bk-setup-range-note">
-              <span id="setup-range-title">Responsive range</span>
-              <strong>{rangeStart}–{rangeEnd}px</strong>
-              <div aria-hidden="true">{deviceWidths.map((width) => <i key={width} style={{ left: `${rangeStart === rangeEnd ? 50 : (width - rangeStart) / rangeSpan * 100}%` }} />)}</div>
-            </div>
           </section>
 
           <section className="bk-setup-panel bk-setup-browsers-panel" aria-labelledby="setup-browsers-title">
