@@ -7,10 +7,15 @@ export async function createAuth() {
   const githubConfigured = Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET);
   const infraConfigured = Boolean(env.BETTER_AUTH_API_KEY);
 
+  const secret = env.BETTER_AUTH_SECRET;
+  if (!secret && env.APP_ENV === "production") {
+    throw new Error("BETTER_AUTH_SECRET must be set in production");
+  }
+
   return betterAuth({
     appName: "UIRift",
     baseURL: env.BETTER_AUTH_URL,
-    secret: env.BETTER_AUTH_SECRET ?? "uirift-local-development-secret-change-before-deploying",
+    secret: secret ?? "uirift-local-development-secret-change-before-deploying",
     database: env.DB,
     socialProviders: githubConfigured
       ? { github: { clientId: env.GITHUB_CLIENT_ID!, clientSecret: env.GITHUB_CLIENT_SECRET!, scope: ["user:email"] } }

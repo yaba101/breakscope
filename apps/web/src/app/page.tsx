@@ -1,5 +1,5 @@
-import { LandingScreen } from "@/components/screens";
+import { BreakscopeLanding } from "@/components/breakscope-landing";
 
 export default function Home() {
-  return <LandingScreen />;
+  return <BreakscopeLanding />;
 }

@@ -1,5 +1,7 @@
 import pixelmatch from "pixelmatch";
 
+export { analyzeResponsiveSamples } from "./responsive";
+
 export { comparePageSnapshots } from "./semantic";
 
 export interface PixelRegion {

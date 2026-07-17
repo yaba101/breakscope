@@ -7,25 +7,28 @@ export async function GET(
 ) {
   try {
     const { token } = await params;
+    const tokenHash = await sha256(token);
     const env = await getBindings();
-    const report = await env.DB.prepare(
-      `SELECT run.id, run.route_path, run.viewport_id, run.changed_pixels, run.changed_ratio,
-        run.decision, run.decision_note, run.completed_at, share.expires_at,
-        project.name AS project_name
-       FROM share
-       JOIN run ON run.id = share.run_id
-       JOIN project ON project.id = run.project_id
-       WHERE share.token_hash = ? AND share.expires_at > ? AND share.revoked_at IS NULL`,
+    const now = Date.now();
+
+    const share = await env.DB.prepare(
+      "SELECT id, payload, created_at, expires_at FROM report_share WHERE token_hash = ? AND expires_at > ?",
     )
-      .bind(await sha256(token), Date.now())
-      .first();
-    if (!report)
-      throw new HttpError(
-        404,
-        "REPORT_EXPIRED",
-        "This shared report is unavailable or expired",
-      );
-    return Response.json({ report });
+      .bind(tokenHash, now)
+      .first<{ id: string; payload: string; created_at: number; expires_at: number }>();
+
+    if (!share) {
+      throw new HttpError(404, "REPORT_EXPIRED", "This shared report is unavailable or expired");
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(share.payload);
+    } catch {
+      throw new HttpError(500, "INVALID_REPORT", "Report data is corrupted");
+    }
+
+    return Response.json({ payload, createdAt: share.created_at, expiresAt: share.expires_at });
   } catch (error) {
     return errorResponse(error);
   }

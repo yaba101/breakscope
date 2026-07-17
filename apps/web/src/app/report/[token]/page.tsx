@@ -1,11 +1,10 @@
-import type { Metadata } from "next";
-import { SharedReportScreen } from "@/components/screens";
-export const metadata: Metadata = { title: "Shared visual review" };
-export default async function SharedReportPage({
-  params,
-}: {
+import { ReportViewer } from "@/components/report-viewer";
+
+interface ReportPageProps {
   params: Promise<{ token: string }>;
-}) {
+}
+
+export default async function ReportPage({ params }: ReportPageProps) {
   const { token } = await params;
-  return <SharedReportScreen token={token} />;
+  return <ReportViewer token={token} />;
 }
