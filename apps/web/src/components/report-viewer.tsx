@@ -155,7 +155,7 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
     </article>;
   });
   return <div className="bk-viewport-inspector">
-    <header><div><span>Viewport review</span><h2>{width}px review</h2><p><code>{routePath}</code> · {issues.length ? `${issueFamilies.length} responsive ${issueFamilies.length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b>{issueFamilies.length}</b></header>
+    <header><div><span>Viewport status</span><h2>{width}px · {issues.length ? "Needs attention" : "Passed"}</h2><p><code>{routePath}</code> · {issues.length ? `${issueFamilies.length} responsive ${issueFamilies.length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b aria-label={issues.length ? `${issueFamilies.length} responsive issues` : "Responsive checks passed"}>{issues.length || "OK"}</b></header>
     {issues.length ? <div className="bk-viewport-issue-list">{renderFamilies(issueFamilies)}</div> : <div className="bk-viewport-clear"><Check size={22} /><b>No responsive issues at {width}px</b><p>This checkpoint passed every width-dependent detector.</p></div>}
     {pageWideIssues.length > 0 && <section className="bk-page-wide-findings"><header><div><b>Page-wide checks</b><span>Independent of viewport size</span></div><em>{pageWideFamilies.length} {pageWideFamilies.length === 1 ? "family" : "families"} · {pageWideIssues.length} {pageWideIssues.length === 1 ? "element" : "elements"}</em></header><div className="bk-viewport-issue-list">{renderFamilies(pageWideFamilies, issueFamilies.length)}</div></section>}
   </div>;
@@ -192,7 +192,8 @@ export function ReportViewer({ token }: { token: string }) {
   const pageWideIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && isPageWideIssue(issue, deviceWidths) && issue.routePath === reviewedRoute && issueAffectsWidth(issue, activePreviewWidth));
   const navigableIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && issue.routePath === reviewedRoute);
   const activeIssueIndex = activeIssue ? navigableIssues.findIndex((issue) => issue.fingerprint === activeIssue.fingerprint) : -1;
-  const issueFamilyCount = useMemo(() => new Set(issues.map(issueFamilyKey)).size, [issues]);
+  const responsiveIssueFamilyCount = useMemo(() => new Set(issues.filter((issue) => !isPageWideIssue(issue, deviceWidths)).map(issueFamilyKey)).size, [issues, deviceWidths]);
+  const pageWideIssueFamilyCount = useMemo(() => new Set(issues.filter((issue) => isPageWideIssue(issue, deviceWidths)).map(issueFamilyKey)).size, [issues, deviceWidths]);
 
   const activePreview = previews.find((preview) => preview.width === activePreviewWidth && (preview.browserEngine ?? "chromium") === activeBrowserEngine);
   const displayedWidth = activeIssue ? (comparisonMode === "passing" && activeIssue.lastWorkingWidth ? activeIssue.lastWorkingWidth : activeIssue.evidenceWidth) : activePreviewWidth;
@@ -221,7 +222,7 @@ export function ReportViewer({ token }: { token: string }) {
   if (reportQuery.isError) return <main id="main-content" className="breakscope-shell bk-workspace-page"><div className="bk-workspace-empty"><AlertTriangle size={32} /><h2>Report not found</h2><p>This report may have expired or been revoked.</p></div></main>;
 
   return <main id="main-content" className="breakscope-shell bk-workspace-page">
-    <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Report</span></div><div className="bk-command-target"><span>{target ? new URL(target.url).host : "Unknown"}</span><code>{target?.url ?? ""}</code></div><div className="bk-command-actions"><span className={`bk-command-state complete`}>{issueFamilyCount ? `${issueFamilyCount} issue ${issueFamilyCount === 1 ? "family" : "families"}` : "All checks passed"}</span></div></header>
+    <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Report</span></div><div className="bk-command-target"><span>{target ? new URL(target.url).host : "Unknown"}</span><code>{target?.url ?? ""}</code></div><div className="bk-command-actions"><span className="bk-command-state complete">{responsiveIssueFamilyCount ? `${responsiveIssueFamilyCount} responsive ${responsiveIssueFamilyCount === 1 ? "issue" : "issues"}` : pageWideIssueFamilyCount ? `${pageWideIssueFamilyCount} page-wide ${pageWideIssueFamilyCount === 1 ? "check" : "checks"}` : "All checks passed"}</span></div></header>
     <section className="bs-workspace" style={{ "--bk-inspector-width": `${inspectorWidth}px` } as CSSProperties}>
       <section className="bk-stage-main">
         <div className="bk-canvas-toolbar"><span><i className={activeIssue ? "fail" : ""} />{activeIssue ? "Failure evidence" : "Captured evidence"}</span><div className="bk-checkpoint-control"><span>Captured checkpoints</span><div className="bk-device-switcher" role="group" aria-label="Captured checkpoints">{deviceWidths.map((width) => {
