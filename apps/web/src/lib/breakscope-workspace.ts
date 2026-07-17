@@ -96,3 +96,14 @@ export async function saveBreakscopeState(state: BreakscopeState) {
   });
   database.close();
 }
+
+export async function clearBreakscopeState() {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(storeName, "readwrite");
+    transaction.objectStore(storeName).delete(stateKey);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  database.close();
+}
