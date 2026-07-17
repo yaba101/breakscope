@@ -1,8 +1,8 @@
 import { createServer, type ServerResponse } from "node:http";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import { chromium } from "@playwright/test";
-import { viewportProfiles, type PageSnapshot, type ViewportId } from "@uirift/shared";
+import { chromium, devices, firefox, webkit, type Browser, type BrowserContextOptions, type BrowserType } from "@playwright/test";
+import { viewportProfiles, type BrowserEngine, type CaptureProfile, type PageSnapshot, type ViewportId, type ViewportSample } from "@uirift/shared";
 import { isCaptureUrl, isLocalPreviewUrl } from "@uirift/validation";
 
 const port = Number(process.env.UIRIFT_CAPTURE_PORT ?? 4317);
@@ -13,22 +13,45 @@ const allowedOrigins = new Set([
   "http://127.0.0.1:3100",
 ]);
 
-interface CaptureRequest {
-  baselineUrl: string;
-  candidateUrl: string;
-  routePath: string;
-  viewport: ViewportId;
-}
-
 interface CapturePageRequest {
   url: string;
   routePath: string;
   viewport: ViewportId;
+  width?: number;
+  height?: number;
+  profile?: CaptureProfile;
+}
+
+interface ScanRouteRequest {
+  url: string;
+  routePath: string;
+  widths: number[];
+  height?: number;
+  profile?: CaptureProfile;
 }
 
 interface RouteDiscoveryRequest {
-  baselineUrl: string;
-  candidateUrl: string;
+  url: string;
+}
+
+interface CapturePageResponse {
+  image?: string;
+  finalUrl?: string;
+  statusCode?: number;
+  durationMs?: number;
+  snapshot?: PageSnapshot;
+  error?: string;
+}
+
+interface ScanRouteResponse {
+  routePath?: string;
+  samples?: ViewportSample[];
+  error?: string;
+}
+
+interface RouteDiscoveryResponse {
+  routes?: string[];
+  error?: string;
 }
 
 function send(response: ServerResponse, status: number, body: unknown) {
@@ -74,193 +97,279 @@ async function assertPublicHostname(hostname: string, allowLocal: boolean) {
   }
 }
 
-async function capture(url: string, viewport: ViewportId) {
+function captureViewport(viewport: ViewportId, width?: number, height?: number) {
+  const profile = viewportProfiles[viewport];
+  const requested = { width: width ?? profile.width, height: height ?? profile.height };
+  if (!Number.isInteger(requested.width) || requested.width < 320 || requested.width > 2560 || !Number.isInteger(requested.height) || requested.height < 240 || requested.height > 2160) {
+    throw new Error("Viewport must be between 320×240 and 2560×2160");
+  }
+  return requested;
+}
+
+function browserType(engine: BrowserEngine = "chromium"): BrowserType {
+  return engine === "firefox" ? firefox : engine === "webkit" ? webkit : chromium;
+}
+
+function validProfile(profile?: CaptureProfile) {
+  return !profile || ["chromium", "firefox", "webkit"].includes(profile.browserEngine);
+}
+
+function publicCaptureError(error: unknown, engine: BrowserEngine = "chromium") {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/Executable doesn't exist|playwright was just installed or updated|playwright install/i.test(message)) {
+    const label = engine === "webkit" ? "WebKit" : engine === "firefox" ? "Firefox" : "Chromium";
+    return `${label} capture runtime is not installed. Run pnpm --filter @uirift/local-capture exec playwright install ${engine}.`;
+  }
+  return message.split("\n")[0]?.trim().slice(0, 240) || "Capture failed";
+}
+
+function contextOptions(profile: { width: number; height: number }, captureProfile?: CaptureProfile): BrowserContextOptions {
+  const descriptor = captureProfile?.deviceName ? devices[captureProfile.deviceName] : undefined;
+  return {
+    ...(descriptor ?? {}),
+    viewport: { width: profile.width, height: profile.height },
+    colorScheme: captureProfile?.colorScheme ?? "light",
+    reducedMotion: "reduce",
+    timezoneId: "UTC",
+    locale: "en-US",
+    ...(captureProfile?.userAgent ? { userAgent: captureProfile.userAgent } : {}),
+    ...(captureProfile?.deviceScaleFactor ? { deviceScaleFactor: captureProfile.deviceScaleFactor } : {}),
+    ...(captureProfile?.isMobile !== undefined ? { isMobile: captureProfile.isMobile } : {}),
+    ...(captureProfile?.hasTouch !== undefined ? { hasTouch: captureProfile.hasTouch } : {}),
+  };
+}
+
+async function captureWithBrowser(
+  browser: Browser,
+  url: string,
+  viewport: ViewportId,
+  width?: number,
+  height?: number,
+  includeImage = true,
+  captureProfile?: CaptureProfile
+) {
   const startedAt = Date.now();
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const profile = viewportProfiles[viewport];
-    const context = await browser.newContext({
-      viewport: { width: profile.width, height: profile.height },
-      colorScheme: "dark",
-      reducedMotion: "reduce",
-      timezoneId: "UTC",
-      locale: "en-US",
-    });
-    const allowLocal = isLocalPreviewUrl(url);
-    const checkedHosts = new Set<string>();
-    await context.route("**/*", async (route) => {
-      try {
-        const requested = new URL(route.request().url());
-        if (!["http:", "https:"].includes(requested.protocol)) return route.continue();
-        if (!checkedHosts.has(requested.hostname)) {
-          await assertPublicHostname(requested.hostname, allowLocal);
-          checkedHosts.add(requested.hostname);
-        }
-        return route.continue();
-      } catch {
-        return route.abort("blockedbyclient");
+  const profile = captureViewport(viewport, width, height);
+  const context = await browser.newContext(contextOptions(profile, captureProfile));
+  const allowLocal = isLocalPreviewUrl(url);
+  const checkedHosts = new Set<string>();
+  await context.route("**/*", async (route) => {
+    try {
+      const requested = new URL(route.request().url());
+      if (!["http:", "https:"].includes(requested.protocol)) return route.continue();
+      if (!checkedHosts.has(requested.hostname)) {
+        await assertPublicHostname(requested.hostname, allowLocal);
+        checkedHosts.add(requested.hostname);
       }
-    });
-    const page = await context.newPage();
-    const navigation = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
-    if (!navigation?.ok()) throw new Error(`Page returned ${navigation?.status() ?? "no response"} for ${url}`);
-    const contentType = navigation.headers()["content-type"] ?? "";
-    if (!contentType.includes("text/html")) throw new Error("URL did not return an HTML page");
-    await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
-    let snapshotData: Omit<PageSnapshot, "url" | "capturedAt"> | undefined;
-    for (let attempt = 0; attempt < 3 && !snapshotData; attempt += 1) {
-      try {
-        // Some applications perform a client-side redirect after the initial
-        // load event. Re-enter the settled document instead of failing a whole
-        // comparison when that redirect replaces Playwright's execution context.
-        await page.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => undefined);
-        await page.evaluate(() => document.fonts.ready);
-        await page.waitForTimeout(300);
-        // tsx preserves helper function names with an injected __name call. Defining
-        // the no-op helper in the browser context keeps nested snapshot utilities
-        // serializable when Playwright evaluates them in the captured page.
-        await page.evaluate("globalThis.__name = (target) => target");
-        snapshotData = await page.evaluate(({ viewportWidth, viewportHeight }) => {
-      const normalized = (value: string | null | undefined, limit = 240) =>
-        (value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
-      const implicitRole = (element: Element) => {
-        const tag = element.tagName.toLowerCase();
-        if (tag === "a" && element.hasAttribute("href")) return "link";
-        if (tag === "button") return "button";
-        if (tag === "nav") return "navigation";
-        if (tag === "main") return "main";
-        if (tag === "header") return "banner";
-        if (tag === "footer") return "contentinfo";
-        if (tag === "aside") return "complementary";
-        if (/^h[1-6]$/.test(tag)) return "heading";
-        if (tag === "img") return "img";
-        if (tag === "select") return "combobox";
-        if (tag === "textarea") return "textbox";
-        if (tag === "input") {
-          const type = (element.getAttribute("type") ?? "text").toLowerCase();
-          if (["button", "submit", "reset"].includes(type)) return "button";
-          if (type === "checkbox") return "checkbox";
-          if (type === "radio") return "radio";
-          if (type === "range") return "slider";
-          return "textbox";
-        }
-        return "";
-      };
-      const selectorFor = (element: Element) => {
-        const testId = element.getAttribute("data-testid");
-        if (testId) return `[data-testid="${normalized(testId, 80)}"]`;
-        if (element.id) return `#${normalized(element.id, 80)}`;
-        const parts: string[] = [];
-        let current: Element | null = element;
-        while (current && current !== document.documentElement && parts.length < 6) {
-          const tag = current.tagName.toLowerCase();
-          const siblings = current.parentElement ? Array.from(current.parentElement.children).filter((item) => item.tagName === current?.tagName) : [];
-          const position = siblings.length > 1 ? `:nth-of-type(${siblings.indexOf(current) + 1})` : "";
-          parts.unshift(`${tag}${position}`);
-          current = current.parentElement;
-        }
-        return parts.join(" > ");
-      };
-      const accessibleName = (element: Element) => {
-        const labelledBy = element.getAttribute("aria-labelledby");
-        const labelledText = labelledBy?.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? "").join(" ");
-        const labels = element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement
-          ? Array.from(element.labels ?? []).map((label) => label.textContent ?? "").join(" ")
-          : "";
-        return normalized(
-          element.getAttribute("aria-label") || labelledText || labels || element.getAttribute("alt") ||
-          element.getAttribute("placeholder") || element.getAttribute("title") ||
-          (element instanceof HTMLElement ? element.innerText : element.textContent),
-          160,
-        );
-      };
-      const candidates = Array.from(document.querySelectorAll(
-        "h1,h2,h3,h4,h5,h6,p,li,label,a,button,input,select,textarea,img,nav,main,header,footer,aside,section,article,[role],[data-testid]",
-      )).slice(0, 500);
-      const keyCounts = new Map<string, number>();
-      const elements = candidates.map((element, order) => {
-        const style = getComputedStyle(element);
-        const bounds = element.getBoundingClientRect();
-        const tag = element.tagName.toLowerCase();
-        const role = normalized(element.getAttribute("role") || implicitRole(element), 60);
-        const name = accessibleName(element);
-        const selector = selectorFor(element);
-        const testId = normalized(element.getAttribute("data-testid"), 100);
-        const id = normalized(element.id, 100);
-        const href = element instanceof HTMLAnchorElement ? normalized(element.pathname || element.href, 240) : "";
-        const baseKey = testId ? `testid:${testId}` : id ? `id:${id}` : role && name ? `${role}:${name.toLowerCase()}` : selector;
-        const occurrence = (keyCounts.get(baseKey) ?? 0) + 1;
-        keyCounts.set(baseKey, occurrence);
-        const visible = style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0 && bounds.width > 0 && bounds.height > 0;
-        return {
-          key: occurrence === 1 ? baseKey : `${baseKey}#${occurrence}`,
-          order,
-          tag,
-          role,
-          name,
-          text: normalized(element instanceof HTMLElement ? element.innerText : element.textContent),
-          selector,
-          visible,
-          inViewport: visible && bounds.bottom > 0 && bounds.right > 0 && bounds.top < viewportHeight && bounds.left < viewportWidth,
-          rect: {
-            x: Math.round((bounds.left + window.scrollX) * 10) / 10,
-            y: Math.round((bounds.top + window.scrollY) * 10) / 10,
-            width: Math.round(bounds.width * 10) / 10,
-            height: Math.round(bounds.height * 10) / 10,
-          },
-          attributes: {
-            id,
-            testId,
-            href,
-            type: normalized(element.getAttribute("type"), 60),
-            alt: normalized(element.getAttribute("alt"), 160),
-            placeholder: normalized(element.getAttribute("placeholder"), 160),
-            ariaLabel: normalized(element.getAttribute("aria-label"), 160),
-          },
-          styles: {
-            display: style.display,
-            position: style.position,
-            color: style.color,
-            backgroundColor: style.backgroundColor,
-            fontSize: style.fontSize,
-            fontWeight: style.fontWeight,
-            borderRadius: style.borderRadius,
-          },
-        };
-      });
-      const root = document.documentElement;
-      return {
-        title: document.title,
-        language: document.documentElement.lang || navigator.language,
-        viewportWidth,
-        viewportHeight,
-        documentWidth: Math.max(root.scrollWidth, document.body?.scrollWidth ?? 0),
-        documentHeight: Math.max(root.scrollHeight, document.body?.scrollHeight ?? 0),
-        elements,
-      };
-        }, { viewportWidth: profile.width, viewportHeight: profile.height });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!/Execution context was destroyed|navigation/i.test(message) || attempt === 2) throw error;
-        await page.waitForTimeout(250);
-      }
+      return route.continue();
+    } catch {
+      return route.abort("blockedbyclient");
     }
-    if (!snapshotData) throw new Error("Unable to read the settled page snapshot");
-    const png = await page.screenshot({ fullPage: true, animations: "disabled", type: "png" });
-    const finalUrl = page.url();
-    const snapshot: PageSnapshot = {
-      ...snapshotData,
-      url: finalUrl,
-      capturedAt: Date.now(),
-    };
-    await context.close();
-    return {
-      image: `data:image/png;base64,${png.toString("base64")}`,
-      finalUrl,
-      statusCode: navigation.status(),
-      durationMs: Date.now() - startedAt,
-      snapshot,
-    };
+  });
+  const page = await context.newPage();
+  const navigation = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+  if (!navigation?.ok()) throw new Error(`Page returned ${navigation?.status() ?? "no response"} for ${url}`);
+  const contentType = navigation.headers()["content-type"] ?? "";
+  if (!contentType.includes("text/html")) throw new Error("URL did not return an HTML page");
+  await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
+  let snapshotData: Omit<PageSnapshot, "url" | "capturedAt"> | undefined;
+  for (let attempt = 0; attempt < 3 && !snapshotData; attempt += 1) {
+    try {
+      await page.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => undefined);
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(300);
+      await page.evaluate("globalThis.__name = (target) => target");
+      snapshotData = await page.evaluate(({ viewportWidth, viewportHeight }) => {
+        const normalized = (value: string | null | undefined, limit = 240) =>
+          (value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
+        const implicitRole = (element: Element) => {
+          const tag = element.tagName.toLowerCase();
+          if (tag === "a" && element.hasAttribute("href")) return "link";
+          if (tag === "button") return "button";
+          if (tag === "nav") return "navigation";
+          if (tag === "main") return "main";
+          if (tag === "header") return "banner";
+          if (tag === "footer") return "contentinfo";
+          if (tag === "aside") return "complementary";
+          if (/^h[1-6]$/.test(tag)) return "heading";
+          if (tag === "img") return "img";
+          if (tag === "select") return "combobox";
+          if (tag === "textarea") return "textbox";
+          if (tag === "input") {
+            const type = (element.getAttribute("type") ?? "text").toLowerCase();
+            if (["button", "submit", "reset"].includes(type)) return "button";
+            if (type === "checkbox") return "checkbox";
+            if (type === "radio") return "radio";
+            if (type === "range") return "slider";
+            return "textbox";
+          }
+          return "";
+        };
+        const selectorFor = (element: Element) => {
+          const testId = element.getAttribute("data-testid");
+          if (testId) return `[data-testid="${normalized(testId, 80)}"]`;
+          if (element.id) return `#${normalized(element.id, 80)}`;
+          const parts: string[] = [];
+          let current: Element | null = element;
+          while (current && current !== document.documentElement && parts.length < 6) {
+            const tag = current.tagName.toLowerCase();
+            const siblings = current.parentElement ? Array.from(current.parentElement.children).filter((item) => item.tagName === current?.tagName) : [];
+            const position = siblings.length > 1 ? `:nth-of-type(${siblings.indexOf(current) + 1})` : "";
+            parts.unshift(`${tag}${position}`);
+            current = current.parentElement;
+          }
+          return parts.join(" > ");
+        };
+        const accessibleName = (element: Element) => {
+          const labelledBy = element.getAttribute("aria-labelledby");
+          const labelledText = labelledBy?.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? "").join(" ") ?? "";
+          const labels = element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement
+            ? Array.from(element.labels ?? []).map((label) => label.textContent ?? "").join(" ")
+            : "";
+          return normalized(
+            element.getAttribute("aria-label") || labelledText || labels || element.getAttribute("alt") ||
+            element.getAttribute("placeholder") || element.getAttribute("title") ||
+            (element instanceof HTMLElement ? element.innerText : element.textContent),
+            160,
+          );
+        };
+        const candidates = Array.from(document.querySelectorAll(
+          "h1,h2,h3,h4,h5,h6,p,li,label,a,button,input,select,textarea,img,nav,main,header,footer,aside,section,article,[role],[data-testid]",
+        )).slice(0, 500);
+        const keyCounts = new Map<string, number>();
+        const keyedElements = new Map<Element, string>();
+        const elements = candidates.map((element, order) => {
+          const style = getComputedStyle(element);
+          const bounds = element.getBoundingClientRect();
+          const tag = element.tagName.toLowerCase();
+          const role = normalized(element.getAttribute("role") || implicitRole(element), 60);
+          const name = accessibleName(element);
+          const selector = selectorFor(element);
+          const testId = normalized(element.getAttribute("data-testid"), 100);
+          const id = normalized(element.id, 100);
+          const href = element instanceof HTMLAnchorElement ? normalized(element.pathname || element.href, 240) : "";
+          const baseKey = testId ? `testid:${testId}` : id ? `id:${id}` : role && name ? `${role}:${name.toLowerCase()}` : selector;
+          const occurrence = (keyCounts.get(baseKey) ?? 0) + 1;
+          keyCounts.set(baseKey, occurrence);
+          const visible = style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0 && bounds.width > 0 && bounds.height > 0;
+          const key = occurrence === 1 ? baseKey : `${baseKey}#${occurrence}`;
+          keyedElements.set(element, key);
+          return {
+            key,
+            order,
+            tag,
+            role,
+            name,
+            text: normalized(element instanceof HTMLElement ? element.innerText : element.textContent),
+            selector,
+            parentKey: element.parentElement ? keyedElements.get(element.parentElement) ?? selectorFor(element.parentElement) : "",
+            visible,
+            inViewport: visible && bounds.bottom > 0 && bounds.right > 0 && bounds.top < viewportHeight && bounds.left < viewportWidth,
+            rect: {
+              x: Math.round((bounds.left + window.scrollX) * 10) / 10,
+              y: Math.round((bounds.top + window.scrollY) * 10) / 10,
+              width: Math.round(bounds.width * 10) / 10,
+              height: Math.round(bounds.height * 10) / 10,
+            },
+            attributes: {
+              id,
+              testId,
+              href,
+              type: normalized(element.getAttribute("type"), 60),
+              alt: normalized(element.getAttribute("alt"), 160),
+              placeholder: normalized(element.getAttribute("placeholder"), 160),
+              ariaLabel: normalized(element.getAttribute("aria-label"), 160),
+            },
+            styles: {
+              display: style.display,
+              position: style.position,
+              color: style.color,
+              backgroundColor: style.backgroundColor,
+              fontSize: style.fontSize,
+              fontWeight: style.fontWeight,
+              borderRadius: style.borderRadius,
+              overflowX: style.overflowX,
+              overflowY: style.overflowY,
+              zIndex: style.zIndex,
+              lineClamp: style.getPropertyValue("-webkit-line-clamp"),
+            },
+            geometry: {
+              clientWidth: element instanceof HTMLElement ? element.clientWidth : Math.round(bounds.width),
+              clientHeight: element instanceof HTMLElement ? element.clientHeight : Math.round(bounds.height),
+              scrollWidth: element instanceof HTMLElement ? element.scrollWidth : Math.round(bounds.width),
+              scrollHeight: element instanceof HTMLElement ? element.scrollHeight : Math.round(bounds.height),
+            },
+          };
+        });
+        const root = document.documentElement;
+        return {
+          title: document.title,
+          language: document.documentElement.lang || navigator.language,
+          viewportWidth,
+          viewportHeight,
+          documentWidth: Math.max(root.scrollWidth, document.body?.scrollWidth ?? 0),
+          documentHeight: Math.max(root.scrollHeight, document.body?.scrollHeight ?? 0),
+          elements,
+        };
+      }, { viewportWidth: profile.width, viewportHeight: profile.height });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/Execution context was destroyed|navigation/i.test(message) || attempt === 2) throw error;
+      await page.waitForTimeout(250);
+    }
+  }
+  if (!snapshotData) throw new Error("Unable to read the settled page snapshot");
+  const png = includeImage ? await page.screenshot({ fullPage: true, animations: "disabled", type: "png" }) : undefined;
+  const finalUrl = page.url();
+  const snapshot: PageSnapshot = {
+    ...snapshotData,
+    url: finalUrl,
+    capturedAt: Date.now(),
+  };
+  await context.close();
+  return {
+    ...(png ? { image: `data:image/png;base64,${png.toString("base64")}` } : {}),
+    finalUrl,
+    statusCode: navigation.status(),
+    durationMs: Date.now() - startedAt,
+    snapshot,
+  };
+}
+
+async function capture(url: string, viewport: ViewportId, width?: number, height?: number, includeImage = true, profile?: CaptureProfile) {
+  const browser = await browserType(profile?.browserEngine).launch({ headless: true });
+  try {
+    return await captureWithBrowser(browser, url, viewport, width, height, includeImage, profile);
+  } finally {
+    await browser.close();
+  }
+}
+
+async function scanRoute(input: ScanRouteRequest) {
+  const widths = [...new Set(input.widths)].sort((a, b) => a - b);
+  if (!widths.length || widths.length > 32) throw new Error("Scan requires between 1 and 32 viewport widths");
+  const browser = await browserType(input.profile?.browserEngine).launch({ headless: true });
+  try {
+    const samples = [];
+    for (const width of widths) {
+      const captureResult = await captureWithBrowser(
+        browser,
+        targetUrl(input.url, input.routePath),
+        width <= 600 ? "mobile" : "desktop",
+        width,
+        input.height ?? 900,
+        false,
+        input.profile,
+      );
+      samples.push({
+        width,
+        height: input.height ?? 900,
+        snapshot: captureResult.snapshot,
+        durationMs: captureResult.durationMs,
+        browserEngine: input.profile?.browserEngine ?? "chromium",
+      });
+    }
+    return { routePath: input.routePath, samples };
   } finally {
     await browser.close();
   }
@@ -279,15 +388,17 @@ function discoveredPath(value: string, origin: string) {
   }
 }
 
-async function discoverRoutes(origin: string) {
-  const browser = await chromium.launch({ headless: true });
+async function discoverRoutes(origin: string, captureProfile?: CaptureProfile) {
+  const browser = await browserType(captureProfile?.browserEngine).launch({ headless: true });
   try {
+    const deviceDescriptor = captureProfile?.deviceName ? devices[captureProfile.deviceName] : undefined;
     const context = await browser.newContext({
-      viewport: { width: 1280, height: 800 },
-      colorScheme: "dark",
+      viewport: deviceDescriptor?.viewport ?? { width: 1280, height: 800 },
+      colorScheme: captureProfile?.colorScheme ?? "dark",
       reducedMotion: "reduce",
       timezoneId: "UTC",
       locale: "en-US",
+      ...deviceDescriptor,
     });
     const allowLocal = isLocalPreviewUrl(origin);
     const checkedHosts = new Set<string>();
@@ -323,7 +434,6 @@ async function discoverRoutes(origin: string) {
         }
       }
     } catch {
-      // Sitemaps are optional; navigation discovery below remains available.
     }
 
     while (queue.length && inspected < 10 && available.size < 10) {
@@ -348,7 +458,6 @@ async function discoverRoutes(origin: string) {
           }
         }
       } catch {
-        // A single unavailable route should not stop discovery for the site.
       }
     }
     await context.close();
@@ -368,7 +477,7 @@ const server = createServer((request, response) => {
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   if (request.method === "OPTIONS") return response.writeHead(204).end();
   if (request.method === "GET" && request.url === "/health") return send(response, 200, { ok: true });
-  if (request.method !== "POST" || !["/capture", "/capture-page", "/discover-routes"].includes(request.url ?? "")) {
+  if (request.method !== "POST" || !["/capture-page", "/discover-routes", "/scan-route"].includes(request.url ?? "")) {
     return send(response, 404, { error: "Not found" });
   }
   if (origin && !allowedOrigins.has(origin)) return send(response, 403, { error: "Origin is not allowed" });
@@ -380,6 +489,14 @@ const server = createServer((request, response) => {
   });
   request.on("end", async () => {
     try {
+      if (request.url === "/scan-route") {
+        const input = JSON.parse(raw) as ScanRouteRequest;
+        if (!isCaptureUrl(input.url)) return send(response, 400, { error: "Use a public HTTPS URL or localhost" });
+        if (!validProfile(input.profile)) return send(response, 400, { error: "Invalid browser engine" });
+        if (!input.routePath?.startsWith("/")) return send(response, 400, { error: "Invalid route" });
+        return send(response, 200, await scanRoute(input));
+      }
+
       if (request.url === "/capture-page") {
         const input = JSON.parse(raw) as CapturePageRequest;
         if (!isCaptureUrl(input.url)) {
@@ -388,46 +505,31 @@ const server = createServer((request, response) => {
         if (!(input.viewport in viewportProfiles) || !input.routePath?.startsWith("/")) {
           return send(response, 400, { error: "Invalid route or viewport" });
         }
-        return send(response, 200, await capture(targetUrl(input.url, input.routePath), input.viewport));
+        if (!validProfile(input.profile)) return send(response, 400, { error: "Invalid browser engine" });
+        return send(response, 200, await capture(targetUrl(input.url, input.routePath), input.viewport, input.width, input.height, true, input.profile));
       }
 
       if (request.url === "/discover-routes") {
         const input = JSON.parse(raw) as RouteDiscoveryRequest;
-        if (!isCaptureUrl(input.baselineUrl) || !isCaptureUrl(input.candidateUrl)) {
-          return send(response, 400, { error: "Use public HTTPS URLs or localhost" });
-        }
-        const [baselineRoutes, candidateRoutes] = await Promise.all([
-          discoverRoutes(input.baselineUrl),
-          discoverRoutes(input.candidateUrl),
-        ]);
-        const candidateSet = new Set(candidateRoutes);
-        const routes = baselineRoutes.filter((routePath) => candidateSet.has(routePath));
-        return send(response, 200, { routes, baselineRoutes, candidateRoutes });
+        if (!isCaptureUrl(input.url)) return send(response, 400, { error: "Use a public HTTPS URL or localhost" });
+        const profile: CaptureProfile | undefined = undefined;
+        return send(response, 200, { routes: await discoverRoutes(input.url, profile) });
       }
 
-      const input = JSON.parse(raw) as CaptureRequest;
-      if (!isCaptureUrl(input.baselineUrl) || !isCaptureUrl(input.candidateUrl)) {
-        return send(response, 400, { error: "Use a public HTTPS URL or localhost" });
-      }
-      if (!(input.viewport in viewportProfiles) || !input.routePath?.startsWith("/")) {
-        return send(response, 400, { error: "Invalid route or viewport" });
-      }
-      const startedAt = Date.now();
-      const baseline = await capture(targetUrl(input.baselineUrl, input.routePath), input.viewport);
-      const candidate = await capture(targetUrl(input.candidateUrl, input.routePath), input.viewport);
-      return send(response, 200, {
-        baseline: baseline.image,
-        candidate: candidate.image,
-        durationMs: Date.now() - startedAt,
-      });
+      return send(response, 404, { error: "Not found" });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
       console.error("Local capture failed:", error);
-      return send(response, 500, { error: message || "Capture failed" });
+      let engine: BrowserEngine = "chromium";
+      try {
+        const parsed = JSON.parse(raw) as CapturePageRequest | ScanRouteRequest | RouteDiscoveryRequest;
+        engine = (parsed as CapturePageRequest | ScanRouteRequest).profile?.browserEngine ?? "chromium";
+      } catch {
+      }
+      return send(response, 500, { error: publicCaptureError(error, engine) });
     }
   });
 });
 
 server.listen(port, "127.0.0.1", () => {
-  console.log(`UIRift local capture ready at http://127.0.0.1:${port}`);
+  console.log(`Breakscope local browser ready at http://127.0.0.1:${port}`);
 });

@@ -17,6 +17,91 @@ export interface ViewportProfile {
   height: number;
 }
 
+export const viewportProfiles: Record<ViewportId, ViewportProfile> = {
+  desktop: { id: "desktop", label: "Desktop", width: 1440, height: 900 },
+  mobile: { id: "mobile", label: "Mobile", width: 390, height: 844 },
+};
+
+export type BrowserEngine = "chromium" | "firefox" | "webkit";
+
+export interface CaptureProfile {
+  browserEngine: BrowserEngine;
+  deviceName?: string;
+  isMobile?: boolean;
+  hasTouch?: boolean;
+  deviceScaleFactor?: number;
+  userAgent?: string;
+  colorScheme?: "light" | "dark";
+}
+
+export interface ViewportSample {
+  routePath: string;
+  width: number;
+  height: number;
+  snapshot: PageSnapshot;
+  image?: ArrayBuffer;
+  browserEngine?: BrowserEngine;
+}
+
+export interface TestTarget {
+  id: string;
+  name: string;
+  url: string;
+  selectedRoutes: string[];
+  minWidth: number;
+  maxWidth: number;
+  executionMode?: "local" | "hosted";
+  deviceWidths?: number[];
+  browserEngines?: BrowserEngine[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type ResponsiveIssueType =
+  | "overflow"
+  | "offscreen"
+  | "clipping"
+  | "overlap"
+  | "occlusion"
+  | "disappearing"
+  | "touch-target"
+  | "accessible-name"
+  | "image-alt";
+
+export type VerificationState = "new" | "still-broken" | "fixed";
+
+export interface ResponsiveIssue {
+  id: string;
+  fingerprint: string;
+  type: ResponsiveIssueType;
+  severity: "high" | "medium" | "low";
+  confidence: number;
+  title: string;
+  description: string;
+  routePath: string;
+  selector: string;
+  elementKey?: string;
+  elementRect?: ElementRect;
+  minFailWidth: number;
+  maxFailWidth: number;
+  failureRanges: Array<{ min: number; max: number }>;
+  lastWorkingWidth?: number;
+  evidenceWidth: number;
+  measurements: Record<string, string | number>;
+  verification: VerificationState;
+  screenshot?: ArrayBuffer;
+  passingScreenshot?: ArrayBuffer;
+  documentHeight?: number;
+  browserEngine?: BrowserEngine;
+}
+
+export interface DetectorOutcome {
+  type: ResponsiveIssueType;
+  label: string;
+  status: "passed" | "failed";
+  issueCount: number;
+}
+
 export interface ProjectSummary {
   id: string;
   name: string;
@@ -56,6 +141,7 @@ export interface ElementSnapshot {
   name: string;
   text: string;
   selector: string;
+  parentKey?: string;
   visible: boolean;
   inViewport: boolean;
   rect: ElementRect;
@@ -76,6 +162,16 @@ export interface ElementSnapshot {
     fontSize: string;
     fontWeight: string;
     borderRadius: string;
+    overflowX?: string;
+    overflowY?: string;
+    zIndex?: string;
+    lineClamp?: string;
+  };
+  geometry?: {
+    clientWidth: number;
+    clientHeight: number;
+    scrollWidth: number;
+    scrollHeight: number;
   };
 }
 
@@ -178,11 +274,6 @@ export interface CaptureRunV1 {
   routePath: string;
   viewport: ViewportProfile;
 }
-
-export const viewportProfiles: Record<ViewportId, ViewportProfile> = {
-  desktop: { id: "desktop", label: "Desktop", width: 1440, height: 900 },
-  mobile: { id: "mobile", label: "Mobile", width: 390, height: 844 },
-};
 
 export const projects: ProjectSummary[] = [
   {

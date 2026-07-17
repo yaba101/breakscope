@@ -1,18 +1,4 @@
-import type { PageSnapshot, ViewportId } from "@uirift/shared";
-
-interface CaptureInput {
-  baselineUrl: string;
-  candidateUrl: string;
-  routePath: string;
-  viewport: ViewportId;
-}
-
-interface CaptureResponse {
-  baseline?: string;
-  candidate?: string;
-  durationMs?: number;
-  error?: string;
-}
+import type { CaptureProfile, PageSnapshot, ViewportId, ViewportSample } from "@uirift/shared";
 
 interface CapturePageResponse {
   image?: string;
@@ -23,7 +9,7 @@ interface CapturePageResponse {
   error?: string;
 }
 
-export async function discoverRoutesLocally(input: { baselineUrl: string; candidateUrl: string }) {
+export async function discoverRoutesLocally(input: { url: string }) {
   const response = await fetch("/api/local-capture/routes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -31,33 +17,31 @@ export async function discoverRoutesLocally(input: { baselineUrl: string; candid
   });
   const payload = (await response.json()) as {
     routes?: string[];
-    baselineRoutes?: string[];
-    candidateRoutes?: string[];
     error?: string;
   };
   if (!response.ok || !payload.routes) throw new Error(payload.error ?? "Unable to discover routes");
-  return {
-    routes: payload.routes,
-    baselineRoutes: payload.baselineRoutes ?? [],
-    candidateRoutes: payload.candidateRoutes ?? [],
-  };
+  return { routes: payload.routes };
 }
 
 export async function capturePageLocally(input: {
   url: string;
   routePath: string;
   viewport: ViewportId;
-}) {
+  width?: number;
+  height?: number;
+  profile?: CaptureProfile;
+}, signal?: AbortSignal) {
   let response: Response;
   try {
     response = await fetch("/api/local-capture/page", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
+      signal,
     });
   } catch (error) {
     const detail = error instanceof Error ? ` (${error.message})` : "";
-    throw new Error(`Local capture is offline. Start UIRift with pnpm dev:local and try again.${detail}`);
+    throw new Error(`Local browser is offline. Start Breakscope with pnpm dev:local and try again.${detail}`);
   }
   const payload = (await response.json()) as CapturePageResponse;
   if (!response.ok || !payload.image || !payload.snapshot) {
@@ -72,27 +56,16 @@ export async function capturePageLocally(input: {
   };
 }
 
-export async function captureLocally(input: CaptureInput) {
-  let response: Response;
-  try {
-    response = await fetch("/api/local-capture", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
-  } catch (error) {
-    const detail = error instanceof Error ? ` (${error.message})` : "";
-    throw new Error(`Local capture is offline. Start UIRift with pnpm dev:local and try again.${detail}`);
-  }
-  const payload = (await response.json()) as CaptureResponse;
-  if (!response.ok || !payload.baseline || !payload.candidate) {
-    throw new Error(payload.error ?? "Local browser capture failed");
-  }
-  return {
-    baseline: dataUrlToBlob(payload.baseline),
-    candidate: dataUrlToBlob(payload.candidate),
-    durationMs: payload.durationMs ?? 0,
-  };
+export async function scanRouteLocally(input: { url: string; routePath: string; widths: number[]; height?: number; profile?: CaptureProfile }, signal?: AbortSignal) {
+  const response = await fetch("/api/local-capture/scan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+    signal,
+  });
+  const payload = await response.json() as { routePath?: string; samples?: Array<{ width: number; height: number; snapshot: PageSnapshot; durationMs: number }>; error?: string };
+  if (!response.ok || !payload.samples) throw new Error(payload.error ?? "Responsive scan failed");
+  return payload.samples.map((sample) => ({ routePath: input.routePath, width: sample.width, height: sample.height, snapshot: sample.snapshot, browserEngine: input.profile?.browserEngine ?? "chromium" }));
 }
 
 function dataUrlToBlob(value: string) {

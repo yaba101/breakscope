@@ -1,0 +1,72 @@
+:root {
+  /* Stratum primitives */
+  --stratum-primary-950: #000000;
+  --stratum-primary-900: #111111;
+  --stratum-primary-800: #292621;
+  --stratum-secondary-0: #ffffff;
+  --stratum-accent-500: #a3907a;
+  --stratum-accent-600: #8d7962;
+  --stratum-background: #fdfbf7;
+  --stratum-surface: #eae5df;
+  --stratum-surface-soft: #f4f1ec;
+  --stratum-text-primary: #111827;
+  --stratum-text-secondary: #4b5563;
+  --stratum-text-muted: #6b7280;
+  --stratum-border-300: #dcd6cc;
+  --stratum-success-600: #287a58;
+  --stratum-danger-600: #b84a3a;
+  --stratum-warning-600: #8a6636;
+
+  --stratum-space-1: 4px;
+  --stratum-space-2: 8px;
+  --stratum-space-3: 12px;
+  --stratum-space-4: 16px;
+  --stratum-space-6: 24px;
+  --stratum-space-10: 40px;
+  --stratum-space-20: 80px;
+
+  --stratum-radius-control: 1px;
+  --stratum-radius-card: 1px;
+  --stratum-radius-pill: 9999px;
+  --stratum-shadow-card: 0 2px 6px rgb(17 24 39 / 8%);
+  --stratum-duration-fast: 150ms;
+  --stratum-duration-normal: 220ms;
+
+  /* Stratum semantic layer */
+  --color-primary: var(--stratum-primary-950);
+  --color-primary-hover: var(--stratum-primary-800);
+  --color-accent: var(--stratum-accent-500);
+  --color-accent-hover: var(--stratum-accent-600);
+  --color-brand: var(--color-accent);
+  --color-brand-strong: var(--color-accent-hover);
+  --color-brand-hover: var(--color-accent-hover);
+  --color-background: var(--stratum-background);
+  --color-surface: var(--stratum-surface);
+  --color-surface-raised: var(--stratum-secondary-0);
+  --color-foreground: var(--stratum-text-primary);
+  --color-foreground-on-dark: var(--stratum-secondary-0);
+  --color-muted: var(--stratum-text-secondary);
+  --color-muted-on-dark: var(--stratum-surface-soft);
+  --color-border: var(--stratum-border-300);
+  --color-border-dark: var(--stratum-accent-500);
+  --color-success: var(--stratum-success-600);
+  --color-danger: var(--stratum-danger-600);
+  --color-warning: var(--stratum-warning-600);
+  --font-stratum-sans: var(--font-geist-sans);
+  --font-stratum-mono: var(--font-geist-mono);
+  --font-instrument-sans: var(--font-geist-sans);
+
+  /* Stratum component layer */
+  --button-primary-bg: var(--color-primary);
+  --button-primary-bg-hover: var(--color-primary-hover);
+  --button-primary-fg: var(--stratum-secondary-0);
+  --button-radius: var(--stratum-radius-control);
+  --panel-bg: var(--color-background);
+  --panel-fg: var(--color-foreground);
+  --panel-border: var(--color-border);
+  --control-bg: var(--stratum-secondary-0);
+  --control-border: var(--color-border);
+  --control-focus: var(--color-accent-hover);
+  --card-radius: var(--stratum-radius-card);
+  --card-shadow: var(--stratum-shadow-card);
+}
