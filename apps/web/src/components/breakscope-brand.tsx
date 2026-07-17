@@ -8,8 +8,14 @@ export const deviceChoices = [
   { width: 1440, label: "Wide", detail: "1440px", icon: Laptop },
 ] as const;
 
-export function BreakscopeLogo({ href = "/" }: { href?: string }) {
-  return <Link className="bk-logo" href={href} aria-label="Breakscope home"><i aria-hidden="true"><span /></i><b>Breakscope</b></Link>;
+export function BreakscopeLogo({ href = "/", variant = "default" }: { href?: string; variant?: "default" | "dark" }) {
+  const suffix = variant === "dark" ? "-dark" : "";
+  return (
+    <Link className="bk-logo" href={href} aria-label="Breakscope home">
+      <img className="bk-logo-full" src={`/brand/breakscope-logo${suffix}.svg`} alt="" />
+      <img className="bk-logo-mark" src="/brand/breakscope-mark.svg" alt="" aria-hidden="true" />
+    </Link>
+  );
 }
 
 export function ProductHeader({ workspace = false }: { workspace?: boolean }) {

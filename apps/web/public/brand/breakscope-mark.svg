@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>Breakscope mark</title>
+  <path d="M11 10.5H35.5C45.165 10.5 53 18.335 53 28V36C53 45.665 45.165 53.5 35.5 53.5H11V10.5Z" stroke="#171717" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M28 14V28H40V36H28V50" stroke="#171717" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M28 28H40V36H28" stroke="#C5543D" stroke-width="7" stroke-linejoin="round"/>
+</svg>

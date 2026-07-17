@@ -6605,8 +6605,8 @@ button {
 
 @media (max-width: 520px) {
   .bk-setup-header { padding-inline: 12px; }
-  .bk-setup-header .bk-logo b { display: none; }
-  .bk-setup-header .bk-logo > i { margin: 0; }
+  .bk-setup-header .bk-logo .bk-logo-full { display: none; }
+  .bk-setup-header .bk-logo .bk-logo-mark { display: block; }
   .bk-setup-target { padding-left: 9px; }
 }
 
@@ -6928,11 +6928,16 @@ button {
 
 /* Scan experience polish: stable progress, legible telemetry, and one shared brand mark. */
 .bk-logo {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
   gap: var(--stratum-space-2);
   color: var(--stratum-text-primary);
   font-size: 20px;
   letter-spacing: -.025em;
 }
+.bk-logo .bk-logo-full { display: block; width: 144px; height: auto; }
+.bk-logo .bk-logo-mark { display: none; width: 30px; height: 30px; }
 .bk-logo > i,
 .bk-home .bk-logo > i,
 .bk-setup-page .bk-logo > i,
