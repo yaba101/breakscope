@@ -180,7 +180,6 @@ export function BreakscopeSetup() {
           <section className="bk-setup-panel bk-setup-viewports-panel" aria-labelledby="setup-viewports-title">
             <div className="bk-setup-section-heading">
               <div><h2 id="setup-viewports-title">Viewport checkpoints</h2><p>Compare the same page across key responsive widths.</p></div>
-              <span>{deviceWidths.length} selected</span>
             </div>
             <div className="bk-setup-devices">{deviceChoices.map(({ width, label, detail, icon: Icon }) => {
               const selected = deviceWidths.includes(width);
@@ -197,7 +196,7 @@ export function BreakscopeSetup() {
           </section>
 
           <section className="bk-setup-panel bk-setup-browsers-panel" aria-labelledby="setup-browsers-title">
-            <div className="bk-setup-section-heading"><div><h2 id="setup-browsers-title">Browsers to test</h2><p>Choose the rendering engines for this run.</p></div><span>{browserEngines.length} selected</span></div>
+            <div className="bk-setup-section-heading"><div><h2 id="setup-browsers-title">Browsers to test</h2><p>Choose the rendering engines for this run.</p></div></div>
             <div className="bk-setup-browsers" role="group" aria-label="Browsers to test">{allBrowserEngines.map((engine) => {
               const selected = browserEngines.includes(engine);
               const label = engine === "chromium" ? "Chrome" : engine === "firefox" ? "Firefox" : "Safari";
