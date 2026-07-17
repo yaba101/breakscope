@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "react-device-bezels/styles.css";
 @import "./stratum-tokens.css";
 
 :root {

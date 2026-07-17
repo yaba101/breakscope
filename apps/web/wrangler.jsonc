@@ -7,7 +7,7 @@
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "d1_databases": [
     { "binding": "DB", "database_name": "breakscope-db", "database_id": "REPLACE_AFTER_PROVISIONING", "migrations_dir": "migrations" }
-  },
+  ],
   "vars": {
     "APP_ENV": "development"
   },
