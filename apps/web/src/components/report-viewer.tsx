@@ -210,7 +210,7 @@ export function ReportViewer({ token }: { token: string }) {
   const issueImage = (comparisonMode === "passing" ? activeIssue?.passingScreenshot : hasExactIssueEvidence ? activeIssue?.screenshot : activePreview?.image) as ArrayBuffer | undefined;
 
   function selectIssue(issue: ResponsiveIssue) {
-    const checkpoint = issue.evidenceWidth;
+    const checkpoint = isPageWideIssue(issue, deviceWidths) ? activePreviewWidth : issue.evidenceWidth;
     setActivePreviewWidth(checkpoint);
     setActiveBrowserEngine(issue.browserEngine ?? "chromium");
     setActiveDeviceModelId(modelForWidth(checkpoint).id);

@@ -299,9 +299,9 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
             <section><span>Likely cause</span><p>{aiAnalysis.likelyCause}</p></section>
             <section className="bk-ai-recommendation"><span>Recommended fix</span><p>{aiAnalysis.recommendation}</p></section>
             {aiAnalysis.codeHint && <section className="bk-ai-code-direction"><span>Code direction</span><code>{aiAnalysis.codeHint}</code></section>}
-          </div> : <div className="bk-ai-empty"><b>Turn evidence into an implementation plan</b><p>Get a concise explanation, likely cause, and repair direction for this exact viewport.</p></div>}
+          </div> : <div className="bk-ai-empty"><b>Generate a repair plan</b><p>Get a concise diagnosis, recommended fix, and a copyable implementation prompt for this exact viewport.</p></div>}
           {!aiPending && aiError && <p className="bk-ai-error" role="alert">{aiError}</p>}
-          <div className={`bs-actions bk-ai-result-actions ${aiAnalysis ? "" : "single"}`}><button type="button" disabled={aiPending} onClick={() => onAnalyze(issue)}>{aiPending ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}{aiPending ? "Analyzing…" : aiAnalysis ? "Refresh analysis" : "Run AI analysis"}</button>{aiAnalysis && <button type="button" onClick={() => void navigator.clipboard.writeText(repairPrompt(issue, url, aiAnalysis)).then(() => setCopiedPromptFor(issue.fingerprint))}>{copiedPromptFor === issue.fingerprint ? <Check size={15} /> : <Clipboard size={15} />}{copiedPromptFor === issue.fingerprint ? "Prompt copied" : "Copy fix prompt"}</button>}</div>
+          <div className={`bs-actions bk-ai-result-actions ${aiAnalysis ? "" : "single"}`}><button type="button" disabled={aiPending} onClick={() => onAnalyze(issue)}>{aiPending ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}{aiPending ? "Building repair plan…" : aiAnalysis ? "Refresh repair plan" : "Generate repair plan"}</button>{aiAnalysis && <button type="button" onClick={() => void navigator.clipboard.writeText(repairPrompt(issue, url, aiAnalysis)).then(() => setCopiedPromptFor(issue.fingerprint))}>{copiedPromptFor === issue.fingerprint ? <Check size={15} /> : <Clipboard size={15} />}{copiedPromptFor === issue.fingerprint ? "Prompt copied" : "Copy fix prompt"}</button>}</div>
           <small>Opt-in: this issue and screenshot are sent only when you click.</small>
         </section>
         <div className="bs-actions"><button type="button" onClick={() => void navigator.clipboard.writeText(issue.selector)}><Clipboard size={15} /> Copy selector</button><button type="button" onClick={() => void navigator.clipboard.writeText(issueMarkdown(issue, url))}><Clipboard size={15} /> Copy issue</button><a href={new URL(issue.routePath, url).toString()} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Open page</a></div>
@@ -701,7 +701,7 @@ export function BreakscopeWorkspace() {
   function togglePin(id: DeviceModelId) { setPinnedDeviceIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [id, ...current]); }
 
   function selectIssue(issue: ResponsiveIssue) {
-    const checkpoint = issue.evidenceWidth;
+    const checkpoint = isPageWideIssue(issue, deviceWidths) ? activePreviewWidth : issue.evidenceWidth;
     setAiIssueError(""); setActivePreviewWidth(checkpoint); setIssueDisplayWidth(checkpoint); setActiveBrowserEngine(issue.browserEngine ?? "chromium"); setActiveDeviceModelId(modelForWidth(checkpoint).id); setResult((current) => ({ ...current, activeIssue: issue })); setInspectorTab("issue"); setComparisonMode("failing");
   }
 

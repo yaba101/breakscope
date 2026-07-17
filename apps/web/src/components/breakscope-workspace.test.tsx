@@ -87,7 +87,7 @@ describe("BreakscopeWorkspace", () => {
     loadBreakscopeState.mockResolvedValue({ target, latestIssues: [issue], updatedAt: 1 });
     renderWorkspace();
 
-    expect(await screen.findByRole("heading", { name: "320px review" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "320px · Needs attention" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "failing evidence for Horizontal overflow" })).toBeInTheDocument();
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Horizontal overflow/ })).toHaveAttribute("aria-expanded", "true");
@@ -97,7 +97,7 @@ describe("BreakscopeWorkspace", () => {
     expect(issueHighlight).toHaveTextContent("Issue 1");
     expect(issueHighlight).toHaveStyle({ top: "60%", left: "5%", width: "90%" });
     expect(document.querySelector(".bk-minimap-issue")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Run AI analysis" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Generate repair plan" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open page/i })).toHaveAttribute("href", "https://example.com/");
     expect(screen.getByRole("button", { name: "Phone 375px" })).toHaveClass("failed");
 
@@ -107,9 +107,9 @@ describe("BreakscopeWorkspace", () => {
     expect(inspectorResizer).toHaveAttribute("aria-valuenow", "400");
 
     fireEvent.click(screen.getByRole("button", { name: "Tablet 768px" }));
-    expect(screen.getByRole("heading", { name: "768px review" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "768px · Passed" })).toBeInTheDocument();
     expect(screen.getByText("No responsive issues at 768px")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Run AI analysis" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generate repair plan" })).not.toBeInTheDocument();
   });
 
   it("groups repeated detector findings while preserving each affected element", async () => {
@@ -161,12 +161,12 @@ describe("BreakscopeWorkspace", () => {
     loadBreakscopeState.mockResolvedValue({ target, latestIssues: [phoneOnlyImage], updatedAt: 1 });
     renderWorkspace();
 
-    expect(await screen.findByRole("heading", { name: "375px review" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "375px · Needs attention" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Image has no text alternative/i })).toBeInTheDocument();
     expect(screen.queryByText("Page-wide checks")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Tablet 768px" }));
-    expect(screen.getByRole("heading", { name: "768px review" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "768px · Passed" })).toBeInTheDocument();
     expect(screen.getByText("No responsive issues at 768px")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Image has no text alternative/i })).not.toBeInTheDocument();
   });
@@ -177,8 +177,8 @@ describe("BreakscopeWorkspace", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { finishRequest = resolve; })));
     renderWorkspace();
 
-    await screen.findByRole("heading", { name: "320px review" });
-    const explainButton = screen.getByRole("button", { name: "Run AI analysis" });
+    await screen.findByRole("heading", { name: "320px · Needs attention" });
+    const explainButton = screen.getByRole("button", { name: "Generate repair plan" });
     expect(explainButton.closest(".bk-ai-result-actions")).toHaveClass("single");
     fireEvent.click(explainButton);
 
@@ -205,8 +205,8 @@ describe("BreakscopeWorkspace", () => {
     } }), { status: 200, headers: { "Content-Type": "application/json" } })));
     renderWorkspace();
 
-    await screen.findByRole("heading", { name: "320px review" });
-    fireEvent.click(screen.getByRole("button", { name: "Run AI analysis" }));
+    await screen.findByRole("heading", { name: "320px · Needs attention" });
+    fireEvent.click(screen.getByRole("button", { name: "Generate repair plan" }));
     expect(await screen.findByText("What’s happening")).toBeInTheDocument();
     expect(screen.getByText("A fixed width is wider than its container.")).toBeInTheDocument();
     expect(screen.getByText("Replace the fixed width with a constrained fluid width.")).toBeInTheDocument();
