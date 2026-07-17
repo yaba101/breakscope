@@ -191,7 +191,6 @@ export function ReportViewer({ token }: { token: string }) {
   const previews = payload?.latestPreviews ?? [];
   const aiReviews = payload?.aiReviews ?? {};
   const deviceWidths = payload?.deviceWidths ?? [320, 390, 480, 600, 768, 900, 1024, 1280, 1440];
-  const evidenceWidths = useMemo(() => [...new Set([...deviceWidths, ...issues.map((issue) => issue.evidenceWidth)])].sort((a, b) => a - b), [deviceWidths, issues]);
 
   const reviewedRoute = activeIssue?.routePath ?? target?.selectedRoutes[0] ?? "/";
   const viewportIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && !isPageWideIssue(issue, deviceWidths) && issue.routePath === reviewedRoute && issueAffectsWidth(issue, activePreviewWidth));
@@ -210,7 +209,7 @@ export function ReportViewer({ token }: { token: string }) {
   const issueImage = (comparisonMode === "passing" ? activeIssue?.passingScreenshot : hasExactIssueEvidence ? activeIssue?.screenshot : activePreview?.image) as ArrayBuffer | undefined;
 
   function selectIssue(issue: ResponsiveIssue) {
-    const checkpoint = isPageWideIssue(issue, deviceWidths) ? activePreviewWidth : issue.evidenceWidth;
+    const checkpoint = issueAffectsWidth(issue, activePreviewWidth) ? activePreviewWidth : deviceWidths.reduce((closest, width) => Math.abs(width - issue.evidenceWidth) < Math.abs(closest - issue.evidenceWidth) ? width : closest, deviceWidths[0] ?? issue.evidenceWidth);
     setActivePreviewWidth(checkpoint);
     setActiveBrowserEngine(issue.browserEngine ?? "chromium");
     setActiveDeviceModelId(modelForWidth(checkpoint).id);
@@ -231,7 +230,7 @@ export function ReportViewer({ token }: { token: string }) {
     <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Report</span></div><div className="bk-command-target"><span>{target ? new URL(target.url).host : "Unknown"}</span><code>{target?.url ?? ""}</code></div><div className="bk-command-actions"><span className="bk-command-state complete">{responsiveIssueFamilyCount ? `${responsiveIssueFamilyCount} responsive ${responsiveIssueFamilyCount === 1 ? "issue" : "issues"}` : pageWideIssueFamilyCount ? `${pageWideIssueFamilyCount} page-wide ${pageWideIssueFamilyCount === 1 ? "check" : "checks"}` : "All checks passed"}</span></div></header>
     <section className="bs-workspace" style={{ "--bk-inspector-width": `${inspectorWidth}px` } as CSSProperties}>
       <section className="bk-stage-main">
-        <div className="bk-canvas-toolbar"><span><i className={activeIssue ? "fail" : ""} />{activeIssue ? "Failure evidence" : "Captured evidence"}</span><div className="bk-checkpoint-control"><span>Captured checkpoints</span><div className="bk-device-switcher" role="group" aria-label="Captured checkpoints">{evidenceWidths.map((width) => {
+        <div className="bk-canvas-toolbar"><span><i className={activeIssue ? "fail" : ""} />{activeIssue ? "Failure evidence" : "Captured evidence"}</span><div className="bk-checkpoint-control"><span>Captured checkpoints</span><div className="bk-device-switcher" role="group" aria-label="Captured checkpoints">{deviceWidths.map((width) => {
           const choice = deviceChoices.find((device) => device.width === width);
           const ready = previews.some((preview) => preview.width === width && (preview.browserEngine ?? "chromium") === activeBrowserEngine);
           const failed = issues.some((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && !isPageWideIssue(issue, deviceWidths) && issueAffectsWidth(issue, width));

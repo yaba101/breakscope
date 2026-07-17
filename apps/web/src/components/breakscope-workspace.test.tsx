@@ -91,10 +91,11 @@ describe("BreakscopeWorkspace", () => {
     expect(screen.getByRole("img", { name: "failing evidence for Horizontal overflow" })).toBeInTheDocument();
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Horizontal overflow/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getAllByText("main").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("main affected by this check").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Highlighted target: main affected by this check")).toBeInTheDocument();
     expect(screen.getByText("Detector evidence")).toBeInTheDocument();
     const issueHighlight = document.querySelector(".bk-result-image-layer > .bs-highlight");
-    expect(issueHighlight).toHaveTextContent("Issue 1");
+    expect(issueHighlight).toHaveTextContent("main affected by this check");
     expect(issueHighlight).toHaveStyle({ top: "60%", left: "5%", width: "90%" });
     expect(document.querySelector(".bk-minimap-issue")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Generate repair plan" })).toBeInTheDocument();
@@ -127,7 +128,7 @@ describe("BreakscopeWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Next affected element" }));
     expect(await screen.findByText("2 of 2", { selector: ".bk-occurrence-nav output" })).toBeInTheDocument();
-    expect(screen.getAllByText("main img:nth-of-type(2)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("img missing alternative text").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Tablet 768px" }));
     expect(screen.getByText("No responsive issues at 768px")).toBeInTheDocument();
