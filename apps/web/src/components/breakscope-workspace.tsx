@@ -7,9 +7,9 @@ import { AlertTriangle, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRigh
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type DeviceOrientation, type DevicePreset } from "react-device-bezels";
-import { analyzeResponsiveSamples } from "@uirift/comparison-engine";
-import type { BrowserEngine, CaptureProfile, DetectorOutcome, ResponsiveIssue, TestTarget, ViewportSample } from "@uirift/shared";
-import { isCaptureUrl } from "@uirift/validation";
+import { analyzeResponsiveSamples } from "@breakscope/comparison-engine";
+import type { BrowserEngine, CaptureProfile, DetectorOutcome, ResponsiveIssue, TestTarget, ViewportSample } from "@breakscope/shared";
+import { isCaptureUrl } from "@breakscope/validation";
 import { capturePageLocally, discoverRoutesLocally, scanRouteLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys, workspaceStateQueryOptions } from "@/lib/breakscope-queries";
 import { loadBreakscopeState, saveBreakscopeState, type BreakscopeState, type PersistedScanJob, type PersistedViewportPreview } from "@/lib/breakscope-workspace";

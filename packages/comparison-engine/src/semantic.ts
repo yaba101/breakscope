@@ -5,7 +5,7 @@ import type {
   SemanticEvidence,
   SemanticFinding,
   SemanticSummary,
-} from "@uirift/shared";
+} from "@breakscope/shared";
 
 interface SemanticComparisonOptions {
   changedRatio?: number;

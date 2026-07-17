@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ElementSnapshot, PageSnapshot, ViewportSample } from "@uirift/shared";
+import type { ElementSnapshot, PageSnapshot, ViewportSample } from "@breakscope/shared";
 import { analyzeResponsiveSamples } from "./responsive";
 
 function sample(width: number, documentWidth = width, elements: ElementSnapshot[] = []): ViewportSample {

@@ -1,18 +1,17 @@
 {
-  "name": "uirift",
+  "name": "breakscope",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.6.0",
   "scripts": {
-    "dev": "pnpm --filter @uirift/web dev",
-    "dev:local": "pnpm --parallel --filter @uirift/web --filter @uirift/local-capture dev",
+    "dev": "pnpm --filter @breakscope/web dev",
+    "dev:local": "pnpm --parallel --filter @breakscope/web --filter @breakscope/local-capture dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
-    "test:e2e": "pnpm --filter @uirift/web test:e2e",
-    "db:migrate:local": "pnpm --filter @uirift/web exec wrangler d1 migrations apply uirift-db --local",
-    "preview": "pnpm --filter @uirift/web preview",
-    "deploy": "pnpm --filter @uirift/web deploy"
+    "test:e2e": "pnpm --filter @breakscope/web test:e2e",
+    "preview": "pnpm --filter @breakscope/web preview",
+    "deploy": "pnpm --filter @breakscope/web deploy"
   }
 }

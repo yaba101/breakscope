@@ -1,4 +1,4 @@
-import type { ElementSnapshot, ResponsiveIssue, ResponsiveIssueType, ViewportSample } from "@uirift/shared";
+import type { ElementSnapshot, ResponsiveIssue, ResponsiveIssueType, ViewportSample } from "@breakscope/shared";
 
 type Draft = Pick<ResponsiveIssue, "type" | "severity" | "confidence" | "title" | "description" | "routePath" | "selector" | "measurements" | "browserEngine"> & { width: number; elementRect?: ResponsiveIssue["elementRect"]; elementKey?: string };
 const interactiveRoles = new Set(["button", "link", "textbox", "checkbox", "radio", "combobox", "slider"]);

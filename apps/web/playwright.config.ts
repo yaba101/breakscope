@@ -23,7 +23,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: "pnpm --filter @uirift/local-capture start",
+      command: "pnpm --filter @breakscope/local-capture start",
       url: "http://127.0.0.1:4317/health",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,

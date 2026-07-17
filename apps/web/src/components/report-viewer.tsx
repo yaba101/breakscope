@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Laptop, LoaderCircle, Monitor, ScanSearch, Smartphone, Sparkles, Tablet } from "lucide-react";
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type DeviceOrientation, type DevicePreset } from "react-device-bezels";
-import type { BrowserEngine, ResponsiveIssue, TestTarget } from "@uirift/shared";
+import type { BrowserEngine, ResponsiveIssue, TestTarget } from "@breakscope/shared";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
 
 const deviceMaker = (preset: DevicePreset) => preset.platform === "ios" ? "Apple" : preset.name.startsWith("pixel") ? "Google" : preset.name.startsWith("galaxy") ? "Samsung" : preset.name.startsWith("oneplus") ? "OnePlus" : preset.name.startsWith("xiaomi") ? "Xiaomi" : "Android";

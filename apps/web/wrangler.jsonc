@@ -1,23 +1,14 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "uirift-web",
+  "name": "breakscope-web",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-07-13",
   "compatibility_flags": ["nodejs_compat"],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "d1_databases": [
-    { "binding": "DB", "database_name": "uirift-db", "database_id": "REPLACE_AFTER_PROVISIONING", "migrations_dir": "migrations" }
-  ],
-  "r2_buckets": [
-    { "binding": "IMAGES", "bucket_name": "uirift-images" }
-  ],
-  "queues": {
-    "producers": [
-      { "binding": "CAPTURE_JOBS", "queue": "uirift-capture-jobs" }
-    ]
+    { "binding": "DB", "database_name": "breakscope-db", "database_id": "REPLACE_AFTER_PROVISIONING", "migrations_dir": "migrations" }
   },
   "vars": {
-    "BETTER_AUTH_URL": "http://localhost:3000",
     "APP_ENV": "development"
   },
   "upload_source_maps": true

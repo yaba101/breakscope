@@ -1,5 +1,5 @@
 {
-  "name": "@uirift/local-capture",
+  "name": "@breakscope/local-capture",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@playwright/test": "^1.58.2",
-    "@uirift/shared": "workspace:*",
-    "@uirift/validation": "workspace:*"
+    "@breakscope/shared": "workspace:*",
+    "@breakscope/validation": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20",

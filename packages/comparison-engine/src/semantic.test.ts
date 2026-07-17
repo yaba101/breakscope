@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ElementSnapshot, PageSnapshot } from "@uirift/shared";
+import type { ElementSnapshot, PageSnapshot } from "@breakscope/shared";
 import { comparePageSnapshots } from "./semantic";
 
 function element(input: Partial<ElementSnapshot> & Pick<ElementSnapshot, "key" | "tag" | "role" | "name">): ElementSnapshot {

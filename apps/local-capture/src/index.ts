@@ -2,10 +2,10 @@ import { createServer, type ServerResponse } from "node:http";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { chromium, devices, firefox, webkit, type Browser, type BrowserContextOptions, type BrowserType } from "@playwright/test";
-import { viewportProfiles, type BrowserEngine, type CaptureProfile, type PageSnapshot, type ViewportId, type ViewportSample } from "@uirift/shared";
-import { isCaptureUrl, isLocalPreviewUrl } from "@uirift/validation";
+import { viewportProfiles, type BrowserEngine, type CaptureProfile, type PageSnapshot, type ViewportId, type ViewportSample } from "@breakscope/shared";
+import { isCaptureUrl, isLocalPreviewUrl } from "@breakscope/validation";
 
-const port = Number(process.env.UIRIFT_CAPTURE_PORT ?? 4317);
+const port = Number(process.env.BREAKSCOPE_CAPTURE_PORT ?? 4317);
 const allowedOrigins = new Set([
   "http://localhost:3000",
   "http://127.0.0.1:3000",
@@ -118,7 +118,7 @@ function publicCaptureError(error: unknown, engine: BrowserEngine = "chromium") 
   const message = error instanceof Error ? error.message : String(error);
   if (/Executable doesn't exist|playwright was just installed or updated|playwright install/i.test(message)) {
     const label = engine === "webkit" ? "WebKit" : engine === "firefox" ? "Firefox" : "Chromium";
-    return `${label} capture runtime is not installed. Run pnpm --filter @uirift/local-capture exec playwright install ${engine}.`;
+    return `${label} capture runtime is not installed. Run pnpm --filter @breakscope/local-capture exec playwright install ${engine}.`;
   }
   return message.split("\n")[0]?.trim().slice(0, 240) || "Capture failed";
 }

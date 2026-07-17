@@ -4,7 +4,7 @@ import { ArrowRight, Clock3, LoaderCircle, Search, Trash2, X } from "lucide-reac
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { isCaptureUrl } from "@uirift/validation";
+import { isCaptureUrl } from "@breakscope/validation";
 import { discoverRoutesLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys } from "@/lib/breakscope-queries";
 import { loadBreakscopeState, saveBreakscopeState, type BreakscopeState } from "@/lib/breakscope-workspace";

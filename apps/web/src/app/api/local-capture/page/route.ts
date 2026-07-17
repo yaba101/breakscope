@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     });
   } catch {
     return Response.json(
-      { error: "Local capture is offline. Start UIRift with pnpm dev:local and try again." },
+      { error: "Local capture is offline. Start Breakscope with pnpm dev:local and try again." },
       { status: 503 },
     );
   }

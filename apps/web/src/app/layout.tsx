@@ -7,9 +7,9 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: { default: "UIRift — Visual regression workspace", template: "%s · UIRift" },
-  description: "Compare deployed interfaces and review every changed pixel in a precise developer workspace.",
-  applicationName: "UIRift",
+  title: { default: "Breakscope — Responsive testing", template: "%s · Breakscope" },
+  description: "Find responsive failures across the widths and browsers that matter.",
+  applicationName: "Breakscope",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

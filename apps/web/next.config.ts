@@ -5,7 +5,7 @@ initOpenNextCloudflareForDev();
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  transpilePackages: ["@uirift/shared", "@uirift/validation", "@uirift/database", "@uirift/comparison-engine"],
+  transpilePackages: ["@breakscope/shared", "@breakscope/validation", "@breakscope/database", "@breakscope/comparison-engine"],
 };
 
 export default nextConfig;

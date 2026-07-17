@@ -1,4 +1,4 @@
-import type { BrowserEngine, ResponsiveIssue, TestTarget, ViewportSample } from "@uirift/shared";
+import type { BrowserEngine, ResponsiveIssue, TestTarget, ViewportSample } from "@breakscope/shared";
 
 const databaseName = "breakscope-local-workspace";
 const storeName = "workspace";

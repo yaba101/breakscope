@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ResponsiveIssue } from "@uirift/shared";
+import type { ResponsiveIssue } from "@breakscope/shared";
 import { BreakscopeWorkspace } from "./breakscope-workspace";
 
 const { loadBreakscopeState, saveBreakscopeState, capturePageLocally, discoverRoutesLocally, scanRouteLocally } = vi.hoisted(() => ({
