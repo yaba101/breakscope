@@ -132,7 +132,7 @@ function DeviceFrame({ model, browserEngine, orientation, scaleMode, url, childr
   if (model.preset) {
     const fittedZoom = model.kind === "phone" ? orientation === "portrait" ? .72 : .7 : orientation === "portrait" ? .48 : .58;
     const zoom = scaleMode === "actual" ? 1 : scaleMode === "custom" ? .72 : scaleMode === "fit-screen" ? fittedZoom * 1.18 : fittedZoom;
-    return <div className={`bk-library-device ${model.kind} scale-${scaleMode}`} aria-label={`${model.label} device frame`}><BezelDeviceFrame device={model.preset.name} orientation={orientation} color={model.preset.defaultColor} zoom={zoom} contentClassName="bk-bezel-content">{preview}</BezelDeviceFrame></div>;
+    return <div className={`bk-library-device ${model.kind} scale-${scaleMode}`} aria-label={`${model.label} device frame`}><BezelDeviceFrame className="bk-native-device-frame" device={model.preset.name} orientation={orientation} color={model.preset.defaultColor} zoom={zoom} contentClassName="bk-bezel-content">{preview}</BezelDeviceFrame></div>;
   }
   const browserClass = browserEngine === "webkit" ? "safari" : browserEngine === "firefox" ? "firefox" : "chrome";
   return <div className={`bk-browser-frame ${browserClass} scale-${scaleMode}`} aria-label={`${model.label} in ${browserLabels[browserEngine]}`}><div className="bk-browser-chrome"><span><i /><i /><i /></span><code>{url}</code><b /></div>{preview}</div>;
