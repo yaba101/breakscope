@@ -16,6 +16,8 @@ import { clearBreakscopeState, loadBreakscopeState, saveBreakscopeState, type Br
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
 
 const defaultWidths = [320, 390, 480, 600, 768, 900, 1024, 1280, 1440];
+const evidenceWarningBytes = 48 * 1024 * 1024;
+const evidenceLimitBytes = 64 * 1024 * 1024;
 type InspectorTab = "activity" | "issue" | "findings" | "checks";
 type ComparisonMode = "failing" | "passing";
 type DeviceKind = "phone" | "tablet" | "desktop";
@@ -155,7 +157,7 @@ function WorkspaceControls({ retainedBytes, disabled, onClearEvidence, onResetWo
   return <Popover.Root>
     <Popover.Trigger asChild><button type="button" className="bk-workspace-controls-trigger" aria-label="Open workspace controls"><MoreHorizontal size={18} /><span>Controls</span></button></Popover.Trigger>
     <Popover.Portal><Popover.Content className="bk-workspace-controls" side="right" align="end" sideOffset={10} aria-label="Workspace controls">
-      <header><div><b>Workspace controls</b><span>{retainedBytes ? `${formatBytes(retainedBytes)} evidence retained` : "No captured evidence retained"}</span></div><Popover.Close aria-label="Close workspace controls"><X size={15} /></Popover.Close></header>
+      <header><div><b>Workspace controls</b><span className={retainedBytes >= evidenceWarningBytes ? "warning" : ""}>{retainedBytes ? `${formatBytes(retainedBytes)} of ${formatBytes(evidenceLimitBytes)} evidence retained` : "No captured evidence retained"}</span></div><Popover.Close aria-label="Close workspace controls"><X size={15} /></Popover.Close></header>
       <button type="button" className="bk-workspace-control-primary" disabled={disabled || !retainedBytes} onClick={onClearEvidence}><Eraser size={16} /><span><b>Clear captured evidence</b><small>Keep this test configuration</small></span></button>
       <button type="button" className="bk-workspace-control-row" onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}><MoreHorizontal size={16} /><span>More actions</span><ChevronDown size={15} /></button>
       {moreOpen && <div className="bk-workspace-control-more"><button type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> Reload workspace</button>{process.env.NODE_ENV === "development" && <DevRuntimePanel retainedBytes={retainedBytes} />}</div>}
@@ -360,6 +362,17 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
 
 function sampleSignature(sample: ViewportSample) {
   return analyzeResponsiveSamples([sample]).allIssues.map((issue) => issue.fingerprint).sort().join("|");
+}
+
+function boundedPreviews(source: PersistedViewportPreview[]) {
+  let retained = 0;
+  const kept: PersistedViewportPreview[] = [];
+  for (const preview of [...source].reverse()) {
+    if (retained + preview.image.byteLength > evidenceLimitBytes) continue;
+    kept.push(preview);
+    retained += preview.image.byteLength;
+  }
+  return kept.reverse();
 }
 
 export function BreakscopeWorkspace() {
@@ -692,7 +705,9 @@ export function BreakscopeWorkspace() {
       const now = Date.now();
       const target: TestTarget = { id: "current", name: new URL(url).host, url, selectedRoutes, minWidth, maxWidth, executionMode: "local", deviceWidths, browserEngines, createdAt: stored.target?.createdAt ?? now, updatedAt: now };
       scanJob = { ...scanJob, status: routeErrors.length ? "failed" : "completed", errors: routeErrors, updatedAt: now };
-      const nextState: BreakscopeState = { availableRoutes: routes, target, latestIssues: withEvidence, latestManifest: analysis.allIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), latestPreviews: capturedPreviews, scanJob, ui: { selectedDeviceModelId: activeDeviceModelId, deviceOrientation, recentDeviceIds, pinnedDeviceIds, previewScaleMode, previewZoom, activeBrowserEngine }, updatedAt: now };
+      const finalPreviews = boundedPreviews(capturedPreviews);
+      setPreviews(finalPreviews);
+      const nextState: BreakscopeState = { availableRoutes: routes, target, latestIssues: withEvidence, latestManifest: analysis.allIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), latestPreviews: finalPreviews, scanJob, ui: { selectedDeviceModelId: activeDeviceModelId, deviceOrientation, recentDeviceIds, pinnedDeviceIds, previewScaleMode, previewZoom, activeBrowserEngine }, updatedAt: now };
       queryClient.setQueryData(breakscopeQueryKeys.workspace(), nextState);
       await saveBreakscopeState(nextState);
       if (routeErrors.length) setError(`Some routes could not be scanned: ${routeErrors.join(" · ")}`);

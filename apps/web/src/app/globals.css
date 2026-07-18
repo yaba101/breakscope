@@ -47,6 +47,7 @@
 .bk-setup-presets > button:disabled { cursor: not-allowed; opacity: .45; }
 .bk-workspace-error > span { flex: 1; }
 .bk-workspace-error .bk-error-retry { display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; background: transparent; padding: 6px 9px; color: inherit; font-weight: 700; white-space: nowrap; }
+.bk-workspace-controls header span.warning { color: #a44512; font-weight: 700; }
 @media (max-width: 760px) {
   .bk-setup-presets { grid-template-columns: 1fr auto; }
   .bk-setup-presets > div { grid-column: 1 / -1; }
