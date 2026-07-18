@@ -7673,6 +7673,13 @@ button {
 .bk-ai-issue-review > small { color: var(--stratum-text-muted); font-size: 9px; line-height: 1.45; }
 .bk-workspace-page .bk-issue-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .bk-workspace-page .bk-issue-actions a { min-height: 42px; }
+.bk-workspace-page .bk-lifecycle-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
+.bk-workspace-page .bk-suppressed-findings { margin-top: 16px; border: 1px solid var(--line); background: var(--surface-soft); }
+.bk-workspace-page .bk-suppressed-findings > summary { cursor: pointer; padding: 13px 15px; font-weight: 700; }
+.bk-workspace-page .bk-suppressed-findings > button { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; padding: 12px 15px; border: 0; border-top: 1px solid var(--line); background: transparent; text-align: left; }
+.bk-workspace-page .bk-suppressed-findings > button span { font-weight: 700; }
+.bk-workspace-page .bk-suppressed-findings > button small { grid-column: 1; color: var(--muted); }
+.bk-workspace-page .bk-suppressed-findings > button svg { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
 .bk-ai-issue-review .bk-ai-empty { display: grid; gap: 5px; padding: 11px 0; }
 .bk-ai-issue-review .bk-ai-empty b { color: var(--stratum-text-primary); font-size: 12px; }
 .bk-context-inspector .bk-inspector-content .bk-ai-empty p { margin: 0; color: var(--stratum-text-secondary) !important; font-size: 11px; line-height: 1.5; }
