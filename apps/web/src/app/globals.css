@@ -7702,6 +7702,52 @@ button {
 .bk-workspace-page .bk-element-context dl > div { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; }
 .bk-workspace-page .bk-element-context dt { color: var(--muted); }
 .bk-workspace-page .bk-element-context dd { margin: 0; overflow-wrap: anywhere; }
+
+/* Captured pages own vertical gestures inside every emulated screen. */
+.bk-library-screen-content .bs-preview {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+.bk-library-screen-content .bs-preview:focus-visible { outline: 2px solid var(--color-brand); outline-offset: -2px; }
+.bk-library-screen-content .bk-result-image-layer { min-height: max-content; }
+
+.bk-shortcut-backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  padding: 24px;
+  background: rgb(10 14 22 / 38%);
+  place-items: center;
+}
+.bk-shortcut-reference {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  width: min(460px, 100%);
+  border: 1px solid var(--stratum-border-500);
+  border-radius: 12px;
+  background: var(--stratum-secondary-0);
+  box-shadow: 0 8px 8px rgb(17 24 39 / 18%);
+  padding: 0;
+  color: var(--stratum-text-primary);
+}
+.bk-shortcut-reference header { display: flex; min-height: 58px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--stratum-border-300); padding: 0 18px; }
+.bk-shortcut-reference header > span { display: flex; align-items: center; gap: 9px; }
+.bk-shortcut-reference header button { display: grid; width: 32px; height: 32px; margin: 0; border: 0; border-radius: 7px; background: transparent; color: var(--stratum-text-secondary); place-items: center; }
+.bk-shortcut-reference header button:hover { background: var(--stratum-surface-soft); color: var(--stratum-text-primary); }
+.bk-shortcut-reference > p { margin: 0; padding: 14px 18px 4px; color: var(--stratum-text-secondary); font-size: 12px; }
+.bk-shortcut-reference dl { display: grid; gap: 0; margin: 8px 0 0; padding: 0 18px 16px; }
+.bk-shortcut-reference dl div { display: grid; min-height: 50px; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 10px; border-top: 1px solid var(--stratum-border-300); }
+.bk-shortcut-reference dl i { display: flex; align-items: center; justify-content: center; color: var(--stratum-text-secondary); font-style: normal; }
+.bk-shortcut-reference dl i svg + svg { margin-left: -7px; }
+.bk-shortcut-reference dt { font-size: 12px; font-weight: 650; }
+.bk-shortcut-reference dd { display: flex; gap: 5px; margin: 0; }
+.bk-shortcut-reference kbd { display: grid; min-width: 28px; height: 27px; border: 1px solid var(--stratum-border-500); border-bottom-width: 2px; border-radius: 6px; background: var(--stratum-surface-soft); padding: 0 6px; font: 650 11px var(--font-stratum-mono), monospace; place-items: center; }
 .bk-ai-issue-review .bk-ai-empty { display: grid; gap: 5px; padding: 11px 0; }
 .bk-ai-issue-review .bk-ai-empty b { color: var(--stratum-text-primary); font-size: 12px; }
 .bk-context-inspector .bk-inspector-content .bk-ai-empty p { margin: 0; color: var(--stratum-text-secondary) !important; font-size: 11px; line-height: 1.5; }
