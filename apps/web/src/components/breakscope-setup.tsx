@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, Globe2, LoaderCircle, RefreshCw, Save } from "lucide-react";
+import { ArrowRight, Check, Globe2, LoaderCircle, RefreshCw, Save, Search, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -29,7 +29,9 @@ export function BreakscopeSetup() {
   const [urlError, setUrlError] = useState("");
   const [presets, setPresets] = useState<TestPreset[]>([]);
   const [presetName, setPresetName] = useState("");
+  const [routeQuery, setRouteQuery] = useState("");
   const selectedSet = useMemo(() => new Set(selectedRoutes), [selectedRoutes]);
+  const filteredRoutes = useMemo(() => routes.filter((route) => route.toLowerCase().includes(routeQuery.trim().toLowerCase())), [routeQuery, routes]);
 
   useEffect(() => {
     let active = true;
@@ -55,6 +57,10 @@ export function BreakscopeSetup() {
     setSelectedRoutes((current) => current.includes(route)
       ? current.length > 1 ? current.filter((item) => item !== route) : current
       : current.length < 5 ? [...current, route] : current);
+  }
+
+  function selectVisibleRoutes() {
+    setSelectedRoutes((current) => [...current, ...filteredRoutes.filter((route) => !current.includes(route))].slice(0, 5));
   }
 
   async function savePreset() {
@@ -199,11 +205,12 @@ export function BreakscopeSetup() {
               <div><h2 id="setup-routes-title">Pages to inspect</h2><p>Select up to five discovered routes.</p></div>
               <span>{selectedRoutes.length} / 5</span>
             </div>
-            <div className="bk-setup-routes">{routes.map((route) => (
+            <div className="bk-route-tools"><label><Search size={14} /><span className="sr-only">Filter discovered routes</span><input value={routeQuery} onChange={(event) => setRouteQuery(event.target.value)} placeholder="Filter routes…" />{routeQuery && <button type="button" aria-label="Clear route filter" onClick={() => setRouteQuery("")}><X size={13} /></button>}</label><div><button type="button" disabled={!filteredRoutes.some((route) => !selectedSet.has(route)) || selectedRoutes.length >= 5} onClick={selectVisibleRoutes}>Select visible</button><button type="button" disabled={selectedRoutes.length <= 1} onClick={() => setSelectedRoutes(selectedRoutes.slice(0, 1))}>Keep first</button></div></div>
+            <div className="bk-setup-routes">{filteredRoutes.map((route) => (
               <button type="button" key={route} aria-pressed={selectedSet.has(route)} onClick={() => toggleRoute(route)}>
                 <i>{selectedSet.has(route) && <Check size={13} />}</i><span>{route}</span>
               </button>
-            ))}</div>
+            ))}{!filteredRoutes.length && <p className="bk-route-filter-empty">No routes match “{routeQuery}”.</p>}</div>
           </section>
 
           <section className="bk-setup-panel bk-setup-viewports-panel" aria-labelledby="setup-viewports-title">

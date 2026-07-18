@@ -76,6 +76,15 @@
 .bk-setup-page :is(button, a, input, select):focus-visible,
 .bk-workspace-page :is(button, a, input, select, summary):focus-visible { outline: 2px solid var(--control-focus); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .bk-skip-link { transition: none; } }
+.bk-route-tools { display: grid; gap: 7px; padding: 8px 12px; border-bottom: 1px solid var(--setup-border); }
+.bk-route-tools > label { display: flex; min-height: 36px; align-items: center; gap: 7px; border: 1px solid var(--setup-border); padding: 0 8px; }
+.bk-route-tools input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--setup-ink); font: inherit; }
+.bk-route-tools label button { border: 0; background: transparent; color: var(--setup-muted); }
+.bk-route-tools > div { display: flex; gap: 6px; }
+.bk-route-tools > div button { border: 0; background: transparent; padding: 3px 0; color: var(--setup-muted); font-size: 11px; font-weight: 700; }
+.bk-route-tools > div button + button { margin-left: 10px; }
+.bk-route-tools > div button:disabled { opacity: .4; }
+.bk-route-filter-empty { padding: 20px 14px; color: var(--setup-muted); font-size: 12px; text-align: center; }
 @media (max-width: 760px) {
   .bk-setup-presets { grid-template-columns: 1fr auto; }
   .bk-setup-presets > div { grid-column: 1 / -1; }
