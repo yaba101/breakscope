@@ -200,7 +200,8 @@ function DeviceFrame({ model, browserEngine, orientation, scaleMode, previewZoom
     return <div className={`bk-library-device ${model.kind} scale-${scaleMode}`} aria-label={`${model.label} device frame`}><BezelDeviceFrame className="bk-native-device-frame" device={model.preset.name} orientation={orientation} color={model.preset.defaultColor} zoom={zoom} contentClassName="bk-bezel-content">{preview}</BezelDeviceFrame></div>;
   }
   const browserClass = browserEngine === "webkit" ? "safari" : browserEngine === "firefox" ? "firefox" : "chrome";
-  return <div className={`bk-browser-frame ${browserClass} scale-${scaleMode}`} style={scaleMode === "custom" ? { width: `${previewZoom}%`, height: `${previewZoom}%` } : undefined} aria-label={`${model.label} in ${browserLabels[browserEngine]}`}><div className="bk-browser-chrome"><span><i /><i /><i /></span><code>{url}</code><b /></div>{preview}</div>;
+  const hardwareClass = model.checkpointWidth >= 1440 ? "wide-display" : "laptop-display";
+  return <div className={`bk-browser-frame ${hardwareClass} ${browserClass} scale-${scaleMode}`} style={scaleMode === "custom" ? { width: `${previewZoom}%`, height: `${previewZoom}%` } : undefined} aria-label={`${model.label} in ${browserLabels[browserEngine]}`}><div className="bk-browser-chrome"><span><i /><i /><i /></span><code>{url}</code><b /></div>{preview}</div>;
 }
 
 function DeviceGlyph({ model }: { model: DeviceModel }) {
