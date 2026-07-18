@@ -49,4 +49,11 @@ describe("analyzeResponsiveSamples", () => {
     expect(result.issues).toHaveLength(5);
     expect(result.suppressedCount).toBe(0);
   });
+
+  it("turns axe violations into checkpoint findings with remediation evidence", () => {
+    const audited = sample(390);
+    audited.snapshot.accessibilityViolations = [{ id: "color-contrast", impact: "serious", help: "Elements must meet minimum color contrast ratio thresholds", helpUrl: "https://dequeuniversity.com/rules/axe/color-contrast", tags: ["wcag2aa", "wcag143"], nodes: [{ selector: "main > p", html: "<p>Muted text</p>", failureSummary: "Element has insufficient color contrast" }] }];
+    const result = analyzeResponsiveSamples([audited]);
+    expect(result.issues[0]).toMatchObject({ type: "accessibility", severity: "high", selector: "html", measurements: { rule: "color-contrast", wcag: "wcag2aa, wcag143" } });
+  });
 });

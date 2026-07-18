@@ -2,6 +2,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { chromium, devices, firefox, webkit, type Browser, type BrowserContextOptions, type BrowserType } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { viewportProfiles, type BrowserEngine, type CaptureProfile, type PageSnapshot, type ViewportId, type ViewportSample } from "@breakscope/shared";
 import { isCaptureUrl, isLocalPreviewUrl } from "@breakscope/validation";
 
@@ -326,6 +327,14 @@ async function captureWithBrowser(
     }
   }
   if (!snapshotData) throw new Error("Unable to read the settled page snapshot");
+  const accessibilityViolations = await new AxeBuilder({ page }).analyze().then((result) => result.violations.map((violation) => ({
+    id: violation.id,
+    impact: violation.impact ?? null,
+    help: violation.help,
+    helpUrl: violation.helpUrl,
+    tags: violation.tags,
+    nodes: violation.nodes.map((node) => ({ selector: node.target.map(String).join(" "), html: node.html.slice(0, 500), failureSummary: node.failureSummary ?? violation.description })),
+  }))).catch(() => []);
   // The workspace presents captures inside a scrollable device screen. A viewport-only
   // image creates a false bottom at the initial browser height, so retain the full page
   // and let the workspace evidence budget decide which captures remain persisted.
@@ -333,6 +342,7 @@ async function captureWithBrowser(
   const finalUrl = page.url();
   const snapshot: PageSnapshot = {
     ...snapshotData,
+    accessibilityViolations,
     url: finalUrl,
     capturedAt: Date.now(),
   };

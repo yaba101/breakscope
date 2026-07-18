@@ -6,6 +6,7 @@ const detectorLabels: Record<ResponsiveIssueType, string> = {
   overflow: "Horizontal overflow", offscreen: "Control reachability", clipping: "Content clipping", overlap: "Element overlap",
   occlusion: "Sticky content coverage", disappearing: "Responsive visibility", "touch-target": "Touch target size",
   "accessible-name": "Accessible names", "image-alt": "Image alternatives",
+  accessibility: "Accessibility audit",
 };
 
 function stableFingerprint(type: ResponsiveIssueType, routePath: string, selector: string, elementKey?: string, browserEngine = "chromium") {
@@ -28,6 +29,15 @@ function draft(type: ResponsiveIssueType, sample: ViewportSample, element: Eleme
 function issuesAt(sample: ViewportSample): Draft[] {
   const issues: Draft[] = [];
   const { snapshot } = sample;
+  for (const violation of snapshot.accessibilityViolations ?? []) for (const node of violation.nodes) {
+    const element = snapshot.elements.find((candidate) => candidate.selector === node.selector);
+    const severity = violation.impact === "critical" || violation.impact === "serious" ? "high" : violation.impact === "moderate" ? "medium" : "low";
+    issues.push(draft("accessibility", sample, element, {
+      severity, confidence: 0.99, title: violation.help,
+      description: node.failureSummary || `Accessibility rule ${violation.id} failed.`,
+      measurements: { rule: violation.id, impact: violation.impact ?? "unknown", wcag: violation.tags.filter((tag) => tag.startsWith("wcag")).join(", "), helpUrl: violation.helpUrl, target: node.selector },
+    }));
+  }
   if (snapshot.documentWidth > sample.width + 2) {
     issues.push(draft("overflow", sample, undefined, {
       severity: "high", confidence: 0.99, title: "Page creates horizontal scrolling",

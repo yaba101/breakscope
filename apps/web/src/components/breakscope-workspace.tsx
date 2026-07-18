@@ -339,6 +339,7 @@ function selectorBreadcrumb(selector: string) {
 }
 
 function IssueTypeIcon({ type, size = 16 }: { type: ResponsiveIssueType; size?: number }) {
+  if (type === "accessibility") return <Accessibility size={size} />;
   if (type === "image-alt") return <ImageOff size={size} />;
   if (type === "accessible-name") return <Accessibility size={size} />;
   if (type === "touch-target") return <Hand size={size} />;

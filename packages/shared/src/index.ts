@@ -66,7 +66,8 @@ export type ResponsiveIssueType =
   | "disappearing"
   | "touch-target"
   | "accessible-name"
-  | "image-alt";
+  | "image-alt"
+  | "accessibility";
 
 export type VerificationState = "new" | "still-broken" | "fixed";
 
@@ -185,6 +186,16 @@ export interface PageSnapshot {
   documentHeight: number;
   capturedAt: number;
   elements: ElementSnapshot[];
+  accessibilityViolations?: AccessibilityViolation[];
+}
+
+export interface AccessibilityViolation {
+  id: string;
+  impact: "minor" | "moderate" | "serious" | "critical" | null;
+  help: string;
+  helpUrl: string;
+  tags: string[];
+  nodes: Array<{ selector: string; html: string; failureSummary: string }>;
 }
 
 export type SemanticChangeType = "added" | "removed" | "text" | "moved" | "resized" | "style" | "visibility" | "page";
