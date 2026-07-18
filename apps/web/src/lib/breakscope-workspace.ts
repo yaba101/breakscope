@@ -82,7 +82,6 @@ export interface BreakscopeState {
   };
   target?: TestTarget;
   latestIssues: ResponsiveIssue[];
-  suppressedIssues?: Array<ResponsiveIssue & { suppressionReason?: string }>;
   latestManifest?: ResponsiveIssue[];
   latestPreviews?: PersistedViewportPreview[];
   ui?: {
