@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, Globe2, LoaderCircle, RefreshCw, Save, Search, X } from "lucide-react";
+import { ArrowRight, Check, Copy, Globe2, LoaderCircle, Pencil, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -29,6 +29,7 @@ export function BreakscopeSetup() {
   const [urlError, setUrlError] = useState("");
   const [presets, setPresets] = useState<TestPreset[]>([]);
   const [presetName, setPresetName] = useState("");
+  const [selectedPresetId, setSelectedPresetId] = useState("");
   const [routeQuery, setRouteQuery] = useState("");
   const selectedSet = useMemo(() => new Set(selectedRoutes), [selectedRoutes]);
   const filteredRoutes = useMemo(() => routes.filter((route) => route.toLowerCase().includes(routeQuery.trim().toLowerCase())), [routeQuery, routes]);
@@ -77,12 +78,42 @@ export function BreakscopeSetup() {
   function applyPreset(id: string) {
     const preset = presets.find((item) => item.id === id);
     if (!preset) return;
+    setSelectedPresetId(id);
     setUrl(preset.url);
     setUrlInput(preset.url);
     setRoutes((current) => Array.from(new Set([...preset.routes, ...current])));
     setSelectedRoutes(preset.routes.slice(0, 5));
     setDeviceWidths(preset.deviceWidths);
     setBrowserEngines(preset.browserEngines);
+  }
+
+  async function persistPresets(nextPresets: TestPreset[]) {
+    const previous = await loadBreakscopeState();
+    await saveBreakscopeState({ ...previous, testPresets: nextPresets, updatedAt: Date.now() });
+    setPresets(nextPresets);
+  }
+
+  async function renamePreset() {
+    const preset = presets.find((item) => item.id === selectedPresetId);
+    if (!preset) return;
+    const name = window.prompt("Rename preset", preset.name)?.trim();
+    if (!name) return;
+    await persistPresets(presets.map((item) => item.id === preset.id ? { ...item, name, updatedAt: Date.now() } : item));
+  }
+
+  async function duplicatePreset() {
+    const preset = presets.find((item) => item.id === selectedPresetId);
+    if (!preset) return;
+    const copy: TestPreset = { ...preset, id: crypto.randomUUID(), name: `${preset.name} copy`, updatedAt: Date.now() };
+    await persistPresets([copy, ...presets].slice(0, 12));
+    setSelectedPresetId(copy.id);
+  }
+
+  async function deletePreset() {
+    const preset = presets.find((item) => item.id === selectedPresetId);
+    if (!preset || !window.confirm(`Delete “${preset.name}”?`)) return;
+    await persistPresets(presets.filter((item) => item.id !== preset.id));
+    setSelectedPresetId("");
   }
 
   function toggleDevice(width: number) {
@@ -194,9 +225,10 @@ export function BreakscopeSetup() {
 
         <section className="bk-setup-presets" aria-label="Saved test presets">
           <div><Save size={15} /><strong>Local presets</strong><span>Reuse a test configuration</span></div>
-          <label><span className="sr-only">Load preset</span><select defaultValue="" onChange={(event) => applyPreset(event.target.value)}><option value="">Choose preset…</option>{presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select></label>
+          <label><span className="sr-only">Load preset</span><select value={selectedPresetId} onChange={(event) => applyPreset(event.target.value)}><option value="">Choose preset…</option>{presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select></label>
           <label><span className="sr-only">Preset name</span><input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" maxLength={40} /></label>
           <button type="button" disabled={!presetName.trim()} onClick={() => void savePreset()}><Save size={14} /> Save</button>
+          <div className="bk-preset-actions"><button type="button" disabled={!selectedPresetId} onClick={() => void renamePreset()} aria-label="Rename selected preset"><Pencil size={14} /></button><button type="button" disabled={!selectedPresetId} onClick={() => void duplicatePreset()} aria-label="Duplicate selected preset"><Copy size={14} /></button><button type="button" disabled={!selectedPresetId} onClick={() => void deletePreset()} aria-label="Delete selected preset"><Trash2 size={14} /></button></div>
         </section>
 
         <div className="bk-setup-options">

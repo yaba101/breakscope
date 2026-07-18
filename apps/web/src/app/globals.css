@@ -32,7 +32,7 @@
 /* Local setup presets */
 .bk-setup-presets {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(150px, .8fr) minmax(140px, .7fr) auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, .8fr) minmax(140px, .7fr) auto auto;
   align-items: center;
   gap: 8px;
   border: 1px solid var(--setup-border);
@@ -45,6 +45,9 @@
 .bk-setup-presets input { width: 100%; min-height: 38px; border: 1px solid var(--setup-border); background: var(--setup-bg); padding: 0 10px; color: var(--setup-ink); font: inherit; }
 .bk-setup-presets > button { display: inline-flex; min-height: 38px; align-items: center; gap: 6px; border: 0; background: var(--setup-ink); padding: 0 14px; color: var(--setup-bg); font-weight: 700; }
 .bk-setup-presets > button:disabled { cursor: not-allowed; opacity: .45; }
+.bk-setup-presets .bk-preset-actions { display: flex; gap: 4px; padding: 0; }
+.bk-setup-presets .bk-preset-actions button { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid var(--setup-border); background: transparent; color: var(--setup-ink); }
+.bk-setup-presets .bk-preset-actions button:disabled { opacity: .35; }
 .bk-workspace-error > span { flex: 1; }
 .bk-workspace-error .bk-error-retry { display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; background: transparent; padding: 6px 9px; color: inherit; font-weight: 700; white-space: nowrap; }
 .bk-workspace-controls header span.warning { color: #a44512; font-weight: 700; }
