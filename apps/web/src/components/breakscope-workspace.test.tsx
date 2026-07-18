@@ -255,6 +255,7 @@ describe("BreakscopeWorkspace", () => {
     expect(await screen.findByLabelText("Search devices")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Pin iPhone 17 Pro" }));
     expect(screen.getByRole("button", { name: "Unpin iPhone 17 Pro" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Phone" }));
     fireEvent.click(screen.getByRole("button", { name: /Galaxy S26 Ultra/ }));
     expect(screen.getByLabelText("Galaxy S26 Ultra device frame")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Tablet 768px" }));
@@ -300,6 +301,7 @@ describe("BreakscopeWorkspace", () => {
 
     expect(await screen.findByRole("button", { name: /Safari, capture ready/i })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "Device shell: iPhone 17 Pro" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Phone" }));
     fireEvent.click(await screen.findByRole("button", { name: /Galaxy S26 Ultra/ }));
     expect(screen.getByRole("button", { name: /Safari, capture ready/i })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("Galaxy S26 Ultra device frame")).toBeInTheDocument();

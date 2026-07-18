@@ -23,7 +23,7 @@ type ComparisonMode = "failing" | "passing";
 type DeviceKind = "phone" | "tablet" | "desktop";
 type PreviewScaleMode = "fit-device" | "fit-screen" | "actual" | "custom";
 type DeviceModelId = DeviceName | "iphone-17-pro" | "iphone-17-pro-max" | "pixel-10-pro" | "pixel-10-pro-xl" | "galaxy-s26" | "galaxy-s26-ultra" | "chrome-desktop" | "safari-desktop" | "edge-desktop";
-type DeviceFilter = "featured" | "recent" | "pinned" | "apple" | "android" | "tablet" | "desktop";
+type DeviceFilter = "recent" | "phone" | "tablet" | "laptop" | "wide";
 
 interface DeviceModel {
   id: DeviceModelId;
@@ -53,8 +53,6 @@ const deviceModels: DeviceModel[] = [
   { id: "chrome-desktop", label: "Desktop 1440", maker: "Desktop", platform: "Desktop", kind: "desktop", checkpointWidth: 1440, width: 1440, height: 900, browserEngine: "chromium" },
   { id: "safari-desktop", label: "Desktop 1280", maker: "Desktop", platform: "Desktop", kind: "desktop", checkpointWidth: 1280, width: 1280, height: 800, browserEngine: "chromium" },
 ];
-const featuredDeviceIds = new Set<DeviceModelId>(["iphone-17-pro", "iphone-17-pro-max", "pixel-10-pro", "galaxy-s26-ultra", "galaxy-z-fold-6", "ipad-pro-11", "pixel-tablet", "chrome-desktop"]);
-
 function modelForWidth(width: number) {
   return width <= 600 ? deviceModels.find((model) => model.id === "iphone-17-pro")! : width <= 900 ? deviceModels.find((model) => model.id === "ipad-pro-11")! : width < 1440 ? deviceModels.find((model) => model.id === "safari-desktop")! : deviceModels.find((model) => model.id === "chrome-desktop")!;
 }
@@ -212,7 +210,7 @@ function DeviceGlyph({ model }: { model: DeviceModel }) {
 function DevicePicker({ activeModel, orientation, recentIds, pinnedIds, onModelSelect, onOrientationChange, onTogglePin }: { activeModel: DeviceModel; orientation: DeviceOrientation; recentIds: DeviceModelId[]; pinnedIds: DeviceModelId[]; onModelSelect: (model: DeviceModel) => void; onOrientationChange: (orientation: DeviceOrientation) => void; onTogglePin: (id: DeviceModelId) => void }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<DeviceFilter>("featured");
+  const [filter, setFilter] = useState<DeviceFilter>("recent");
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setOpen(true); }
@@ -223,27 +221,24 @@ function DevicePicker({ activeModel, orientation, recentIds, pinnedIds, onModelS
   const normalizedQuery = query.trim().toLowerCase();
   const visibleModels = deviceModels.filter((model) => {
     if (normalizedQuery) return `${model.label} ${model.maker} ${model.platform}`.toLowerCase().includes(normalizedQuery);
-    if (filter === "featured") return featuredDeviceIds.has(model.id);
     if (filter === "recent") return recentIds.includes(model.id);
-    if (filter === "pinned") return pinnedIds.includes(model.id);
-    if (filter === "apple") return model.platform === "iOS";
-    if (filter === "android") return model.platform === "Android" && model.kind === "phone";
+    if (filter === "phone") return model.kind === "phone";
     if (filter === "tablet") return model.kind === "tablet";
-    return model.kind === "desktop";
+    if (filter === "laptop") return model.kind === "desktop" && model.checkpointWidth < 1440;
+    return model.kind === "desktop" && model.checkpointWidth >= 1440;
   });
   const groupedModels = visibleModels.reduce<Map<string, DeviceModel[]>>((groups, model) => {
-    const group = filter === "featured" && !normalizedQuery ? "Recommended" : model.maker;
-    groups.set(group, [...(groups.get(group) ?? []), model]);
+    groups.set(model.maker, [...(groups.get(model.maker) ?? []), model]);
     return groups;
   }, new Map());
-  const filters: DeviceFilter[] = ["featured", ...(recentIds.length ? ["recent" as const] : []), ...(pinnedIds.length ? ["pinned" as const] : []), "apple", "android", "tablet", "desktop"];
+  const filters: Array<{ id: DeviceFilter; label: string }> = [{ id: "recent", label: "Recent" }, { id: "phone", label: "Phone" }, { id: "tablet", label: "Tablet" }, { id: "laptop", label: "Laptop" }, { id: "wide", label: "Wide" }];
   const pinned = pinnedIds.includes(activeModel.id);
   return <Popover.Root open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery(""); }}>
     <Popover.Trigger className="bk-device-picker-trigger" aria-label={`Device shell: ${activeModel.label}`}><DeviceGlyph model={activeModel} /><span><small>Device shell · {activeModel.maker}</small><b>{activeModel.label}</b></span><em>{activeModel.width} × {activeModel.height}</em><ChevronDown size={16} /></Popover.Trigger>
     <Popover.Portal><Popover.Content className="bk-device-picker-popover" align="center" sideOffset={8} collisionPadding={12} onOpenAutoFocus={(event) => { event.preventDefault(); requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".bk-device-search input")?.focus()); }}>
       <header><div><b>Choose a device</b><span>{deviceModels.length} emulation profiles</span></div><span className="bk-picker-actions"><button type="button" className={pinned ? "active" : ""} aria-label={pinned ? `Unpin ${activeModel.label}` : `Pin ${activeModel.label}`} onClick={() => onTogglePin(activeModel.id)}><Star size={15} fill={pinned ? "currentColor" : "none"} /></button><button type="button" aria-label="Close device picker" onClick={() => setOpen(false)}><X size={16} /></button></span></header>
       <label className="bk-device-search"><Search size={16} /><input aria-label="Search devices" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search iPhone, Pixel, Galaxy…" /><kbd>⌘K</kbd></label>
-      <nav className="bk-device-filters" aria-label="Device categories">{filters.map((option) => <button type="button" key={option} className={filter === option && !normalizedQuery ? "active" : ""} onClick={() => { setFilter(option); setQuery(""); }}>{option[0]!.toUpperCase() + option.slice(1)}</button>)}</nav>
+      <nav className="bk-device-filters" aria-label="Device categories">{filters.map((option) => <button type="button" key={option.id} className={filter === option.id && !normalizedQuery ? "active" : ""} onClick={() => { setFilter(option.id); setQuery(""); }}>{option.label}</button>)}</nav>
       <div className="bk-device-catalog">{groupedModels.size ? [...groupedModels].map(([group, models]) => <section key={group}><h3>{group}<span>{models.length}</span></h3><div>{models.map((model) => <button type="button" key={model.id} className={activeModel.id === model.id ? "active" : ""} aria-pressed={activeModel.id === model.id} onClick={() => { onModelSelect(model); setOpen(false); }}><DeviceGlyph model={model} /><span><b>{model.label}</b><small>{model.platform} · {model.width} × {model.height}</small></span>{activeModel.id === model.id ? <Check size={16} /> : <ArrowRight size={14} />}</button>)}</div></section>) : <div className="bk-device-no-results"><Search size={22} /><b>No matching devices</b><span>Try a model, maker, or platform.</span></div>}</div>
       {activeModel.kind !== "desktop" && <footer><span>Orientation</span><div role="group" aria-label="Device orientation"><button type="button" className={orientation === "portrait" ? "active" : ""} aria-pressed={orientation === "portrait"} onClick={() => onOrientationChange("portrait")}><Smartphone size={15} /> Portrait</button><button type="button" className={orientation === "landscape" ? "active" : ""} aria-pressed={orientation === "landscape"} onClick={() => onOrientationChange("landscape")}><Smartphone className="landscape" size={15} /> Landscape</button></div></footer>}
       <Popover.Arrow className="bk-device-picker-arrow" />
