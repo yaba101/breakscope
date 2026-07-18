@@ -643,7 +643,11 @@ export function BreakscopeWorkspace() {
             scanJob = { ...scanJob, completedCheckpoints: [...scanJob.completedCheckpoints, checkpointKey] };
             await persistJob();
             setActivePreviewWidth(width);
-          } catch (reason) { if (reason instanceof DOMException && reason.name === "AbortError") break; }
+          } catch (reason) {
+            if (reason instanceof DOMException && reason.name === "AbortError") break;
+            const detail = reason instanceof Error ? reason.message : "Capture failed";
+            routeErrors.push(`${browserLabels[browserEngine]} ${selectedRoutes[0]} at ${width}px: ${detail.split("\n")[0]?.slice(0, 180)}`);
+          }
         }
       })();
       const routeTasks = browserEngines.flatMap((browserEngine) => selectedRoutes.map((routePath, index) => ({ browserEngine, routePath, index })));
@@ -667,6 +671,8 @@ export function BreakscopeWorkspace() {
           routeErrors.push(`${browserLabels[task.browserEngine]} ${task.routePath}: ${detail.split("\n")[0]?.slice(0, 220)}`);
         }
       });
+      scanJob = { ...scanJob, errors: routeErrors };
+      await persistJob();
       if (controller.signal.aborted) throw new DOMException("Scan cancelled", "AbortError");
       const analysis = analyzeResponsiveSamples(samples, previous.map((issue) => issue.fingerprint));
       setScanStage(4);
@@ -685,7 +691,7 @@ export function BreakscopeWorkspace() {
       setInspectorTab(firstIssue ? "issue" : "checks"); setComparisonMode("failing");
       const now = Date.now();
       const target: TestTarget = { id: "current", name: new URL(url).host, url, selectedRoutes, minWidth, maxWidth, executionMode: "local", deviceWidths, browserEngines, createdAt: stored.target?.createdAt ?? now, updatedAt: now };
-      scanJob = { ...scanJob, status: "completed", updatedAt: now };
+      scanJob = { ...scanJob, status: routeErrors.length ? "failed" : "completed", errors: routeErrors, updatedAt: now };
       const nextState: BreakscopeState = { availableRoutes: routes, target, latestIssues: withEvidence, latestManifest: analysis.allIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), latestPreviews: capturedPreviews, scanJob, ui: { selectedDeviceModelId: activeDeviceModelId, deviceOrientation, recentDeviceIds, pinnedDeviceIds, previewScaleMode, previewZoom, activeBrowserEngine }, updatedAt: now };
       queryClient.setQueryData(breakscopeQueryKeys.workspace(), nextState);
       await saveBreakscopeState(nextState);
@@ -812,7 +818,7 @@ export function BreakscopeWorkspace() {
 
   return <main id="main-content" className="breakscope-shell bk-workspace-page">
     <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Responsive lab</span><Link href="/setup" className="bk-edit-setup"><Settings2 size={14} /><span>Edit setup</span></Link></div><div className="bk-command-target"><span>{new URL(url).host}</span><code>{url}</code></div><div className="bk-command-actions"><span className="bk-agent"><i /> Agent online</span><button type="button" className="bk-command-run" disabled={!selectedRoutes.length || scanning} onClick={() => void scan()}>{scanning ? <span className="bk-scan-glyph"><ScanSearch size={16} /></span> : <RotateCcw size={16} />}{scanning ? "Scanning" : hasScanned ? "Run again" : "Run test"}</button></div></header>
-    {error && <div className="bs-error bk-workspace-error" role="alert"><AlertTriangle size={17} />{error}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={15} /></button></div>}
+    {error && <div className="bs-error bk-workspace-error" role="alert"><AlertTriangle size={17} /><span>{error}</span>{workspaceQuery.data?.scanJob?.status === "failed" && <button type="button" className="bk-error-retry" disabled={scanning} onClick={() => scan()}><RefreshCw size={14} /> Retry failed captures</button>}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={15} /></button></div>}
     {(routes.length > 0 || issues.length > 0 || scanning) ? <section className={`bs-workspace ${configCollapsed ? "config-collapsed" : ""}`} style={{ "--bk-inspector-width": `${inspectorWidth}px` } as CSSProperties}>
       <aside className="bs-config" aria-label="Scan configuration">
         <div className="bk-panel-title">
