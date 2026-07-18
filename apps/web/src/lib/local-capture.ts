@@ -11,8 +11,8 @@ interface CapturePageResponse {
 
 export async function getLocalCaptureHealth() {
   const response = await fetch("/api/local-capture/health", { cache: "no-store" });
-  const payload = await response.json() as { online?: boolean };
-  return response.ok && payload.online === true;
+  const payload = await response.json() as { online?: boolean; health?: { activeCaptures?: number; completedCaptures?: number } };
+  return { online: response.ok && payload.online === true, activeCaptures: payload.health?.activeCaptures ?? 0, completedCaptures: payload.health?.completedCaptures ?? 0 };
 }
 
 export async function discoverRoutesLocally(input: { url: string }) {

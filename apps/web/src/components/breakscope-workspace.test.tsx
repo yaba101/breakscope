@@ -65,7 +65,7 @@ describe("BreakscopeWorkspace", () => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:breakscope-test");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     discoverRoutesLocally.mockResolvedValue({ routes: ["/", "/pricing", "/blog"] });
-    getLocalCaptureHealth.mockResolvedValue(true);
+    getLocalCaptureHealth.mockResolvedValue({ online: true, activeCaptures: 0, completedCaptures: 0 });
     saveBreakscopeState.mockResolvedValue(undefined);
     clearBreakscopeState.mockResolvedValue(undefined);
     loadBreakscopeState.mockResolvedValue({ target, availableRoutes: ["/", "/pricing", "/blog"], latestIssues: [], updatedAt: 1 });
@@ -88,7 +88,7 @@ describe("BreakscopeWorkspace", () => {
   });
 
   it("reports the real local capture health instead of a hardcoded online state", async () => {
-    getLocalCaptureHealth.mockResolvedValue(false);
+    getLocalCaptureHealth.mockResolvedValue({ online: false, activeCaptures: 0, completedCaptures: 0 });
     renderWorkspace();
 
     expect(await screen.findByLabelText("Local capture agent offline")).toHaveTextContent("Agent offline");
@@ -360,6 +360,24 @@ describe("BreakscopeWorkspace", () => {
     await waitFor(() => expect(captureLabel.closest("div")).toHaveTextContent("12/12"));
     expect(screen.getByRole("heading", { name: "Sweeping responsive range" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Cancel test/i })).toHaveTextContent("Progress will be saved");
+  });
+
+  it("deduplicates evidence captures shared by multiple findings", async () => {
+    loadBreakscopeState.mockResolvedValue({
+      target: { ...target, selectedRoutes: ["/"], deviceWidths: [375], browserEngines: ["chromium"] },
+      availableRoutes: ["/"],
+      latestIssues: [],
+      scanRequest: { id: "dedupe-run-1", requestedAt: 2, source: "setup" },
+      updatedAt: 2,
+    });
+    const tinyButton = (key: string, order: number) => ({ key, order, tag: "button", role: "button", name: key, text: key, selector: `#${key}`, visible: true, inViewport: true, rect: { x: 10, y: 10 + order * 40, width: 30, height: 30 }, attributes: { id: key, testId: "", href: "", type: "button", alt: "", placeholder: "", ariaLabel: key }, styles: { display: "block", position: "static", color: "", backgroundColor: "", fontSize: "16px", fontWeight: "400", borderRadius: "0" } });
+    scanRouteLocally.mockResolvedValue([{ routePath: "/", width: 320, height: 900, browserEngine: "chromium", snapshot: { url: "https://example.com", title: "Test", language: "en", viewportWidth: 320, viewportHeight: 900, documentWidth: 320, documentHeight: 900, capturedAt: 1, elements: [tinyButton("first", 0), tinyButton("second", 1)] } }]);
+    capturePageLocally.mockResolvedValue({ image: { arrayBuffer: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]).buffer) }, snapshot: { documentHeight: 900 } });
+
+    renderWorkspace();
+
+    expect(await screen.findByRole("button", { name: "Run again" }, { timeout: 5_000 })).toBeEnabled();
+    expect(capturePageLocally).toHaveBeenCalledTimes(2);
   });
 
   it("recaptures only an unavailable viewport", async () => {

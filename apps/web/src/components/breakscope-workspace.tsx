@@ -73,6 +73,17 @@ interface ResultState {
   hasScanned: boolean;
 }
 
+interface ScanProgress {
+  current: number;
+  total: number;
+  width: number;
+  route: string;
+  phase: string;
+  evidenceCompleted?: number;
+  evidenceTotal?: number;
+  evidenceTarget?: string;
+}
+
 interface AiIssueAnalysis {
   summary: string;
   likelyCause: string;
@@ -136,6 +147,11 @@ function imageDataUrl(image?: ArrayBuffer) {
 function formatBytes(bytes = 0) {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatElapsed(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  return minutes ? `${minutes}m ${String(seconds % 60).padStart(2, "0")}s` : `${seconds}s`;
 }
 
 function arrayBufferBase64(buffer: ArrayBuffer) {
@@ -448,7 +464,7 @@ export function BreakscopeWorkspace() {
   const [recentDeviceIds, setRecentDeviceIds] = useState<DeviceModelId[]>(["iphone-17-pro"]);
   const [pinnedDeviceIds, setPinnedDeviceIds] = useState<DeviceModelId[]>([]);
   const [preferencesReady, setPreferencesReady] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0, width: 0, route: "", phase: "Preparing" });
+  const [progress, setProgress] = useState<ScanProgress>({ current: 0, total: 0, width: 0, route: "", phase: "Preparing" });
   const [scanStage, setScanStage] = useState(0);
   const [result, setResult] = useState<ResultState>({ issues: [], fixed: [], suppressedCount: 0, checks: [], hasScanned: false });
   const [error, setError] = useState("");
@@ -460,7 +476,8 @@ export function BreakscopeWorkspace() {
   const [inspectorWidth, setInspectorWidth] = useState(380);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [agentOnline, setAgentOnline] = useState<boolean | null>(null);
+  const [agentHealth, setAgentHealth] = useState<{ online: boolean; activeCaptures: number; completedCaptures: number } | null>(null);
+  const [scanElapsedSeconds, setScanElapsedSeconds] = useState(0);
   const scanController = useRef<AbortController | undefined>(undefined);
   const scanPreviewRef = useRef<HTMLDivElement | null>(null);
   const issuePreviewRef = useRef<HTMLDivElement | null>(null);
@@ -474,21 +491,30 @@ export function BreakscopeWorkspace() {
   const { issues, fixed, suppressedCount, activeIssue, hasScanned } = result;
   const retainedEvidenceBytes = useMemo(() => previews.reduce((total, preview) => total + preview.image.byteLength, 0) + issues.reduce((total, issue) => total + (issue.screenshot?.byteLength ?? 0) + (issue.passingScreenshot?.byteLength ?? 0), 0), [previews, issues]);
   const scanMutation = useMutation({ mutationKey: breakscopeQueryKeys.scan(), mutationFn: runScanWorkflow });
+  const scanning = scanMutation.isPending;
 
   useEffect(() => {
     let active = true;
     const refreshAgentHealth = async () => {
       try {
-        const online = await getLocalCaptureHealth();
-        if (active) setAgentOnline(online);
+        const health = await getLocalCaptureHealth();
+        if (active) setAgentHealth(health);
       } catch {
-        if (active) setAgentOnline(false);
+        if (active) setAgentHealth({ online: false, activeCaptures: 0, completedCaptures: 0 });
       }
     };
     void refreshAgentHealth();
     const timer = window.setInterval(refreshAgentHealth, 5_000);
     return () => { active = false; window.clearInterval(timer); };
   }, []);
+
+  useEffect(() => {
+    if (!scanning) return;
+    const startedAt = Date.now();
+    const refresh = () => setScanElapsedSeconds(Math.floor((Date.now() - startedAt) / 1_000));
+    const timer = window.setInterval(refresh, 1_000);
+    return () => window.clearInterval(timer);
+  }, [scanning]);
   const viewportRetryMutation = useMutation({
     mutationKey: [...breakscopeQueryKeys.all, "viewport-retry"],
     mutationFn: async (request: { kind: "checkpoint" | "issue"; width: number; routePath: string; browserEngine?: BrowserEngine; issueFingerprint?: string; evidenceMode?: ComparisonMode }) => {
@@ -564,8 +590,6 @@ export function BreakscopeWorkspace() {
     onSuccess: ({ fingerprint, analysis }) => setAiReviews((current) => ({ ...current, [fingerprint]: analysis })),
     onError: (reason) => setAiIssueError(reason instanceof Error ? reason.message : "AI could not analyze this issue."),
   });
-  const scanning = scanMutation.isPending;
-
   useEffect(() => {
     if (!activeIssue || aiReviews[activeIssue.fingerprint] || aiIssueMutation.isPending || autoReviewAttempted.current.has(activeIssue.fingerprint)) return;
     autoReviewAttempted.current.add(activeIssue.fingerprint);
@@ -710,7 +734,7 @@ export function BreakscopeWorkspace() {
   }
 
   async function runScanWorkflow() {
-    setInspectorTab("activity"); setError(""); setScrollProgress(0); setScanStage(0); setIssueDisplayWidth(undefined); setResult((current) => ({ ...current, fixed: [], activeIssue: undefined, hasScanned: false }));
+    setInspectorTab("activity"); setError(""); setScrollProgress(0); setScanStage(0); setScanElapsedSeconds(0); setIssueDisplayWidth(undefined); setResult((current) => ({ ...current, fixed: [], activeIssue: undefined, hasScanned: false }));
     const controller = new AbortController(); scanController.current = controller;
     try {
       const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
@@ -782,14 +806,36 @@ export function BreakscopeWorkspace() {
       if (controller.signal.aborted) throw new DOMException("Scan cancelled", "AbortError");
       const analysis = analyzeResponsiveSamples(samples, previous.map((issue) => issue.fingerprint));
       setScanStage(4);
-      setProgress({ current: selectedRoutes.length, total: selectedRoutes.length, width: analysis.issues[0]?.evidenceWidth ?? minWidth, route: analysis.issues[0]?.routePath ?? selectedRoutes[0]!, phase: "Capturing evidence" });
-      const withEvidence: ResponsiveIssue[] = [];
+      const evidenceKey = (routePath: string, width: number, browserEngine: BrowserEngine) => `${browserEngine}:${routePath}:${width}`;
+      const evidenceRequests = new Map<string, { routePath: string; width: number; browserEngine: BrowserEngine }>();
       for (const issue of analysis.issues) {
-        const profile = captureProfile(modelForWidth(issue.evidenceWidth), issue.browserEngine ?? "chromium");
-        const captured = await capturePageLocally({ url, routePath: issue.routePath, viewport: issue.evidenceWidth <= 600 ? "mobile" : "desktop", width: issue.evidenceWidth, height: 900, profile }, controller.signal);
-        const passing = issue.lastWorkingWidth ? await capturePageLocally({ url, routePath: issue.routePath, viewport: issue.lastWorkingWidth <= 600 ? "mobile" : "desktop", width: issue.lastWorkingWidth, height: 900, profile }, controller.signal) : undefined;
-        withEvidence.push({ ...issue, screenshot: await captured.image.arrayBuffer(), documentHeight: captured.snapshot.documentHeight, ...(passing ? { passingScreenshot: await passing.image.arrayBuffer() } : {}) });
+        const browserEngine = issue.browserEngine ?? "chromium";
+        evidenceRequests.set(evidenceKey(issue.routePath, issue.evidenceWidth, browserEngine), { routePath: issue.routePath, width: issue.evidenceWidth, browserEngine });
+        if (issue.lastWorkingWidth) evidenceRequests.set(evidenceKey(issue.routePath, issue.lastWorkingWidth, browserEngine), { routePath: issue.routePath, width: issue.lastWorkingWidth, browserEngine });
       }
+      const evidenceResults = new Map<string, { image: ArrayBuffer; documentHeight: number }>();
+      const requests = [...evidenceRequests.entries()];
+      setProgress({ current: selectedRoutes.length, total: selectedRoutes.length, width: requests[0]?.[1].width ?? minWidth, route: requests[0]?.[1].routePath ?? selectedRoutes[0]!, phase: "Preparing evidence captures", evidenceCompleted: 0, evidenceTotal: requests.length });
+      for (const [key, request] of requests) {
+        const completed = evidenceResults.size;
+        setProgress({ current: selectedRoutes.length, total: selectedRoutes.length, width: request.width, route: request.routePath, phase: `Capturing evidence ${completed + 1} of ${requests.length}`, evidenceCompleted: completed, evidenceTotal: requests.length, evidenceTarget: `${browserLabels[request.browserEngine]} · ${request.width}px` });
+        const profile = captureProfile(modelForWidth(request.width), request.browserEngine);
+        try {
+          const captured = await capturePageLocally({ url, routePath: request.routePath, viewport: request.width <= 600 ? "mobile" : "desktop", width: request.width, height: 900, profile }, controller.signal);
+          evidenceResults.set(key, { image: await captured.image.arrayBuffer(), documentHeight: captured.snapshot.documentHeight });
+        } catch (reason) {
+          if (reason instanceof DOMException && reason.name === "AbortError") throw reason;
+          const detail = reason instanceof Error ? reason.message : "Capture failed";
+          throw new Error(`Evidence capture failed for ${browserLabels[request.browserEngine]} ${request.routePath} at ${request.width}px: ${detail}`);
+        }
+      }
+      setProgress((current) => ({ ...current, phase: "Finalizing findings", evidenceCompleted: requests.length, evidenceTotal: requests.length, evidenceTarget: "Capture plan complete" }));
+      const withEvidence = analysis.issues.map((issue) => {
+        const browserEngine = issue.browserEngine ?? "chromium";
+        const failing = evidenceResults.get(evidenceKey(issue.routePath, issue.evidenceWidth, browserEngine));
+        const passing = issue.lastWorkingWidth ? evidenceResults.get(evidenceKey(issue.routePath, issue.lastWorkingWidth, browserEngine)) : undefined;
+        return { ...issue, ...(failing ? { screenshot: failing.image, documentHeight: failing.documentHeight } : {}), ...(passing ? { passingScreenshot: passing.image } : {}) };
+      });
       const currentFingerprints = new Set(analysis.allIssues.map((issue) => issue.fingerprint));
       const fixedIssues = previous.filter((issue) => !currentFingerprints.has(issue.fingerprint)).map((issue) => ({ ...issue, verification: "fixed" as const, screenshot: undefined }));
       const firstIssue = withEvidence[0];
@@ -848,9 +894,10 @@ export function BreakscopeWorkspace() {
     { label: "Render checkpoints", detail: `${readyCheckpointCount} of ${checkpointTotal} browser captures`, done: hasScanned || scanStage > 1 },
     { label: "Sweep responsive range", detail: `${minWidth}–${maxWidth}px`, done: hasScanned || scanStage > 2 },
     { label: "Refine breakpoints", detail: "Within 2px accuracy", done: hasScanned || scanStage > 3 },
-    { label: "Capture evidence", detail: "Prioritized blockers", done: hasScanned || scanStage > 4 },
+    { label: "Capture evidence", detail: progress.evidenceTotal !== undefined ? `${progress.evidenceCompleted ?? 0} of ${progress.evidenceTotal} unique captures${progress.evidenceTarget ? ` · ${progress.evidenceTarget}` : ""}` : "Deduplicating findings", done: hasScanned || scanStage > 4 },
   ];
-  const scanPercent = scanStage === 0 ? 5 : scanStage === 1 ? 8 + (readyCheckpointCount / Math.max(1, checkpointTotal)) * 27 : scanStage === 2 ? 48 : scanStage === 3 ? 76 : 94;
+  const evidenceRatio = (progress.evidenceCompleted ?? 0) / Math.max(1, progress.evidenceTotal ?? 1);
+  const scanPercent = scanStage === 0 ? 5 : scanStage === 1 ? 8 + (readyCheckpointCount / Math.max(1, checkpointTotal)) * 27 : scanStage === 2 ? 48 : scanStage === 3 ? 76 : 90 + evidenceRatio * 9;
   const scanSection = Math.min(8, Math.floor(scrollProgress * 8) + 1);
   const scanWidthPosition = Math.min(100, Math.max(0, ((progress.width - minWidth) / Math.max(1, maxWidth - minWidth)) * 100));
   const retryingViewport = viewportRetryMutation.isPending ? viewportRetryMutation.variables : undefined;
@@ -974,7 +1021,7 @@ export function BreakscopeWorkspace() {
   });
 
   return <main id="main-content" className="breakscope-shell bk-workspace-page">
-    <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Responsive lab</span><Link href="/setup" className="bk-edit-setup"><Settings2 size={14} /><span>Edit setup</span></Link></div><div className="bk-command-target"><span>{new URL(url).host}</span><code>{url}</code></div><div className="bk-command-actions"><span className={`bk-agent ${agentOnline === false ? "offline" : agentOnline === null ? "checking" : ""}`} role="status" aria-label={`Local capture agent ${agentOnline === null ? "checking" : agentOnline ? "online" : "offline"}`}><i aria-hidden="true" /> Agent {agentOnline === null ? "checking" : agentOnline ? "online" : "offline"}</span><button type="button" className="bk-command-run" disabled={!selectedRoutes.length || scanning || agentOnline === false} aria-describedby={scanning ? "scan-progress-announcement" : undefined} onClick={() => void scan()}>{scanning ? <span className="bk-scan-glyph"><ScanSearch size={16} /></span> : <RotateCcw size={16} />}{scanning ? "Scanning" : hasScanned ? "Run again" : "Run test"}</button></div></header>
+    <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Responsive lab</span><Link href="/setup" className="bk-edit-setup"><Settings2 size={14} /><span>Edit setup</span></Link></div><div className="bk-command-target"><span>{new URL(url).host}</span><code>{url}</code></div><div className="bk-command-actions"><span className={`bk-agent ${agentHealth?.online === false ? "offline" : agentHealth === null ? "checking" : ""}`} role="status" aria-label={`Local capture agent ${agentHealth === null ? "checking" : agentHealth.online ? "online" : "offline"}`}><i aria-hidden="true" /> Agent {agentHealth === null ? "checking" : agentHealth.online ? "online" : "offline"}</span><button type="button" className="bk-command-run" disabled={!selectedRoutes.length || scanning || agentHealth?.online === false} aria-describedby={scanning ? "scan-progress-announcement" : undefined} onClick={() => void scan()}>{scanning ? <span className="bk-scan-glyph"><ScanSearch size={16} /></span> : <RotateCcw size={16} />}{scanning ? "Scanning" : hasScanned ? "Run again" : "Run test"}</button></div></header>
     <span id="scan-progress-announcement" className="sr-only" aria-live="polite">{scanning ? `${scanHeadline}, ${Math.round(scanPercent)} percent complete` : hasScanned ? "Test complete" : "Ready to run"}</span>
     {error && <div className="bs-error bk-workspace-error" role="alert"><AlertTriangle size={17} /><span>{error}</span>{workspaceQuery.data?.scanJob?.status === "failed" && <button type="button" className="bk-error-retry" disabled={scanning} onClick={() => scan()}><RefreshCw size={14} /> Retry failed captures</button>}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={15} /></button></div>}
     {(routes.length > 0 || issues.length > 0 || scanning) ? <section className={`bs-workspace ${configCollapsed ? "config-collapsed" : ""}`} style={{ "--bk-inspector-width": `${inspectorWidth}px` } as CSSProperties}>
@@ -1023,11 +1070,18 @@ export function BreakscopeWorkspace() {
             <small>Continuous width sweep</small>
           </section>
           <dl className="bk-scan-telemetry">
-            <div><dt>Page section</dt><dd>{scanSection}<span>/8</span></dd></div>
-            <div><dt>Browser captures</dt><dd>{readyCheckpointCount}<span>/{checkpointTotal}</span></dd></div>
-            <div><dt>Route</dt><dd>{Math.max(1, selectedRoutes.indexOf(progress.route) + 1)}<span>/{Math.max(1, selectedRoutes.length)}</span></dd></div>
+            {scanStage === 4 ? <>
+              <div><dt>Evidence</dt><dd>{progress.evidenceCompleted ?? 0}<span>/{progress.evidenceTotal ?? 0}</span></dd></div>
+              <div><dt>Agent active</dt><dd>{agentHealth?.activeCaptures ?? 0}<span> capture</span></dd></div>
+              <div><dt>Elapsed</dt><dd className="bk-elapsed-value">{formatElapsed(scanElapsedSeconds)}</dd></div>
+            </> : <>
+              <div><dt>Page section</dt><dd>{scanSection}<span>/8</span></dd></div>
+              <div><dt>Browser captures</dt><dd>{readyCheckpointCount}<span>/{checkpointTotal}</span></dd></div>
+              <div><dt>Route</dt><dd>{Math.max(1, selectedRoutes.indexOf(progress.route) + 1)}<span>/{Math.max(1, selectedRoutes.length)}</span></dd></div>
+            </>}
           </dl>
-          <div className="bk-pipeline-heading"><span>Analysis pipeline</span><b>{Math.min(scanStage, activitySteps.length)}/{activitySteps.length}</b></div>
+          {scanStage === 4 && <div className="bk-scan-debug" role="status"><span><b>Current request</b>{progress.evidenceTarget ?? "Preparing capture plan"}</span><span><b>Agent total</b>{agentHealth?.completedCaptures ?? 0} completed this session</span><small>If the active count stays at 1, the target page is still rendering. A capture timeout will stop the scan with the exact route, browser, and width.</small></div>}
+          <div className="bk-pipeline-heading"><span>Analysis pipeline</span><b>{Math.min(scanStage + 1, activitySteps.length)}/{activitySteps.length}</b></div>
           <ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : index === scanStage ? "active" : ""}><i>{step.done ? <Check size={13} /> : index === scanStage ? <span className="bk-pipeline-loader"><ScanSearch size={14} /></span> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol>
           <button type="button" className="bs-cancel" onClick={() => scanController.current?.abort()}><CircleStop size={16} /><span>Cancel test</span><small>Progress will be saved</small></button>
         </div> : hasScanned ? <ViewportIssueInspector width={displayedWidth} checkpointWidths={deviceWidths} routePath={reviewedRoute ?? "/"} issues={viewportIssues} pageWideIssues={pageWideIssues} selectedIssue={activeIssue} aiAnalysis={activeIssue ? aiReviews[activeIssue.fingerprint] : undefined} aiPending={aiIssueMutation.isPending} aiError={aiIssueError} retesting={targetedRetestMutation.isPending} url={url} onSelect={selectIssue} onClearSelection={clearSelectedIssue} onRetest={() => targetedRetestMutation.mutate({ width: displayedWidth, routePath: reviewedRoute ?? "/", browserEngine: activeBrowserEngine })} onAnalyze={(issue, mode) => aiIssueMutation.mutate({ issue, mode })} /> : <div className="bk-activity-view"><h2>Ready to inspect</h2><p>{`${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"} · ${minWidth}–${maxWidth}px`}</p><ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : ""}><i>{step.done ? <Check size={13} /> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol></div>}

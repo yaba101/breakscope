@@ -7139,6 +7139,11 @@ button {
 .bk-scan-telemetry dt { color: var(--stratum-text-muted); font-size: 9px; }
 .bk-scan-telemetry dd { margin: 0; color: var(--stratum-text-primary); font: 650 16px/1 var(--font-stratum-mono), monospace; }
 .bk-scan-telemetry dd span { color: var(--stratum-text-muted); font-size: 10px; }
+.bk-scan-telemetry .bk-elapsed-value { font-size: 13px; }
+.bk-scan-debug { display: grid; gap: 7px; border-bottom: 1px solid var(--stratum-border-300); background: var(--stratum-secondary-0); padding: 12px 18px 14px; color: var(--stratum-text-secondary); font: 500 10px/1.35 var(--font-stratum-mono), monospace; }
+.bk-scan-debug > span { display: flex; min-width: 0; justify-content: space-between; gap: 12px; }
+.bk-scan-debug > span b { color: var(--stratum-text-primary); font-family: var(--font-stratum-sans), sans-serif; }
+.bk-scan-debug > small { color: var(--stratum-text-muted); font: 500 10px/1.45 var(--font-stratum-sans), sans-serif; }
 .bk-pipeline-heading {
   display: flex;
   align-items: center;
