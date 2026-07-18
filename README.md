@@ -2,6 +2,12 @@
 
 Breakscope is a local responsive-testing lab. Paste a localhost or public HTTPS URL, discover its routes, and inspect responsive failures across breakpoint and browser captures.
 
+## Example target
+
+Breakscope can inspect a public site such as [Onward](https://useonward.com) across responsive checkpoints.
+
+![Onward homepage used as a Breakscope sample target](apps/web/public/readme/onward-homepage.jpg)
+
 ## Workspace
 
 - `apps/web` — Breakscope landing, setup, workspace, and shareable reports
