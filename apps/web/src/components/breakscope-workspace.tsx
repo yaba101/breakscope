@@ -321,7 +321,7 @@ function groupIssueFamilies(source: ResponsiveIssue[]) {
   return [...families.values()];
 }
 
-function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pageWideIssues, suppressedIssues, selectedIssue, aiAnalysis, aiPending, aiError, url, onSelect, onClearSelection, onLifecycle, onRestore, onAnalyze }: { width: number; checkpointWidths: number[]; routePath: string; issues: ResponsiveIssue[]; pageWideIssues: ResponsiveIssue[]; suppressedIssues: Array<ResponsiveIssue & { suppressionReason?: string }>; selectedIssue?: ResponsiveIssue; aiAnalysis?: AiIssueAnalysis; aiPending: boolean; aiError?: string; url: string; onSelect: (issue: ResponsiveIssue) => void; onClearSelection: () => void; onLifecycle: (issue: ResponsiveIssue, status: "fixed" | "suppressed", reason?: string) => void; onRestore: (issue: ResponsiveIssue) => void; onAnalyze: (issue: ResponsiveIssue, mode: "concise" | "technical") => void }) {
+function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pageWideIssues, suppressedIssues, selectedIssue, aiAnalysis, aiPending, aiError, retesting, url, onSelect, onClearSelection, onLifecycle, onRestore, onRetest, onAnalyze }: { width: number; checkpointWidths: number[]; routePath: string; issues: ResponsiveIssue[]; pageWideIssues: ResponsiveIssue[]; suppressedIssues: Array<ResponsiveIssue & { suppressionReason?: string }>; selectedIssue?: ResponsiveIssue; aiAnalysis?: AiIssueAnalysis; aiPending: boolean; aiError?: string; retesting: boolean; url: string; onSelect: (issue: ResponsiveIssue) => void; onClearSelection: () => void; onLifecycle: (issue: ResponsiveIssue, status: "fixed" | "suppressed", reason?: string) => void; onRestore: (issue: ResponsiveIssue) => void; onRetest: () => void; onAnalyze: (issue: ResponsiveIssue, mode: "concise" | "technical") => void }) {
   const [copiedPromptFor, setCopiedPromptFor] = useState("");
   const [analysisMode, setAnalysisMode] = useState<"concise" | "technical">("concise");
   const [briefOutcome, setBriefOutcome] = useState<"applied" | "unhelpful" | "">("");
@@ -360,6 +360,7 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
   });
   return <div className="bk-viewport-inspector">
     <header><div><span>Viewport status</span><h2>{width}px · {issues.length ? "Needs attention" : "Passed"}</h2><p><code>{routePath}</code> · {issues.length ? `${issueFamilies.length} responsive ${issueFamilies.length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b aria-label={issues.length ? `${issueFamilies.length} responsive issues` : "Responsive checks passed"}>{issues.length || "OK"}</b></header>
+    <button type="button" className="bk-targeted-retest" disabled={retesting} onClick={onRetest}>{retesting ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}<span><b>{retesting ? "Retesting checkpoint…" : `Retest ${width}px checkpoint`}</b><small>Refresh findings without rerunning the full test</small></span></button>
     {pageWideIssues.length > 0 && <section className="bk-page-wide-findings"><header><div><b>Page-wide checks</b><span>Independent of viewport size</span></div><em>{pageWideFamilies.length} {pageWideFamilies.length === 1 ? "family" : "families"} · {pageWideIssues.length} {pageWideIssues.length === 1 ? "element" : "elements"}</em></header><div className="bk-viewport-issue-list">{renderFamilies(pageWideFamilies)}</div></section>}
     {issues.length ? <div className="bk-viewport-issue-list">{renderFamilies(issueFamilies)}</div> : <details className="bk-viewport-clear"><summary><Check size={16} /><b>No responsive issues at {width}px</b><ChevronDown size={14} /></summary><p>All viewport-dependent checks passed at this checkpoint.</p></details>}
     {suppressedIssues.length > 0 && <details className="bk-suppressed-findings"><summary>{suppressedIssues.length} suppressed findings</summary>{suppressedIssues.map((issue) => <button type="button" key={issue.fingerprint} onClick={() => onRestore(issue)}><span>{issue.title}</span><small>{issue.suppressionReason ?? "Suppressed locally"}</small><RefreshCw size={13} /></button>)}</details>}
@@ -455,6 +456,29 @@ export function BreakscopeWorkspace() {
       await saveBreakscopeState(nextState);
     },
     onError: (reason) => setError(reason instanceof Error ? `Could not recapture this viewport: ${reason.message}` : "Could not recapture this viewport"),
+  });
+  const targetedRetestMutation = useMutation({
+    mutationKey: [...breakscopeQueryKeys.all, "targeted-retest"],
+    mutationFn: async ({ width, routePath, browserEngine }: { width: number; routePath: string; browserEngine: BrowserEngine }) => {
+      const sampleWidths = [...new Set([Math.max(minWidth, width - 1), width, Math.min(maxWidth, width + 1)])];
+      const profile = captureProfile(modelForWidth(width), browserEngine);
+      const samples = await scanRouteLocally({ url, routePath, widths: sampleWidths, height: 900, profile });
+      const analysis = analyzeResponsiveSamples(samples);
+      const captured = await capturePageLocally({ url, routePath, viewport: width <= 600 ? "mobile" : "desktop", width, height: 900, profile });
+      const screenshot = await captured.image.arrayBuffer();
+      return { width, routePath, browserEngine, fresh: analysis.issues.map((issue) => ({ ...issue, screenshot, documentHeight: captured.snapshot.documentHeight })) };
+    },
+    onMutate: () => setError(""),
+    onSuccess: async ({ width, routePath, browserEngine, fresh }) => {
+      const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
+      const keep = (issue: ResponsiveIssue) => !((issue.browserEngine ?? "chromium") === browserEngine && issue.routePath === routePath && issueAffectsWidth(issue, width));
+      const nextIssues = [...stored.latestIssues.filter(keep), ...fresh];
+      const next = { ...stored, latestIssues: nextIssues, latestManifest: nextIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), updatedAt: Date.now() };
+      setResult((current) => ({ ...current, issues: [...current.issues.filter(keep), ...fresh], activeIssue: fresh[0] }));
+      queryClient.setQueryData(breakscopeQueryKeys.workspace(), next);
+      await saveBreakscopeState(next);
+    },
+    onError: (reason) => setError(reason instanceof Error ? `Checkpoint retest failed: ${reason.message}` : "Checkpoint retest failed"),
   });
   const aiIssueMutation = useMutation({
     mutationKey: [...breakscopeQueryKeys.all, "ai-issue"],
@@ -964,7 +988,7 @@ export function BreakscopeWorkspace() {
           <div className="bk-pipeline-heading"><span>Analysis pipeline</span><b>{Math.min(scanStage, activitySteps.length)}/{activitySteps.length}</b></div>
           <ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : index === scanStage ? "active" : ""}><i>{step.done ? <Check size={13} /> : index === scanStage ? <span className="bk-pipeline-loader"><ScanSearch size={14} /></span> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol>
           <button type="button" className="bs-cancel" onClick={() => scanController.current?.abort()}><CircleStop size={16} /><span>Cancel test</span><small>Progress will be saved</small></button>
-        </div> : hasScanned ? <ViewportIssueInspector width={displayedWidth} checkpointWidths={deviceWidths} routePath={reviewedRoute ?? "/"} issues={viewportIssues} pageWideIssues={pageWideIssues} suppressedIssues={suppressedIssues} selectedIssue={activeIssue} aiAnalysis={activeIssue ? aiReviews[activeIssue.fingerprint] : undefined} aiPending={aiIssueMutation.isPending} aiError={aiIssueError} url={url} onSelect={selectIssue} onClearSelection={clearSelectedIssue} onLifecycle={(issue, status, reason) => void updateIssueLifecycle(issue, status, reason)} onRestore={(issue) => void restoreSuppressedIssue(issue)} onAnalyze={(issue, mode) => aiIssueMutation.mutate({ issue, mode })} /> : <div className="bk-activity-view"><h2>Ready to inspect</h2><p>{`${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"} · ${minWidth}–${maxWidth}px`}</p><ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : ""}><i>{step.done ? <Check size={13} /> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol></div>}
+        </div> : hasScanned ? <ViewportIssueInspector width={displayedWidth} checkpointWidths={deviceWidths} routePath={reviewedRoute ?? "/"} issues={viewportIssues} pageWideIssues={pageWideIssues} suppressedIssues={suppressedIssues} selectedIssue={activeIssue} aiAnalysis={activeIssue ? aiReviews[activeIssue.fingerprint] : undefined} aiPending={aiIssueMutation.isPending} aiError={aiIssueError} retesting={targetedRetestMutation.isPending} url={url} onSelect={selectIssue} onClearSelection={clearSelectedIssue} onLifecycle={(issue, status, reason) => void updateIssueLifecycle(issue, status, reason)} onRestore={(issue) => void restoreSuppressedIssue(issue)} onRetest={() => targetedRetestMutation.mutate({ width: displayedWidth, routePath: reviewedRoute ?? "/", browserEngine: activeBrowserEngine })} onAnalyze={(issue, mode) => aiIssueMutation.mutate({ issue, mode })} /> : <div className="bk-activity-view"><h2>Ready to inspect</h2><p>{`${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"} · ${minWidth}–${maxWidth}px`}</p><ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : ""}><i>{step.done ? <Check size={13} /> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol></div>}
       </div></aside>
     </section> : <section className="bk-no-target"><ScanSearch size={36} /><h1>No test configured</h1><p>Choose a URL and routes before opening the workspace.</p><Link href="/"><ArrowRight size={17} /> Go to setup</Link></section>}
     {shortcutsOpen && <aside className="bk-shortcut-reference" aria-label="Keyboard shortcuts"><header><Keyboard size={16} /><b>Keyboard shortcuts</b><button type="button" aria-label="Close keyboard shortcuts" onClick={() => setShortcutsOpen(false)}><X size={14} /></button></header><dl><div><dt>Previous / next checkpoint</dt><dd><kbd>[</kbd> <kbd>]</kbd></dd></div><div><dt>Next browser</dt><dd><kbd>B</kbd></dd></div><div><dt>Previous / next issue</dt><dd><kbd>⌥←</kbd> <kbd>⌥→</kbd></dd></div><div><dt>Clear selected issue</dt><dd><kbd>Esc</kbd></dd></div><div><dt>Run test</dt><dd><kbd>⌘↵</kbd></dd></div></dl></aside>}

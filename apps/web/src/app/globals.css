@@ -7680,6 +7680,9 @@ button {
 .bk-workspace-page .bk-suppressed-findings > button span { font-weight: 700; }
 .bk-workspace-page .bk-suppressed-findings > button small { grid-column: 1; color: var(--muted); }
 .bk-workspace-page .bk-suppressed-findings > button svg { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+.bk-workspace-page .bk-targeted-retest { width: calc(100% - 32px); margin: 0 16px 16px; display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); background: var(--surface-soft); text-align: left; }
+.bk-workspace-page .bk-targeted-retest span { display: grid; gap: 2px; }
+.bk-workspace-page .bk-targeted-retest small { color: var(--muted); }
 .bk-ai-issue-review .bk-ai-empty { display: grid; gap: 5px; padding: 11px 0; }
 .bk-ai-issue-review .bk-ai-empty b { color: var(--stratum-text-primary); font-size: 12px; }
 .bk-context-inspector .bk-inspector-content .bk-ai-empty p { margin: 0; color: var(--stratum-text-secondary) !important; font-size: 11px; line-height: 1.5; }
