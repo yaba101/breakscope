@@ -61,6 +61,7 @@ export interface RuntimeDiagnosticSample {
 export interface BreakscopeState {
   diagnosticsHistory?: RuntimeDiagnosticSample[];
   scanHistory?: LocalScanRun[];
+  baselineRunId?: string;
   testPresets?: TestPreset[];
   recentTargets?: Array<{
     url: string;

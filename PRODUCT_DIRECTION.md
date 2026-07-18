@@ -18,8 +18,8 @@ Explore is the default review surface once checkpoint captures exist. An audit i
 - [x] Multi-viewport Explore overview using the selected browser's captured checkpoints.
 - [x] Optional proportional scroll synchronization across Explore viewports.
 - [x] Focus action from the overview into the existing device evidence view.
-- [ ] User-selected local baseline in scan history.
-- [ ] Current-versus-baseline visual comparison rather than implicit adjacent-run comparison.
+- [x] User-selected local baseline in scan history.
+- [x] Current-versus-baseline visual comparison rather than implicit adjacent-run comparison.
 
 ## Next sequence
 

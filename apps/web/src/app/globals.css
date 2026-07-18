@@ -5800,6 +5800,9 @@ button {
 .bk-history-actions button.delete { display: grid; width: 38px; padding: 0; color: var(--color-muted); place-items: center; }
 .bk-history-actions button.open { display: inline-flex; align-items: center; gap: 7px; border-color: var(--color-primary); background: var(--color-primary); padding: 0 13px; color: var(--stratum-secondary-0); font-weight: 650; }
 .bk-history-actions button.compare { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; font-weight: 650; }
+.bk-history-actions button.baseline { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; font-weight: 650; }
+.bk-history-actions button.baseline.active { border-color: var(--color-brand); background: #eef8f3; color: var(--color-brand); }
+.bk-history-list article.is-baseline { border-top-color: var(--color-brand); background: linear-gradient(90deg, #eef8f3, transparent 42%); }
 .bk-history-comparison { grid-column: 1 / -1; border-top: 1px solid var(--color-border); padding-top: 18px; }
 .bk-history-comparison > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .bk-history-comparison > header b { font-size: 15px; }

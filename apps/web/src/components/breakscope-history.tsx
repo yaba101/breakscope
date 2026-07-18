@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock3, Images, LoaderCircle, Monitor, Plus, Route, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock3, Flag, Images, LoaderCircle, Monitor, Plus, Route, Trash2, TriangleAlert } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { compareRgba } from "@breakscope/comparison-engine";
 import { breakscopeQueryKeys } from "@/lib/breakscope-queries";
@@ -12,10 +12,10 @@ import { BreakscopeLogo } from "./breakscope-brand";
 
 interface VisualRunComparison { changedRatio: number; previous: string; current: string; diff: string; width: number }
 
-async function compareRunPreviews(current: LocalScanRun, previous: LocalScanRun): Promise<VisualRunComparison> {
-  const candidate = current.previews.find((preview) => previous.previews.some((item) => item.width === preview.width && item.routePath === preview.routePath && (item.browserEngine ?? "chromium") === (preview.browserEngine ?? "chromium")));
-  if (!candidate) throw new Error("No matching checkpoint exists in the previous run.");
-  const baseline = previous.previews.find((item) => item.width === candidate.width && item.routePath === candidate.routePath && (item.browserEngine ?? "chromium") === (candidate.browserEngine ?? "chromium"))!;
+async function compareRunPreviews(current: LocalScanRun, baselineRun: LocalScanRun): Promise<VisualRunComparison> {
+  const candidate = current.previews.find((preview) => baselineRun.previews.some((item) => item.width === preview.width && item.routePath === preview.routePath && (item.browserEngine ?? "chromium") === (preview.browserEngine ?? "chromium")));
+  if (!candidate) throw new Error("No matching checkpoint exists in the selected baseline.");
+  const baseline = baselineRun.previews.find((item) => item.width === candidate.width && item.routePath === candidate.routePath && (item.browserEngine ?? "chromium") === (candidate.browserEngine ?? "chromium"))!;
   const [beforeBitmap, afterBitmap] = await Promise.all([createImageBitmap(new Blob([baseline.image], { type: "image/png" })), createImageBitmap(new Blob([candidate.image], { type: "image/png" }))]);
   const width = Math.min(beforeBitmap.width, afterBitmap.width); const height = Math.min(beforeBitmap.height, afterBitmap.height);
   const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height; const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -35,11 +35,12 @@ export function BreakscopeHistory() {
   const [runs, setRuns] = useState<LocalScanRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [comparingId, setComparingId] = useState("");
+  const [baselineRunId, setBaselineRunId] = useState("");
   const [comparisons, setComparisons] = useState<Record<string, VisualRunComparison | string>>({});
 
   useEffect(() => {
     let active = true;
-    void loadBreakscopeState().then((state) => { if (active) setRuns(state.scanHistory ?? []); }).finally(() => { if (active) setLoading(false); });
+    void loadBreakscopeState().then((state) => { if (active) { setRuns(state.scanHistory ?? []); setBaselineRunId(state.baselineRunId ?? ""); } }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
@@ -54,15 +55,26 @@ export function BreakscopeHistory() {
   async function removeRun(runId: string) {
     const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
     const scanHistory = (stored.scanHistory ?? []).filter((run) => run.id !== runId);
-    const next = { ...stored, scanHistory, updatedAt: Date.now() };
+    const nextBaselineRunId = stored.baselineRunId === runId ? undefined : stored.baselineRunId;
+    const next = { ...stored, scanHistory, baselineRunId: nextBaselineRunId, updatedAt: Date.now() };
     setRuns(scanHistory);
+    setBaselineRunId(nextBaselineRunId ?? "");
     queryClient.setQueryData(breakscopeQueryKeys.workspace(), next);
     await saveBreakscopeState(next);
   }
 
-  async function compareRun(run: LocalScanRun, previous: LocalScanRun) {
+  async function selectBaseline(runId: string) {
+    const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
+    const next = { ...stored, baselineRunId: runId, updatedAt: Date.now() };
+    setBaselineRunId(runId);
+    setComparisons({});
+    queryClient.setQueryData(breakscopeQueryKeys.workspace(), next);
+    await saveBreakscopeState(next);
+  }
+
+  async function compareRun(run: LocalScanRun, baseline: LocalScanRun) {
     setComparingId(run.id);
-    try { const result = await compareRunPreviews(run, previous); setComparisons((current) => ({ ...current, [run.id]: result })); }
+    try { const result = await compareRunPreviews(run, baseline); setComparisons((current) => ({ ...current, [run.id]: result })); }
     catch (reason) { setComparisons((current) => ({ ...current, [run.id]: reason instanceof Error ? reason.message : "Could not compare these runs." })); }
     finally { setComparingId(""); }
   }
@@ -70,16 +82,16 @@ export function BreakscopeHistory() {
   return <main id="main-content" className="bk-history-page">
     <header className="bk-history-header"><BreakscopeLogo /><nav aria-label="History navigation"><Link href="/"><ArrowLeft size={15} /> Home</Link><Link className="primary" href="/"><Plus size={15} /> New test</Link></nav></header>
     <section className="bk-history-shell" aria-labelledby="history-title">
-      <header className="bk-history-intro"><span><Clock3 size={16} /> Local scan archive</span><h1 id="history-title">Scan history</h1><p>Reopen previous evidence without rerunning the target. Everything here stays on this device.</p></header>
-      {loading ? <div className="bk-history-loading" role="status">Loading local runs…</div> : runs.length ? <div className="bk-history-list">{runs.map((run, index) => {
+      <header className="bk-history-intro"><span><Clock3 size={16} /> Local scan archive</span><h1 id="history-title">Scan history</h1><p>Choose a trusted run as your local baseline, then compare later captures against it. Everything stays on this device.</p></header>
+      {loading ? <div className="bk-history-loading" role="status">Loading local runs…</div> : runs.length ? <div className="bk-history-list">{runs.map((run) => {
         const passed = run.issues.length === 0;
-        const previous = runs[index + 1]; const comparison = comparisons[run.id];
-        return <article key={run.id}>
+        const baseline = runs.find((candidate) => candidate.id === baselineRunId); const isBaseline = run.id === baselineRunId; const comparison = comparisons[run.id];
+        return <article key={run.id} className={isBaseline ? "is-baseline" : ""}>
           <div className="bk-history-status">{passed ? <CheckCircle2 size={19} /> : <TriangleAlert size={19} />}<span><b>{passed ? "Passed" : `${run.issues.length} ${run.issues.length === 1 ? "finding" : "findings"}`}</b><small>{new Date(run.createdAt).toLocaleString()}</small></span></div>
           <div className="bk-history-target"><b>{new URL(run.target.url).host}</b><code>{run.target.url}</code></div>
           <dl><div><dt><Route size={14} /> Routes</dt><dd>{run.target.selectedRoutes.length}</dd></div><div><dt><Monitor size={14} /> Checkpoints</dt><dd>{run.target.deviceWidths?.length ?? 0}</dd></div><div><dt><CalendarDays size={14} /> Range</dt><dd>{run.target.minWidth}–{run.target.maxWidth}px</dd></div></dl>
-          <div className="bk-history-actions"><button type="button" className="delete" aria-label={`Delete scan from ${new Date(run.createdAt).toLocaleString()}`} onClick={() => void removeRun(run.id)}><Trash2 size={15} /></button>{previous && <button type="button" className="compare" disabled={comparingId === run.id} onClick={() => void compareRun(run, previous)}>{comparingId === run.id ? <LoaderCircle className="spin" size={15} /> : <Images size={15} />} Compare</button>}<button type="button" className="open" onClick={() => void openRun(run)}>Open scan <ArrowRight size={15} /></button></div>
-          {comparison && <div className="bk-history-comparison">{typeof comparison === "string" ? <p role="alert">{comparison}</p> : <><header><b>{(comparison.changedRatio * 100).toFixed(2)}% changed</b><span>Matching {comparison.width}px checkpoint</span></header><div><figure><img src={comparison.previous} alt="Previous run checkpoint" /><figcaption>Previous</figcaption></figure><figure><img src={comparison.current} alt="Current run checkpoint" /><figcaption>Current</figcaption></figure><figure><img src={comparison.diff} alt="Pixel difference between runs" /><figcaption>Difference</figcaption></figure></div></>}</div>}
+          <div className="bk-history-actions"><button type="button" className="delete" aria-label={`Delete scan from ${new Date(run.createdAt).toLocaleString()}`} onClick={() => void removeRun(run.id)}><Trash2 size={15} /></button><button type="button" className={`baseline ${isBaseline ? "active" : ""}`} aria-pressed={isBaseline} onClick={() => void selectBaseline(run.id)}><Flag size={15} /> {isBaseline ? "Baseline" : "Set baseline"}</button>{baseline && !isBaseline && <button type="button" className="compare" disabled={comparingId === run.id} onClick={() => void compareRun(run, baseline)}>{comparingId === run.id ? <LoaderCircle className="spin" size={15} /> : <Images size={15} />} Compare to baseline</button>}<button type="button" className="open" onClick={() => void openRun(run)}>Open scan <ArrowRight size={15} /></button></div>
+          {comparison && <div className="bk-history-comparison">{typeof comparison === "string" ? <p role="alert">{comparison}</p> : <><header><b>{(comparison.changedRatio * 100).toFixed(2)}% changed</b><span>Current versus baseline · matching {comparison.width}px checkpoint</span></header><div><figure><img src={comparison.previous} alt="Baseline checkpoint" /><figcaption>Baseline</figcaption></figure><figure><img src={comparison.current} alt="Current run checkpoint" /><figcaption>Current</figcaption></figure><figure><img src={comparison.diff} alt="Pixel difference between baseline and current run" /><figcaption>Difference</figcaption></figure></div></>}</div>}
         </article>;
       })}</div> : <div className="bk-history-empty"><Clock3 size={28} /><h2>No scans yet</h2><p>Run your first responsive test and it will appear here automatically.</p><Link href="/">Start a new test <ArrowRight size={15} /></Link></div>}
     </section>
