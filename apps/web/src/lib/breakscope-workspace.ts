@@ -28,7 +28,18 @@ export interface PersistedScanJob {
   updatedAt: number;
 }
 
+export interface TestPreset {
+  id: string;
+  name: string;
+  url: string;
+  routes: string[];
+  deviceWidths: number[];
+  browserEngines: BrowserEngine[];
+  updatedAt: number;
+}
+
 export interface BreakscopeState {
+  testPresets?: TestPreset[];
   recentTargets?: Array<{
     url: string;
     lastUsedAt: number;

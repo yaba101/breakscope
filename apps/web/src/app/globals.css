@@ -29,6 +29,27 @@
   --z-dropdown: 20;
 }
 
+/* Local setup presets */
+.bk-setup-presets {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, .8fr) minmax(140px, .7fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--setup-border);
+  background: var(--setup-panel);
+  padding: 8px;
+}
+.bk-setup-presets > div { display: flex; align-items: center; gap: 7px; padding-inline: 6px; color: var(--setup-ink); }
+.bk-setup-presets > div span { color: var(--setup-muted); font-size: 12px; }
+.bk-setup-presets select,
+.bk-setup-presets input { width: 100%; min-height: 38px; border: 1px solid var(--setup-border); background: var(--setup-bg); padding: 0 10px; color: var(--setup-ink); font: inherit; }
+.bk-setup-presets > button { display: inline-flex; min-height: 38px; align-items: center; gap: 6px; border: 0; background: var(--setup-ink); padding: 0 14px; color: var(--setup-bg); font-weight: 700; }
+.bk-setup-presets > button:disabled { cursor: not-allowed; opacity: .45; }
+@media (max-width: 760px) {
+  .bk-setup-presets { grid-template-columns: 1fr auto; }
+  .bk-setup-presets > div { grid-column: 1 / -1; }
+}
+
 @theme inline {
   --color-background: var(--ui-bg);
   --color-foreground: var(--ui-fg);
