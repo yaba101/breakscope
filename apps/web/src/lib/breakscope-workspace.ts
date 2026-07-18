@@ -47,7 +47,19 @@ export interface LocalScanRun {
   suppressedCount: number;
 }
 
+export interface RuntimeDiagnosticSample {
+  id: string;
+  capturedAt: number;
+  retainedBytes: number;
+  appHeapBytes: number;
+  appRssBytes: number;
+  captureHeapBytes: number;
+  captureRssBytes: number;
+  completedCaptures: number;
+}
+
 export interface BreakscopeState {
+  diagnosticsHistory?: RuntimeDiagnosticSample[];
   scanHistory?: LocalScanRun[];
   testPresets?: TestPreset[];
   recentTargets?: Array<{
