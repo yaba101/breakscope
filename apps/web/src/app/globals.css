@@ -57,6 +57,13 @@
 .bk-ai-feedback button.active { background: var(--setup-ink); color: var(--setup-bg); }
 .bk-ai-feedback { flex-wrap: wrap; margin-top: 10px; }
 .bk-ai-feedback span { flex-basis: 100%; color: var(--setup-muted); font-size: 11px; }
+.bk-shortcut-reference { position: fixed; z-index: 80; right: 16px; bottom: 32px; width: 300px; border: 1px solid var(--setup-ink); background: var(--setup-panel); padding: 12px; color: var(--setup-ink); }
+.bk-shortcut-reference header { display: flex; align-items: center; gap: 7px; padding-bottom: 9px; border-bottom: 1px solid var(--setup-border); }
+.bk-shortcut-reference header button { margin-left: auto; border: 0; background: transparent; color: inherit; }
+.bk-shortcut-reference dl { display: grid; gap: 7px; margin: 10px 0 0; font-size: 12px; }
+.bk-shortcut-reference dl div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bk-shortcut-reference kbd { border: 1px solid var(--setup-border); background: var(--setup-bg); padding: 2px 5px; font: 11px var(--font-geist-mono), monospace; }
+.bs-footer button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: inherit; font: inherit; }
 @media (max-width: 760px) {
   .bk-setup-presets { grid-template-columns: 1fr auto; }
   .bk-setup-presets > div { grid-column: 1 / -1; }

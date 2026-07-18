@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Accessibility, AlertTriangle, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, CircleStop, Code2, Eraser, ExternalLink, EyeOff, FileText, Hand, ImageOff, Laptop, Layers3, LoaderCircle, Maximize2, MessageSquareCode, Minus, Monitor, MoreHorizontal, MoveHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw, ScanSearch, Scissors, Search, Settings2, Smartphone, Star, Tablet, Trash2, WandSparkles, X } from "lucide-react";
+import { Accessibility, AlertTriangle, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, CircleStop, Code2, Eraser, ExternalLink, EyeOff, FileText, Hand, ImageOff, Keyboard, Laptop, Layers3, LoaderCircle, Maximize2, MessageSquareCode, Minus, Monitor, MoreHorizontal, MoveHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw, ScanSearch, Scissors, Search, Settings2, Smartphone, Star, Tablet, Trash2, WandSparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type DeviceOrientation, type DevicePreset } from "react-device-bezels";
@@ -411,6 +411,7 @@ export function BreakscopeWorkspace() {
   const [aiIssueError, setAiIssueError] = useState("");
   const [inspectorWidth, setInspectorWidth] = useState(380);
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const scanController = useRef<AbortController | undefined>(undefined);
   const scanPreviewRef = useRef<HTMLDivElement | null>(null);
   const issuePreviewRef = useRef<HTMLDivElement | null>(null);
@@ -836,6 +837,34 @@ export function BreakscopeWorkspace() {
     setInspectorWidth(Math.min(620, Math.max(320, next)));
   }
 
+  useEffect(() => {
+    const handleShortcut = (event: globalThis.KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
+      if (event.key === "?") { event.preventDefault(); setShortcutsOpen((open) => !open); return; }
+      if (event.key === "Escape" && activeIssue) { event.preventDefault(); clearSelectedIssue(); return; }
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); scan(); return; }
+      if (event.altKey && event.key === "ArrowLeft") { event.preventDefault(); stepIssue(-1); return; }
+      if (event.altKey && event.key === "ArrowRight") { event.preventDefault(); stepIssue(1); return; }
+      if (event.key === "[" || event.key === "]") {
+        event.preventDefault();
+        const current = Math.max(0, deviceWidths.indexOf(displayedWidth));
+        const direction = event.key === "[" ? -1 : 1;
+        const width = deviceWidths[(current + direction + deviceWidths.length) % deviceWidths.length];
+        if (width) { setActivePreviewWidth(width); setIssueDisplayWidth(undefined); setResult((value) => ({ ...value, activeIssue: undefined })); }
+        return;
+      }
+      if (event.key.toLowerCase() === "b") {
+        event.preventDefault();
+        const current = Math.max(0, browserEngines.indexOf(activeBrowserEngine));
+        setActiveBrowserEngine(browserEngines[(current + 1) % browserEngines.length]!);
+        clearSelectedIssue();
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  });
+
   return <main id="main-content" className="breakscope-shell bk-workspace-page">
     <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Responsive lab</span><Link href="/setup" className="bk-edit-setup"><Settings2 size={14} /><span>Edit setup</span></Link></div><div className="bk-command-target"><span>{new URL(url).host}</span><code>{url}</code></div><div className="bk-command-actions"><span className="bk-agent"><i /> Agent online</span><button type="button" className="bk-command-run" disabled={!selectedRoutes.length || scanning} onClick={() => void scan()}>{scanning ? <span className="bk-scan-glyph"><ScanSearch size={16} /></span> : <RotateCcw size={16} />}{scanning ? "Scanning" : hasScanned ? "Run again" : "Run test"}</button></div></header>
     {error && <div className="bs-error bk-workspace-error" role="alert"><AlertTriangle size={17} /><span>{error}</span>{workspaceQuery.data?.scanJob?.status === "failed" && <button type="button" className="bk-error-retry" disabled={scanning} onClick={() => scan()}><RefreshCw size={14} /> Retry failed captures</button>}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={15} /></button></div>}
@@ -895,6 +924,7 @@ export function BreakscopeWorkspace() {
         </div> : hasScanned ? <ViewportIssueInspector width={displayedWidth} checkpointWidths={deviceWidths} routePath={reviewedRoute ?? "/"} issues={viewportIssues} pageWideIssues={pageWideIssues} selectedIssue={activeIssue} aiAnalysis={activeIssue ? aiReviews[activeIssue.fingerprint] : undefined} aiPending={aiIssueMutation.isPending} aiError={aiIssueError} url={url} onSelect={selectIssue} onClearSelection={clearSelectedIssue} onAnalyze={(issue, mode) => aiIssueMutation.mutate({ issue, mode })} /> : <div className="bk-activity-view"><h2>Ready to inspect</h2><p>{`${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"} · ${minWidth}–${maxWidth}px`}</p><ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : ""}><i>{step.done ? <Check size={13} /> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol></div>}
       </div></aside>
     </section> : <section className="bk-no-target"><ScanSearch size={36} /><h1>No test configured</h1><p>Choose a URL and routes before opening the workspace.</p><Link href="/"><ArrowRight size={17} /> Go to setup</Link></section>}
-    <footer className="bs-footer"><span>Breakscope beta</span><span>{fixed.length ? `${fixed.length} fixed · ` : ""}{suppressedCount ? `${suppressedCount} suppressed · ` : ""}{browserLabels[activeBrowserEngine]} · Reduced motion</span></footer>
+    {shortcutsOpen && <aside className="bk-shortcut-reference" aria-label="Keyboard shortcuts"><header><Keyboard size={16} /><b>Keyboard shortcuts</b><button type="button" aria-label="Close keyboard shortcuts" onClick={() => setShortcutsOpen(false)}><X size={14} /></button></header><dl><div><dt>Previous / next checkpoint</dt><dd><kbd>[</kbd> <kbd>]</kbd></dd></div><div><dt>Next browser</dt><dd><kbd>B</kbd></dd></div><div><dt>Previous / next issue</dt><dd><kbd>⌥←</kbd> <kbd>⌥→</kbd></dd></div><div><dt>Clear selected issue</dt><dd><kbd>Esc</kbd></dd></div><div><dt>Run test</dt><dd><kbd>⌘↵</kbd></dd></div></dl></aside>}
+    <footer className="bs-footer"><span>Breakscope beta</span><button type="button" onClick={() => setShortcutsOpen((open) => !open)}><Keyboard size={12} /> ? shortcuts</button><span>{fixed.length ? `${fixed.length} fixed · ` : ""}{suppressedCount ? `${suppressedCount} suppressed · ` : ""}{browserLabels[activeBrowserEngine]} · Reduced motion</span></footer>
   </main>;
 }
