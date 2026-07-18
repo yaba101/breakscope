@@ -250,6 +250,23 @@ async function captureWithBrowser(
             160,
           );
         };
+        const sourceHintFor = (element: Element) => {
+          const file = normalized(element.getAttribute("data-source-file") || element.getAttribute("data-source"), 300);
+          const component = normalized(element.getAttribute("data-component-name") || element.getAttribute("data-component"), 120);
+          const line = Number.parseInt(element.getAttribute("data-source-line") ?? "", 10);
+          const column = Number.parseInt(element.getAttribute("data-source-column") ?? "", 10);
+          if (file || component) return { ...(file ? { file } : {}), ...(component ? { component } : {}), ...(Number.isFinite(line) ? { line } : {}), ...(Number.isFinite(column) ? { column } : {}), origin: "runtime-attribute" as const };
+          const fiberKey = Object.keys(element).find((key) => key.startsWith("__reactFiber$"));
+          let fiber = fiberKey ? (element as unknown as Record<string, unknown>)[fiberKey] as { _debugSource?: { fileName?: string; lineNumber?: number; columnNumber?: number }; return?: unknown; type?: unknown } | undefined : undefined;
+          for (let depth = 0; fiber && depth < 12; depth += 1) {
+            const source = fiber._debugSource;
+            const type = fiber.type as { displayName?: string; name?: string } | string | undefined;
+            const componentName = typeof type === "string" ? "" : normalized(type?.displayName || type?.name, 120);
+            if (source?.fileName || componentName) return { ...(source?.fileName ? { file: normalized(source.fileName, 300) } : {}), ...(source?.lineNumber ? { line: source.lineNumber } : {}), ...(source?.columnNumber ? { column: source.columnNumber } : {}), ...(componentName ? { component: componentName } : {}), origin: "react-debug" as const };
+            fiber = fiber.return as typeof fiber;
+          }
+          return undefined;
+        };
         const candidates = Array.from(document.querySelectorAll(
           "h1,h2,h3,h4,h5,h6,p,li,label,a,button,input,select,textarea,img,nav,main,header,footer,aside,section,article,[role],[data-testid]",
         )).slice(0, 500);
@@ -262,6 +279,7 @@ async function captureWithBrowser(
           const role = normalized(element.getAttribute("role") || implicitRole(element), 60);
           const name = accessibleName(element);
           const selector = selectorFor(element);
+          const sourceHint = sourceHintFor(element);
           const testId = normalized(element.getAttribute("data-testid"), 100);
           const id = normalized(element.id, 100);
           const href = element instanceof HTMLAnchorElement ? normalized(element.pathname || element.href, 240) : "";
@@ -279,6 +297,7 @@ async function captureWithBrowser(
             name,
             text: normalized(element instanceof HTMLElement ? element.innerText : element.textContent),
             selector,
+            ...(sourceHint ? { sourceHint } : {}),
             parentKey: element.parentElement ? keyedElements.get(element.parentElement) ?? selectorFor(element.parentElement) : "",
             visible,
             inViewport: visible && bounds.bottom > 0 && bounds.right > 0 && bounds.top < viewportHeight && bounds.left < viewportWidth,

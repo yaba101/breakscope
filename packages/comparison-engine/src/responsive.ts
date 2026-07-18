@@ -1,6 +1,6 @@
 import type { ElementSnapshot, ResponsiveIssue, ResponsiveIssueType, ViewportSample } from "@breakscope/shared";
 
-type Draft = Pick<ResponsiveIssue, "type" | "severity" | "confidence" | "title" | "description" | "routePath" | "selector" | "measurements" | "browserEngine" | "interactionState"> & { width: number; elementRect?: ResponsiveIssue["elementRect"]; elementKey?: string };
+type Draft = Pick<ResponsiveIssue, "type" | "severity" | "confidence" | "title" | "description" | "routePath" | "selector" | "measurements" | "browserEngine" | "interactionState"> & { width: number; elementRect?: ResponsiveIssue["elementRect"]; elementKey?: string; sourceHint?: ResponsiveIssue["sourceHint"] };
 const interactiveRoles = new Set(["button", "link", "textbox", "checkbox", "radio", "combobox", "slider"]);
 const detectorLabels: Record<ResponsiveIssueType, string> = {
   overflow: "Horizontal overflow", offscreen: "Control reachability", clipping: "Content clipping", overlap: "Element overlap",
@@ -22,6 +22,7 @@ function draft(type: ResponsiveIssueType, sample: ViewportSample, element: Eleme
     selector: element?.selector ?? "html",
     ...(element ? { elementKey: element.key } : {}),
     ...(element ? { elementRect: element.rect } : {}),
+    ...(element?.sourceHint ? { sourceHint: element.sourceHint } : {}),
     width: sample.width,
     browserEngine: sample.browserEngine ?? "chromium",
     interactionState: sample.interactionState,
@@ -208,11 +209,12 @@ export function analyzeResponsiveSamples(samples: ViewportSample[], previousFing
     const working = routeWidths.filter((width) => !failing.has(width));
     const closestWorking = [...working].sort((a, b) => Math.abs(a - evidence.width) - Math.abs(b - evidence.width))[0];
     const ranges = failureRanges(routeWidths, failing);
-    const { elementRect, elementKey, width: _width, ...evidenceData } = evidence;
+    const { elementRect, elementKey, sourceHint, width: _width, ...evidenceData } = evidence;
     return {
       ...evidenceData,
       ...(elementRect === undefined ? {} : { elementRect }),
       ...(elementKey === undefined ? {} : { elementKey }),
+      ...(sourceHint === undefined ? {} : { sourceHint }),
       id: `issue-${index + 1}`,
       fingerprint,
       minFailWidth: ordered[0]!.width,

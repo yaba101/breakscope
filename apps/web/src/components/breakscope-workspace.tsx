@@ -357,6 +357,12 @@ function groupIssueFamilies(source: ResponsiveIssue[]) {
   return [...families.values()];
 }
 
+function sourceHintLabel(issue: ResponsiveIssue) {
+  const source = issue.sourceHint;
+  if (!source?.file) return "Component name exposed by the inspected page";
+  return `${source.file}${source.line ? `:${source.line}` : ""}${source.column ? `:${source.column}` : ""}`;
+}
+
 function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pageWideIssues, selectedIssue, aiAnalysis, aiPending, aiError, retesting, url, onSelect, onClearSelection, onRetest, onAnalyze }: { width: number; checkpointWidths: number[]; routePath: string; issues: ResponsiveIssue[]; pageWideIssues: ResponsiveIssue[]; selectedIssue?: ResponsiveIssue; aiAnalysis?: AiIssueAnalysis; aiPending: boolean; aiError?: string; retesting: boolean; url: string; onSelect: (issue: ResponsiveIssue) => void; onClearSelection: () => void; onRetest: () => void; onAnalyze: (issue: ResponsiveIssue, mode: "concise" | "technical") => void }) {
   const [copiedPromptFor, setCopiedPromptFor] = useState("");
   const [analysisMode, setAnalysisMode] = useState<"concise" | "technical">("concise");
@@ -378,7 +384,7 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
         <p>{issue.description}</p>
         <dl><div><dt>{isPageWideIssue(issue, checkpointWidths) ? "Scope" : "Fails"}</dt><dd>{isPageWideIssue(issue, checkpointWidths) ? "Every checkpoint" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div>{issue.interactionState && <div><dt>State</dt><dd><b>Expanded controls</b><small>Reproduced after opening safe disclosures</small></dd></div>}<div><dt>Target</dt><dd><b>{issueTargetDescription(issue)}</b><small>Highlighted in the preview</small></dd></div><div><dt>Status</dt><dd>{issue.verification.replace("-", " ")}</dd></div></dl>
         <div className="bk-measurements"><span>Detector evidence</span>{Object.entries(issue.measurements).slice(0, 4).map(([key, value]) => <div key={key}><code>{key}</code><b>{String(value)}</b></div>)}</div>
-        <section className="bk-element-context"><header><b>Element context</b><button type="button" onClick={() => void navigator.clipboard.writeText(stableIssueSelector(issue))}><Code2 size={13} /> Copy stable selector</button></header><dl><div><dt>DOM path</dt><dd>{selectorBreadcrumb(issue.selector)}</dd></div><div><dt>Stable target</dt><dd><code>{stableIssueSelector(issue)}</code></dd></div><div><dt>Element box</dt><dd>{issue.elementRect ? `${Math.round(issue.elementRect.width)} × ${Math.round(issue.elementRect.height)} at ${Math.round(issue.elementRect.x)}, ${Math.round(issue.elementRect.y)}` : "Not captured"}</dd></div></dl></section>
+        <section className="bk-element-context"><header><b>Element context</b><button type="button" onClick={() => void navigator.clipboard.writeText(stableIssueSelector(issue))}><Code2 size={13} /> Copy stable selector</button></header><dl>{issue.sourceHint && <div><dt>Runtime source</dt><dd><b>{issue.sourceHint.component || "Component source"}</b><small>{sourceHintLabel(issue)}</small></dd></div>}<div><dt>DOM path</dt><dd>{selectorBreadcrumb(issue.selector)}</dd></div><div><dt>Stable target</dt><dd><code>{stableIssueSelector(issue)}</code></dd></div><div><dt>Element box</dt><dd>{issue.elementRect ? `${Math.round(issue.elementRect.width)} × ${Math.round(issue.elementRect.height)} at ${Math.round(issue.elementRect.x)}, ${Math.round(issue.elementRect.y)}` : "Not captured"}</dd></div></dl></section>
         <section className={`bk-ai-issue-review ${aiPending ? "is-loading" : ""}`} aria-busy={aiPending}>
           <header className="bk-ai-review-header"><span><WandSparkles size={14} /> AI repair brief</span>{aiAnalysis && <b>{Math.round(aiAnalysis.confidence * 100)}% confidence</b>}</header>
           <div className="bk-ai-mode" role="group" aria-label="Repair brief detail"><button type="button" className={analysisMode === "concise" ? "active" : ""} aria-pressed={analysisMode === "concise"} onClick={() => setAnalysisMode("concise")}>Concise</button><button type="button" className={analysisMode === "technical" ? "active" : ""} aria-pressed={analysisMode === "technical"} onClick={() => setAnalysisMode("technical")}>Technical</button></div>

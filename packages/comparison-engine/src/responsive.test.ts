@@ -34,6 +34,12 @@ describe("analyzeResponsiveSamples", () => {
     expect(result.allIssues.some((issue) => issue.type === "disappearing" && issue.elementKey === "testid:checkout")).toBe(true);
   });
 
+  it("preserves runtime source evidence for a reported element", () => {
+    const sourced = { ...button(true), rect: { x: 20, y: 20, width: 30, height: 30 }, sourceHint: { file: "/src/Checkout.tsx", line: 42, component: "Checkout", origin: "react-debug" as const } };
+    const issue = analyzeResponsiveSamples([sample(390, 390, [sourced])]).issues[0];
+    expect(issue?.sourceHint).toEqual(sourced.sourceHint);
+  });
+
   it("does not treat controls inside sticky containers as occluded", () => {
     const nav: ElementSnapshot = { ...button(true), key: "nav", tag: "nav", role: "navigation", name: "", selector: "nav", parentKey: "body", rect: { x: 0, y: 0, width: 320, height: 64 }, styles: { ...button(true).styles, position: "sticky" } };
     const link: ElementSnapshot = { ...button(true), key: "nav-link", tag: "a", role: "link", name: "Home", selector: "nav > a", parentKey: "nav", rect: { x: 12, y: 8, width: 80, height: 48 } };

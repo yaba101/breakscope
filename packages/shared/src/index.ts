@@ -97,6 +97,15 @@ export interface ResponsiveIssue {
   documentHeight?: number;
   browserEngine?: BrowserEngine;
   interactionState?: string;
+  sourceHint?: SourceHint;
+}
+
+export interface SourceHint {
+  file?: string;
+  line?: number;
+  column?: number;
+  component?: string;
+  origin: "runtime-attribute" | "react-debug";
 }
 
 export interface DetectorOutcome {
@@ -145,6 +154,7 @@ export interface ElementSnapshot {
   name: string;
   text: string;
   selector: string;
+  sourceHint?: SourceHint;
   parentKey?: string;
   visible: boolean;
   inViewport: boolean;
