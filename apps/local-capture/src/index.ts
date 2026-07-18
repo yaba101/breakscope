@@ -326,9 +326,10 @@ async function captureWithBrowser(
     }
   }
   if (!snapshotData) throw new Error("Unable to read the settled page snapshot");
-  // Full-page PNGs are unbounded and are retained by the workspace while a scan is open.
-  // Capture the inspected viewport instead, keeping evidence bounded by the configured checkpoint.
-  const png = includeImage ? await page.screenshot({ fullPage: false, animations: "disabled", type: "png" }) : undefined;
+  // The workspace presents captures inside a scrollable device screen. A viewport-only
+  // image creates a false bottom at the initial browser height, so retain the full page
+  // and let the workspace evidence budget decide which captures remain persisted.
+  const png = includeImage ? await page.screenshot({ fullPage: true, animations: "disabled", type: "png" }) : undefined;
   const finalUrl = page.url();
   const snapshot: PageSnapshot = {
     ...snapshotData,
