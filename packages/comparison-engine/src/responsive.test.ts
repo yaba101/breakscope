@@ -66,4 +66,12 @@ describe("analyzeResponsiveSamples", () => {
     expect(result.issues).toHaveLength(2);
     expect(result.issues.map((issue) => issue.interactionState)).toEqual([undefined, "expanded"]);
   });
+
+  it("reports actionable performance thresholds as separate findings", () => {
+    const slow = sample(1280);
+    slow.snapshot.performance = { domContentLoadedMs: 2400, loadMs: 7200, resourceCount: 48, transferBytes: 12_000_000, largestResourceBytes: 2_000_000, largestResourceUrl: "https://example.com/hero.png", cumulativeLayoutShift: 0.3 };
+    const result = analyzeResponsiveSamples([slow]);
+    expect(result.issues.filter((issue) => issue.type === "performance")).toHaveLength(4);
+    expect(result.issues.some((issue) => issue.title === "Page layout shifts while loading" && issue.severity === "high")).toBe(true);
+  });
 });

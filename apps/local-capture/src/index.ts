@@ -344,6 +344,18 @@ async function captureWithBrowser(
     tags: violation.tags,
     nodes: violation.nodes.map((node) => ({ selector: node.target.map(String).join(" "), html: node.html.slice(0, 500), failureSummary: node.failureSummary ?? violation.description })),
   }))).catch(() => []);
+  const performanceSnapshot = await page.evaluate(() => {
+    const navigation = window.performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const resources = window.performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+    const largest = [...resources].sort((left, right) => (right.transferSize || right.encodedBodySize) - (left.transferSize || left.encodedBodySize))[0];
+    const shifts = window.performance.getEntriesByType("layout-shift") as Array<PerformanceEntry & { value?: number; hadRecentInput?: boolean }>;
+    return {
+      domContentLoadedMs: Math.round(navigation?.domContentLoadedEventEnd ?? 0), loadMs: Math.round(navigation?.loadEventEnd ?? 0), resourceCount: resources.length,
+      transferBytes: resources.reduce((total, resource) => total + (resource.transferSize || resource.encodedBodySize), 0),
+      largestResourceBytes: largest ? largest.transferSize || largest.encodedBodySize : 0, largestResourceUrl: largest?.name ?? "",
+      cumulativeLayoutShift: Math.round(shifts.filter((shift) => !shift.hadRecentInput).reduce((total, shift) => total + (shift.value ?? 0), 0) * 1000) / 1000,
+    };
+  });
   // The workspace presents captures inside a scrollable device screen. A viewport-only
   // image creates a false bottom at the initial browser height, so retain the full page
   // and let the workspace evidence budget decide which captures remain persisted.
@@ -353,6 +365,7 @@ async function captureWithBrowser(
     ...snapshotData,
     accessibilityViolations,
     interactionCandidates,
+    performance: performanceSnapshot,
     ...(interactionState ? { interactionState } : {}),
     url: finalUrl,
     capturedAt: Date.now(),

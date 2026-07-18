@@ -68,7 +68,8 @@ export type ResponsiveIssueType =
   | "touch-target"
   | "accessible-name"
   | "image-alt"
-  | "accessibility";
+  | "accessibility"
+  | "performance";
 
 export type VerificationState = "new" | "still-broken" | "fixed";
 
@@ -191,6 +192,17 @@ export interface PageSnapshot {
   accessibilityViolations?: AccessibilityViolation[];
   interactionState?: string;
   interactionCandidates?: number;
+  performance?: PerformanceSnapshot;
+}
+
+export interface PerformanceSnapshot {
+  domContentLoadedMs: number;
+  loadMs: number;
+  resourceCount: number;
+  transferBytes: number;
+  largestResourceBytes: number;
+  largestResourceUrl: string;
+  cumulativeLayoutShift: number;
 }
 
 export interface AccessibilityViolation {

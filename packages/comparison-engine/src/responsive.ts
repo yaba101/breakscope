@@ -7,10 +7,11 @@ const detectorLabels: Record<ResponsiveIssueType, string> = {
   occlusion: "Sticky content coverage", disappearing: "Responsive visibility", "touch-target": "Touch target size",
   "accessible-name": "Accessible names", "image-alt": "Image alternatives",
   accessibility: "Accessibility audit",
+  performance: "Performance diagnostics",
 };
 
-function stableFingerprint(type: ResponsiveIssueType, routePath: string, selector: string, elementKey?: string, browserEngine = "chromium", interactionState = "default") {
-  return `${browserEngine}:${interactionState}:${type}:${routePath}:${elementKey || selector || "document"}`.toLowerCase().replace(/\s+/g, " ");
+function stableFingerprint(type: ResponsiveIssueType, routePath: string, selector: string, elementKey?: string, browserEngine = "chromium", interactionState = "default", documentIdentity?: string) {
+  return `${browserEngine}:${interactionState}:${type}:${routePath}:${elementKey || (selector === "html" ? documentIdentity : selector) || "document"}`.toLowerCase().replace(/\s+/g, " ");
 }
 
 function draft(type: ResponsiveIssueType, sample: ViewportSample, element: ElementSnapshot | undefined, data: Pick<Draft, "severity" | "confidence" | "title" | "description" | "measurements">): Draft {
@@ -30,6 +31,13 @@ function draft(type: ResponsiveIssueType, sample: ViewportSample, element: Eleme
 function issuesAt(sample: ViewportSample): Draft[] {
   const issues: Draft[] = [];
   const { snapshot } = sample;
+  if (snapshot.performance) {
+    const metric = snapshot.performance;
+    if (metric.loadMs > 3_000) issues.push(draft("performance", sample, undefined, { severity: metric.loadMs > 6_000 ? "high" : "medium", confidence: 0.96, title: "Page load is slow", description: `The load event completed after ${metric.loadMs}ms in the local browser.`, measurements: { loadMs: metric.loadMs, domContentLoadedMs: metric.domContentLoadedMs, resourceCount: metric.resourceCount } }));
+    if (metric.transferBytes > 5_000_000) issues.push(draft("performance", sample, undefined, { severity: metric.transferBytes > 10_000_000 ? "high" : "medium", confidence: 0.98, title: "Page transfers too much data", description: `Resources transferred ${(metric.transferBytes / 1_000_000).toFixed(1)}MB before review.`, measurements: { transferBytes: metric.transferBytes, resourceCount: metric.resourceCount } }));
+    if (metric.largestResourceBytes > 1_000_000) issues.push(draft("performance", sample, undefined, { severity: "medium", confidence: 0.98, title: "A resource is unusually large", description: `The largest resource transferred ${(metric.largestResourceBytes / 1_000_000).toFixed(1)}MB.`, measurements: { largestResourceBytes: metric.largestResourceBytes, resource: metric.largestResourceUrl } }));
+    if (metric.cumulativeLayoutShift > 0.1) issues.push(draft("performance", sample, undefined, { severity: metric.cumulativeLayoutShift > 0.25 ? "high" : "medium", confidence: 0.9, title: "Page layout shifts while loading", description: `The observed cumulative layout shift was ${metric.cumulativeLayoutShift}.`, measurements: { cumulativeLayoutShift: metric.cumulativeLayoutShift, recommendedMaximum: 0.1 } }));
+  }
   for (const violation of snapshot.accessibilityViolations ?? []) for (const node of violation.nodes) {
     const element = snapshot.elements.find((candidate) => candidate.selector === node.selector);
     const severity = violation.impact === "critical" || violation.impact === "serious" ? "high" : violation.impact === "moderate" ? "medium" : "low";
@@ -189,7 +197,7 @@ export function analyzeResponsiveSamples(samples: ViewportSample[], previousFing
   const drafts = [...sorted.flatMap(issuesAt), ...disappearingDrafts(sorted)];
   const grouped = new Map<string, Draft[]>();
   for (const item of drafts) {
-    const fingerprint = stableFingerprint(item.type, item.routePath, item.selector, item.elementKey, item.browserEngine, item.interactionState);
+    const fingerprint = stableFingerprint(item.type, item.routePath, item.selector, item.elementKey, item.browserEngine, item.interactionState, String(item.measurements.rule ?? item.title));
     grouped.set(fingerprint, [...(grouped.get(fingerprint) ?? []), item]);
   }
   const issues = [...grouped.entries()].map(([fingerprint, group], index): ResponsiveIssue => {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Accessibility, AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, CircleStop, Code2, Command, CornerDownLeft, Download, Eraser, ExternalLink, EyeOff, FileText, Hand, ImageOff, Keyboard, Laptop, Layers3, LoaderCircle, Maximize2, MessageSquareCode, Minus, Monitor, MoreHorizontal, MoveHorizontal, Option, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw, ScanSearch, Scissors, Search, Settings2, Smartphone, Star, Tablet, Trash2, WandSparkles, X } from "lucide-react";
+import { Accessibility, AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, CircleStop, Code2, Command, CornerDownLeft, Download, Eraser, ExternalLink, EyeOff, FileText, Gauge, Hand, ImageOff, Keyboard, Laptop, Layers3, LoaderCircle, Maximize2, MessageSquareCode, Minus, Monitor, MoreHorizontal, MoveHorizontal, Option, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw, ScanSearch, Scissors, Search, Settings2, Smartphone, Star, Tablet, Trash2, WandSparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type DeviceOrientation, type DevicePreset } from "react-device-bezels";
@@ -340,6 +340,7 @@ function selectorBreadcrumb(selector: string) {
 
 function IssueTypeIcon({ type, size = 16 }: { type: ResponsiveIssueType; size?: number }) {
   if (type === "accessibility") return <Accessibility size={size} />;
+  if (type === "performance") return <Gauge size={size} />;
   if (type === "image-alt") return <ImageOff size={size} />;
   if (type === "accessible-name") return <Accessibility size={size} />;
   if (type === "touch-target") return <Hand size={size} />;
