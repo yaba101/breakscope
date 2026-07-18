@@ -359,8 +359,8 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
   });
   return <div className="bk-viewport-inspector">
     <header><div><span>Viewport status</span><h2>{width}px · {issues.length ? "Needs attention" : "Passed"}</h2><p><code>{routePath}</code> · {issues.length ? `${issueFamilies.length} responsive ${issueFamilies.length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b aria-label={issues.length ? `${issueFamilies.length} responsive issues` : "Responsive checks passed"}>{issues.length || "OK"}</b></header>
-    {issues.length ? <div className="bk-viewport-issue-list">{renderFamilies(issueFamilies)}</div> : <div className="bk-viewport-clear"><Check size={18} /><div><b>No responsive issues at {width}px</b><p>All viewport-dependent checks passed.</p></div></div>}
     {pageWideIssues.length > 0 && <section className="bk-page-wide-findings"><header><div><b>Page-wide checks</b><span>Independent of viewport size</span></div><em>{pageWideFamilies.length} {pageWideFamilies.length === 1 ? "family" : "families"} · {pageWideIssues.length} {pageWideIssues.length === 1 ? "element" : "elements"}</em></header><div className="bk-viewport-issue-list">{renderFamilies(pageWideFamilies)}</div></section>}
+    {issues.length ? <div className="bk-viewport-issue-list">{renderFamilies(issueFamilies)}</div> : <details className="bk-viewport-clear"><summary><Check size={16} /><b>Responsive checks passed at {width}px</b><ChevronDown size={14} /></summary><p>No viewport-dependent failures were detected at this checkpoint.</p></details>}
   </div>;
 }
 

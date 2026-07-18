@@ -64,6 +64,13 @@
 .bk-shortcut-reference dl div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .bk-shortcut-reference kbd { border: 1px solid var(--setup-border); background: var(--setup-bg); padding: 2px 5px; font: 11px var(--font-geist-mono), monospace; }
 .bs-footer button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: inherit; font: inherit; }
+.bk-viewport-clear { margin: 10px 12px; border: 1px solid var(--setup-border); background: var(--setup-bg); }
+.bk-viewport-clear summary { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px 12px; color: var(--setup-ink); list-style: none; }
+.bk-viewport-clear summary::-webkit-details-marker { display: none; }
+.bk-viewport-clear summary > svg:first-child { color: #237a56; }
+.bk-viewport-clear summary > svg:last-child { margin-left: auto; transition: transform 180ms ease; }
+.bk-viewport-clear[open] summary > svg:last-child { transform: rotate(180deg); }
+.bk-viewport-clear > p { margin: 0; border-top: 1px solid var(--setup-border); padding: 10px 36px; color: var(--setup-muted); font-size: 12px; }
 @media (max-width: 760px) {
   .bk-setup-presets { grid-template-columns: 1fr auto; }
   .bk-setup-presets > div { grid-column: 1 / -1; }
