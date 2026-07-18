@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, Globe2, LoaderCircle, RefreshCw } from "lucide-react";
+import { ArrowRight, Check, Globe2, LoaderCircle, RefreshCw, Save, Search, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -9,7 +9,7 @@ import type { BrowserEngine, TestTarget } from "@breakscope/shared";
 import { isCaptureUrl } from "@breakscope/validation";
 import { discoverRoutesLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys } from "@/lib/breakscope-queries";
-import { loadBreakscopeState, saveBreakscopeState } from "@/lib/breakscope-workspace";
+import { loadBreakscopeState, saveBreakscopeState, type TestPreset } from "@/lib/breakscope-workspace";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
 
 const allBrowserEngines: BrowserEngine[] = ["chromium", "firefox", "webkit"];
@@ -27,7 +27,11 @@ export function BreakscopeSetup() {
   const [opening, setOpening] = useState(false);
   const [rediscovering, setRediscovering] = useState(false);
   const [urlError, setUrlError] = useState("");
+  const [presets, setPresets] = useState<TestPreset[]>([]);
+  const [presetName, setPresetName] = useState("");
+  const [routeQuery, setRouteQuery] = useState("");
   const selectedSet = useMemo(() => new Set(selectedRoutes), [selectedRoutes]);
+  const filteredRoutes = useMemo(() => routes.filter((route) => route.toLowerCase().includes(routeQuery.trim().toLowerCase())), [routeQuery, routes]);
 
   useEffect(() => {
     let active = true;
@@ -43,6 +47,7 @@ export function BreakscopeSetup() {
       setDeviceWidths(state.draft.deviceWidths);
       setBrowserEngines(state.draft.browserEngines?.length ? state.draft.browserEngines : state.target?.browserEngines?.length ? state.target.browserEngines : allBrowserEngines);
       setSelectedRoutes(state.draft.routes.includes("/") ? ["/"] : state.draft.routes.slice(0, 1));
+      setPresets(state.testPresets ?? []);
       setReady(true);
     }).catch(() => router.replace("/"));
     return () => { active = false; };
@@ -52,6 +57,32 @@ export function BreakscopeSetup() {
     setSelectedRoutes((current) => current.includes(route)
       ? current.length > 1 ? current.filter((item) => item !== route) : current
       : current.length < 5 ? [...current, route] : current);
+  }
+
+  function selectVisibleRoutes() {
+    setSelectedRoutes((current) => [...current, ...filteredRoutes.filter((route) => !current.includes(route))].slice(0, 5));
+  }
+
+  async function savePreset() {
+    const name = presetName.trim();
+    if (!name || !url || !selectedRoutes.length) return;
+    const previous = await loadBreakscopeState();
+    const preset: TestPreset = { id: crypto.randomUUID(), name, url, routes: selectedRoutes, deviceWidths, browserEngines, updatedAt: Date.now() };
+    const nextPresets = [preset, ...(previous.testPresets ?? []).filter((item) => item.name.toLowerCase() !== name.toLowerCase())].slice(0, 12);
+    await saveBreakscopeState({ ...previous, testPresets: nextPresets, updatedAt: Date.now() });
+    setPresets(nextPresets);
+    setPresetName("");
+  }
+
+  function applyPreset(id: string) {
+    const preset = presets.find((item) => item.id === id);
+    if (!preset) return;
+    setUrl(preset.url);
+    setUrlInput(preset.url);
+    setRoutes((current) => Array.from(new Set([...preset.routes, ...current])));
+    setSelectedRoutes(preset.routes.slice(0, 5));
+    setDeviceWidths(preset.deviceWidths);
+    setBrowserEngines(preset.browserEngines);
   }
 
   function toggleDevice(width: number) {
@@ -161,17 +192,25 @@ export function BreakscopeSetup() {
           </div>
         </header>
 
+        <section className="bk-setup-presets" aria-label="Saved test presets">
+          <div><Save size={15} /><strong>Local presets</strong><span>Reuse a test configuration</span></div>
+          <label><span className="sr-only">Load preset</span><select defaultValue="" onChange={(event) => applyPreset(event.target.value)}><option value="">Choose preset…</option>{presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select></label>
+          <label><span className="sr-only">Preset name</span><input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" maxLength={40} /></label>
+          <button type="button" disabled={!presetName.trim()} onClick={() => void savePreset()}><Save size={14} /> Save</button>
+        </section>
+
         <div className="bk-setup-options">
           <section className="bk-setup-panel bk-setup-routes-panel" aria-labelledby="setup-routes-title">
             <div className="bk-setup-section-heading">
               <div><h2 id="setup-routes-title">Pages to inspect</h2><p>Select up to five discovered routes.</p></div>
               <span>{selectedRoutes.length} / 5</span>
             </div>
-            <div className="bk-setup-routes">{routes.map((route) => (
+            <div className="bk-route-tools"><label><Search size={14} /><span className="sr-only">Filter discovered routes</span><input value={routeQuery} onChange={(event) => setRouteQuery(event.target.value)} placeholder="Filter routes…" />{routeQuery && <button type="button" aria-label="Clear route filter" onClick={() => setRouteQuery("")}><X size={13} /></button>}</label><div><button type="button" disabled={!filteredRoutes.some((route) => !selectedSet.has(route)) || selectedRoutes.length >= 5} onClick={selectVisibleRoutes}>Select visible</button><button type="button" disabled={selectedRoutes.length <= 1} onClick={() => setSelectedRoutes(selectedRoutes.slice(0, 1))}>Keep first</button></div></div>
+            <div className="bk-setup-routes">{filteredRoutes.map((route) => (
               <button type="button" key={route} aria-pressed={selectedSet.has(route)} onClick={() => toggleRoute(route)}>
                 <i>{selectedSet.has(route) && <Check size={13} />}</i><span>{route}</span>
               </button>
-            ))}</div>
+            ))}{!filteredRoutes.length && <p className="bk-route-filter-empty">No routes match “{routeQuery}”.</p>}</div>
           </section>
 
           <section className="bk-setup-panel bk-setup-viewports-panel" aria-labelledby="setup-viewports-title">
