@@ -7687,6 +7687,13 @@ button {
 .bk-workspace-controls .bk-report-export > b { display: flex; align-items: center; gap: 7px; }
 .bk-workspace-controls .bk-report-export > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 .bk-workspace-controls .bk-report-export button { padding: 8px 6px; border: 1px solid var(--line); background: var(--surface-soft); font-size: 11px; }
+.bk-workspace-page .bk-element-context { margin-top: 14px; padding: 12px; border: 1px solid var(--line); background: var(--surface-soft); }
+.bk-workspace-page .bk-element-context header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.bk-workspace-page .bk-element-context header button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--accent); font-size: 11px; }
+.bk-workspace-page .bk-element-context dl { display: grid; gap: 8px; margin: 12px 0 0; }
+.bk-workspace-page .bk-element-context dl > div { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; }
+.bk-workspace-page .bk-element-context dt { color: var(--muted); }
+.bk-workspace-page .bk-element-context dd { margin: 0; overflow-wrap: anywhere; }
 .bk-ai-issue-review .bk-ai-empty { display: grid; gap: 5px; padding: 11px 0; }
 .bk-ai-issue-review .bk-ai-empty b { color: var(--stratum-text-primary); font-size: 12px; }
 .bk-context-inspector .bk-inspector-content .bk-ai-empty p { margin: 0; color: var(--stratum-text-secondary) !important; font-size: 11px; line-height: 1.5; }
