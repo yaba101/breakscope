@@ -9,6 +9,12 @@ interface CapturePageResponse {
   error?: string;
 }
 
+export async function getLocalCaptureHealth() {
+  const response = await fetch("/api/local-capture/health", { cache: "no-store" });
+  const payload = await response.json() as { online?: boolean };
+  return response.ok && payload.online === true;
+}
+
 export async function discoverRoutesLocally(input: { url: string }) {
   const response = await fetch("/api/local-capture/routes", {
     method: "POST",
@@ -40,8 +46,9 @@ export async function capturePageLocally(input: {
       signal,
     });
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
     const detail = error instanceof Error ? ` (${error.message})` : "";
-    throw new Error(`Local browser is offline. Start Breakscope with pnpm dev:local and try again.${detail}`);
+    throw new Error(`The capture request could not reach the Breakscope web API.${detail}`);
   }
   const payload = (await response.json()) as CapturePageResponse;
   if (!response.ok || !payload.image || !payload.snapshot) {

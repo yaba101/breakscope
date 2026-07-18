@@ -10,7 +10,7 @@ import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type 
 import { analyzeResponsiveSamples } from "@breakscope/comparison-engine";
 import type { BrowserEngine, CaptureProfile, DetectorOutcome, ResponsiveIssue, ResponsiveIssueType, TestTarget, ViewportSample } from "@breakscope/shared";
 import { isCaptureUrl } from "@breakscope/validation";
-import { capturePageLocally, discoverRoutesLocally, scanRouteLocally } from "@/lib/local-capture";
+import { capturePageLocally, discoverRoutesLocally, getLocalCaptureHealth, scanRouteLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys, workspaceStateQueryOptions } from "@/lib/breakscope-queries";
 import { clearBreakscopeState, loadBreakscopeState, saveBreakscopeState, type BreakscopeState, type LocalScanRun, type PersistedScanJob, type PersistedViewportPreview, type RuntimeDiagnosticSample } from "@/lib/breakscope-workspace";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
@@ -460,6 +460,7 @@ export function BreakscopeWorkspace() {
   const [inspectorWidth, setInspectorWidth] = useState(380);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [agentOnline, setAgentOnline] = useState<boolean | null>(null);
   const scanController = useRef<AbortController | undefined>(undefined);
   const scanPreviewRef = useRef<HTMLDivElement | null>(null);
   const issuePreviewRef = useRef<HTMLDivElement | null>(null);
@@ -473,6 +474,21 @@ export function BreakscopeWorkspace() {
   const { issues, fixed, suppressedCount, activeIssue, hasScanned } = result;
   const retainedEvidenceBytes = useMemo(() => previews.reduce((total, preview) => total + preview.image.byteLength, 0) + issues.reduce((total, issue) => total + (issue.screenshot?.byteLength ?? 0) + (issue.passingScreenshot?.byteLength ?? 0), 0), [previews, issues]);
   const scanMutation = useMutation({ mutationKey: breakscopeQueryKeys.scan(), mutationFn: runScanWorkflow });
+
+  useEffect(() => {
+    let active = true;
+    const refreshAgentHealth = async () => {
+      try {
+        const online = await getLocalCaptureHealth();
+        if (active) setAgentOnline(online);
+      } catch {
+        if (active) setAgentOnline(false);
+      }
+    };
+    void refreshAgentHealth();
+    const timer = window.setInterval(refreshAgentHealth, 5_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
   const viewportRetryMutation = useMutation({
     mutationKey: [...breakscopeQueryKeys.all, "viewport-retry"],
     mutationFn: async (request: { kind: "checkpoint" | "issue"; width: number; routePath: string; browserEngine?: BrowserEngine; issueFingerprint?: string; evidenceMode?: ComparisonMode }) => {
@@ -767,11 +783,13 @@ export function BreakscopeWorkspace() {
       const analysis = analyzeResponsiveSamples(samples, previous.map((issue) => issue.fingerprint));
       setScanStage(4);
       setProgress({ current: selectedRoutes.length, total: selectedRoutes.length, width: analysis.issues[0]?.evidenceWidth ?? minWidth, route: analysis.issues[0]?.routePath ?? selectedRoutes[0]!, phase: "Capturing evidence" });
-      const withEvidence = await Promise.all(analysis.issues.map(async (issue) => {
+      const withEvidence: ResponsiveIssue[] = [];
+      for (const issue of analysis.issues) {
         const profile = captureProfile(modelForWidth(issue.evidenceWidth), issue.browserEngine ?? "chromium");
-        const [captured, passing] = await Promise.all([capturePageLocally({ url, routePath: issue.routePath, viewport: issue.evidenceWidth <= 600 ? "mobile" : "desktop", width: issue.evidenceWidth, height: 900, profile }, controller.signal), issue.lastWorkingWidth ? capturePageLocally({ url, routePath: issue.routePath, viewport: issue.lastWorkingWidth <= 600 ? "mobile" : "desktop", width: issue.lastWorkingWidth, height: 900, profile }, controller.signal) : undefined]);
-        return { ...issue, screenshot: await captured.image.arrayBuffer(), documentHeight: captured.snapshot.documentHeight, ...(passing ? { passingScreenshot: await passing.image.arrayBuffer() } : {}) };
-      }));
+        const captured = await capturePageLocally({ url, routePath: issue.routePath, viewport: issue.evidenceWidth <= 600 ? "mobile" : "desktop", width: issue.evidenceWidth, height: 900, profile }, controller.signal);
+        const passing = issue.lastWorkingWidth ? await capturePageLocally({ url, routePath: issue.routePath, viewport: issue.lastWorkingWidth <= 600 ? "mobile" : "desktop", width: issue.lastWorkingWidth, height: 900, profile }, controller.signal) : undefined;
+        withEvidence.push({ ...issue, screenshot: await captured.image.arrayBuffer(), documentHeight: captured.snapshot.documentHeight, ...(passing ? { passingScreenshot: await passing.image.arrayBuffer() } : {}) });
+      }
       const currentFingerprints = new Set(analysis.allIssues.map((issue) => issue.fingerprint));
       const fixedIssues = previous.filter((issue) => !currentFingerprints.has(issue.fingerprint)).map((issue) => ({ ...issue, verification: "fixed" as const, screenshot: undefined }));
       const firstIssue = withEvidence[0];
@@ -956,7 +974,7 @@ export function BreakscopeWorkspace() {
   });
 
   return <main id="main-content" className="breakscope-shell bk-workspace-page">
-    <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Responsive lab</span><Link href="/setup" className="bk-edit-setup"><Settings2 size={14} /><span>Edit setup</span></Link></div><div className="bk-command-target"><span>{new URL(url).host}</span><code>{url}</code></div><div className="bk-command-actions"><span className="bk-agent" role="status" aria-label="Local capture agent online"><i aria-hidden="true" /> Agent online</span><button type="button" className="bk-command-run" disabled={!selectedRoutes.length || scanning} aria-describedby={scanning ? "scan-progress-announcement" : undefined} onClick={() => void scan()}>{scanning ? <span className="bk-scan-glyph"><ScanSearch size={16} /></span> : <RotateCcw size={16} />}{scanning ? "Scanning" : hasScanned ? "Run again" : "Run test"}</button></div></header>
+    <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Responsive lab</span><Link href="/setup" className="bk-edit-setup"><Settings2 size={14} /><span>Edit setup</span></Link></div><div className="bk-command-target"><span>{new URL(url).host}</span><code>{url}</code></div><div className="bk-command-actions"><span className={`bk-agent ${agentOnline === false ? "offline" : agentOnline === null ? "checking" : ""}`} role="status" aria-label={`Local capture agent ${agentOnline === null ? "checking" : agentOnline ? "online" : "offline"}`}><i aria-hidden="true" /> Agent {agentOnline === null ? "checking" : agentOnline ? "online" : "offline"}</span><button type="button" className="bk-command-run" disabled={!selectedRoutes.length || scanning || agentOnline === false} aria-describedby={scanning ? "scan-progress-announcement" : undefined} onClick={() => void scan()}>{scanning ? <span className="bk-scan-glyph"><ScanSearch size={16} /></span> : <RotateCcw size={16} />}{scanning ? "Scanning" : hasScanned ? "Run again" : "Run test"}</button></div></header>
     <span id="scan-progress-announcement" className="sr-only" aria-live="polite">{scanning ? `${scanHeadline}, ${Math.round(scanPercent)} percent complete` : hasScanned ? "Test complete" : "Ready to run"}</span>
     {error && <div className="bs-error bk-workspace-error" role="alert"><AlertTriangle size={17} /><span>{error}</span>{workspaceQuery.data?.scanJob?.status === "failed" && <button type="button" className="bk-error-retry" disabled={scanning} onClick={() => scan()}><RefreshCw size={14} /> Retry failed captures</button>}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={15} /></button></div>}
     {(routes.length > 0 || issues.length > 0 || scanning) ? <section className={`bs-workspace ${configCollapsed ? "config-collapsed" : ""}`} style={{ "--bk-inspector-width": `${inspectorWidth}px` } as CSSProperties}>

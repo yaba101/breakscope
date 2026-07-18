@@ -7539,6 +7539,10 @@ button {
 .bk-command-indicators { display: flex; align-items: center; gap: 8px; }
 .bk-command-actions .bk-agent { display: inline-flex; min-height: 34px; align-items: center; gap: 7px; color: var(--color-success); font: 600 10px/1 var(--font-stratum-mono), monospace; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
 .bk-command-actions .bk-agent i { width: 8px; height: 8px; box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-success) 12%, transparent); }
+.bk-command-actions .bk-agent.offline { color: var(--color-danger); }
+.bk-command-actions .bk-agent.offline i { background: var(--color-danger); box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-danger) 12%, transparent); }
+.bk-command-actions .bk-agent.checking { color: var(--text-tertiary); }
+.bk-command-actions .bk-agent.checking i { background: var(--text-tertiary); box-shadow: 0 0 0 5px color-mix(in srgb, var(--text-tertiary) 12%, transparent); }
 .bk-command-state { min-height: 34px; border-radius: var(--stratum-radius-control); padding: 0 10px; font: 600 10px/1 var(--font-stratum-mono), monospace; letter-spacing: .02em; white-space: nowrap; }
 .bk-command-run { min-height: 38px; padding-inline: 13px; }
 .bk-edit-setup { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; border: 1px solid var(--stratum-border-300); border-radius: var(--stratum-radius-control); padding: 0 9px; color: var(--stratum-text-secondary); font: 600 11px/1 var(--font-geist-sans), sans-serif; text-decoration: none; white-space: nowrap; }

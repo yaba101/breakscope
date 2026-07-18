@@ -4,17 +4,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResponsiveIssue } from "@breakscope/shared";
 import { BreakscopeWorkspace } from "./breakscope-workspace";
 
-const { clearBreakscopeState, loadBreakscopeState, saveBreakscopeState, capturePageLocally, discoverRoutesLocally, scanRouteLocally } = vi.hoisted(() => ({
+const { clearBreakscopeState, loadBreakscopeState, saveBreakscopeState, capturePageLocally, discoverRoutesLocally, getLocalCaptureHealth, scanRouteLocally } = vi.hoisted(() => ({
   clearBreakscopeState: vi.fn(),
   loadBreakscopeState: vi.fn(),
   saveBreakscopeState: vi.fn(),
   capturePageLocally: vi.fn(),
   discoverRoutesLocally: vi.fn(),
+  getLocalCaptureHealth: vi.fn(),
   scanRouteLocally: vi.fn(),
 }));
 
 vi.mock("@/lib/breakscope-workspace", () => ({ clearBreakscopeState, loadBreakscopeState, saveBreakscopeState }));
-vi.mock("@/lib/local-capture", () => ({ capturePageLocally, discoverRoutesLocally, scanRouteLocally }));
+vi.mock("@/lib/local-capture", () => ({ capturePageLocally, discoverRoutesLocally, getLocalCaptureHealth, scanRouteLocally }));
 
 const target = {
   id: "current",
@@ -64,6 +65,7 @@ describe("BreakscopeWorkspace", () => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:breakscope-test");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     discoverRoutesLocally.mockResolvedValue({ routes: ["/", "/pricing", "/blog"] });
+    getLocalCaptureHealth.mockResolvedValue(true);
     saveBreakscopeState.mockResolvedValue(undefined);
     clearBreakscopeState.mockResolvedValue(undefined);
     loadBreakscopeState.mockResolvedValue({ target, availableRoutes: ["/", "/pricing", "/blog"], latestIssues: [], updatedAt: 1 });
@@ -83,6 +85,14 @@ describe("BreakscopeWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse test configuration" }));
     expect(screen.getByRole("button", { name: "Expand test configuration" })).toBeInTheDocument();
+  });
+
+  it("reports the real local capture health instead of a hardcoded online state", async () => {
+    getLocalCaptureHealth.mockResolvedValue(false);
+    renderWorkspace();
+
+    expect(await screen.findByLabelText("Local capture agent offline")).toHaveTextContent("Agent offline");
+    expect(screen.getByRole("button", { name: "Run test" })).toBeDisabled();
   });
 
   it("restores a blocker into the issue navigator and inspector", async () => {
