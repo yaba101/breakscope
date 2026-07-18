@@ -317,6 +317,18 @@ describe("BreakscopeWorkspace", () => {
     expect(screen.getByLabelText("Galaxy S26 Ultra device frame")).toBeInTheDocument();
   });
 
+  it("separates viewport exploration from audit findings", async () => {
+    loadBreakscopeState.mockResolvedValue({ target, latestIssues: [issue], latestPreviews: [{ width: 375, label: "Phone", routePath: "/", browserEngine: "chromium", image: new ArrayBuffer(8) }], updatedAt: 1 });
+    renderWorkspace();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Explore/ })).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.queryByRole("separator", { name: "Resize issue inspector" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Audit/ }));
+    expect(screen.getByRole("button", { name: /Audit/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("separator", { name: "Resize issue inspector" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Compare/ })).toHaveAttribute("href", "/history");
+  });
+
   it("automatically starts a setup-requested scan exactly once", async () => {
     loadBreakscopeState.mockResolvedValue({
       target,

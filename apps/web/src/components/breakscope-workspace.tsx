@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Accessibility, AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, CircleStop, Code2, Command, CornerDownLeft, Download, Eraser, ExternalLink, EyeOff, FileText, Gauge, Hand, ImageOff, Keyboard, Laptop, Layers3, LoaderCircle, Maximize2, MessageSquareCode, Minus, Monitor, MoreHorizontal, MoveHorizontal, Option, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw, ScanSearch, Scissors, Search, Settings2, Smartphone, Star, Tablet, Trash2, WandSparkles, X } from "lucide-react";
+import { Accessibility, AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, CircleStop, Code2, Command, CornerDownLeft, Download, Eraser, ExternalLink, EyeOff, FileText, Gauge, GitCompareArrows, Hand, ImageOff, Keyboard, Laptop, Layers3, LoaderCircle, Maximize2, MessageSquareCode, Minus, Monitor, MoreHorizontal, MoveHorizontal, Option, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw, ScanSearch, Scissors, Search, Settings2, Smartphone, Star, Tablet, Trash2, WandSparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type DeviceOrientation, type DevicePreset } from "react-device-bezels";
@@ -19,6 +19,7 @@ const defaultWidths = [320, 390, 480, 600, 768, 900, 1024, 1280, 1440];
 const evidenceWarningBytes = 48 * 1024 * 1024;
 const evidenceLimitBytes = 64 * 1024 * 1024;
 type InspectorTab = "activity" | "issue" | "findings" | "checks";
+type WorkspaceMode = "explore" | "audit";
 type ComparisonMode = "failing" | "passing";
 type DeviceKind = "phone" | "tablet" | "desktop";
 type PreviewScaleMode = "fit-device" | "fit-screen" | "actual" | "custom";
@@ -476,6 +477,7 @@ export function BreakscopeWorkspace() {
   const [inspectorWidth, setInspectorWidth] = useState(380);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("audit");
   const [agentHealth, setAgentHealth] = useState<{ online: boolean; activeCaptures: number; completedCaptures: number } | null>(null);
   const [scanElapsedSeconds, setScanElapsedSeconds] = useState(0);
   const scanController = useRef<AbortController | undefined>(undefined);
@@ -618,6 +620,7 @@ export function BreakscopeWorkspace() {
     }
     const restoredPreviews = state.scanRequest ? [] : state.latestPreviews ?? [];
     setPreviews(restoredPreviews);
+    if (restoredPreviews.length) setWorkspaceMode("explore");
     if (state.ui?.selectedDeviceModelId && deviceModels.some((model) => model.id === state.ui?.selectedDeviceModelId)) setActiveDeviceModelId(state.ui.selectedDeviceModelId as DeviceModelId);
     if (state.ui?.deviceOrientation) setDeviceOrientation(state.ui.deviceOrientation);
     if (state.ui?.previewScaleMode) setPreviewScaleMode(state.ui.previewScaleMode);
@@ -734,7 +737,7 @@ export function BreakscopeWorkspace() {
   }
 
   async function runScanWorkflow() {
-    setInspectorTab("activity"); setError(""); setScrollProgress(0); setScanStage(0); setScanElapsedSeconds(0); setIssueDisplayWidth(undefined); setResult((current) => ({ ...current, fixed: [], activeIssue: undefined, hasScanned: false }));
+    setWorkspaceMode("audit"); setInspectorTab("activity"); setError(""); setScrollProgress(0); setScanStage(0); setScanElapsedSeconds(0); setIssueDisplayWidth(undefined); setResult((current) => ({ ...current, fixed: [], activeIssue: undefined, hasScanned: false }));
     const controller = new AbortController(); scanController.current = controller;
     try {
       const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
@@ -842,6 +845,7 @@ export function BreakscopeWorkspace() {
       autoReviewAttempted.current.clear();
       setAiReviews({});
       setResult({ issues: withEvidence, fixed: fixedIssues, suppressedCount: analysis.suppressedCount, checks: analysis.checks, activeIssue: firstIssue, hasScanned: true });
+      setWorkspaceMode("explore");
       setInspectorTab(firstIssue ? "issue" : "checks"); setComparisonMode("failing");
       const now = Date.now();
       const target: TestTarget = { id: "current", name: new URL(url).host, url, selectedRoutes, minWidth, maxWidth, executionMode: "local", deviceWidths, browserEngines, createdAt: stored.target?.createdAt ?? now, updatedAt: now };
@@ -1024,7 +1028,8 @@ export function BreakscopeWorkspace() {
     <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Responsive lab</span><Link href="/setup" className="bk-edit-setup"><Settings2 size={14} /><span>Edit setup</span></Link></div><div className="bk-command-target"><span>{new URL(url).host}</span><code>{url}</code></div><div className="bk-command-actions"><span className={`bk-agent ${agentHealth?.online === false ? "offline" : agentHealth === null ? "checking" : ""}`} role="status" aria-label={`Local capture agent ${agentHealth === null ? "checking" : agentHealth.online ? "online" : "offline"}`}><i aria-hidden="true" /> Agent {agentHealth === null ? "checking" : agentHealth.online ? "online" : "offline"}</span><button type="button" className="bk-command-run" disabled={!selectedRoutes.length || scanning || agentHealth?.online === false} aria-describedby={scanning ? "scan-progress-announcement" : undefined} onClick={() => void scan()}>{scanning ? <span className="bk-scan-glyph"><ScanSearch size={16} /></span> : <RotateCcw size={16} />}{scanning ? "Scanning" : hasScanned ? "Run again" : "Run test"}</button></div></header>
     <span id="scan-progress-announcement" className="sr-only" aria-live="polite">{scanning ? `${scanHeadline}, ${Math.round(scanPercent)} percent complete` : hasScanned ? "Test complete" : "Ready to run"}</span>
     {error && <div className="bs-error bk-workspace-error" role="alert"><AlertTriangle size={17} /><span>{error}</span>{workspaceQuery.data?.scanJob?.status === "failed" && <button type="button" className="bk-error-retry" disabled={scanning} onClick={() => scan()}><RefreshCw size={14} /> Retry failed captures</button>}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={15} /></button></div>}
-    {(routes.length > 0 || issues.length > 0 || scanning) ? <section className={`bs-workspace ${configCollapsed ? "config-collapsed" : ""}`} style={{ "--bk-inspector-width": `${inspectorWidth}px` } as CSSProperties}>
+    <nav className="bk-workbench-modes" aria-label="Workspace mode"><button type="button" className={workspaceMode === "explore" ? "active" : ""} aria-pressed={workspaceMode === "explore"} disabled={!previews.length || scanning} onClick={() => { setWorkspaceMode("explore"); setResult((current) => ({ ...current, activeIssue: undefined })); }}><Monitor size={15} /><span><b>Explore</b><small>Review every viewport</small></span></button><button type="button" className={workspaceMode === "audit" ? "active" : ""} aria-pressed={workspaceMode === "audit"} disabled={!routes.length && !issues.length} onClick={() => setWorkspaceMode("audit")}><ScanSearch size={15} /><span><b>Audit</b><small>Inspect findings</small></span></button><Link href="/history"><GitCompareArrows size={15} /><span><b>Compare</b><small>Review local baselines</small></span></Link></nav>
+    {(routes.length > 0 || issues.length > 0 || scanning) ? <section className={`bs-workspace mode-${workspaceMode} ${configCollapsed ? "config-collapsed" : ""}`} style={{ "--bk-inspector-width": `${inspectorWidth}px` } as CSSProperties}>
       <aside className="bs-config" aria-label="Scan configuration">
         <div className="bk-panel-title">
           <span>Test scope</span>
@@ -1057,7 +1062,7 @@ export function BreakscopeWorkspace() {
           : <WorkspaceEmpty routeCount={selectedRoutes.length} minWidth={minWidth} maxWidth={maxWidth} disabled={!selectedRoutes.length} onRun={() => void scan()} />}
         </div>
       </section>
-      <aside className="bk-inspector bk-context-inspector" aria-live="polite"><div className="bk-inspector-resizer" role="separator" aria-label="Resize issue inspector" aria-orientation="vertical" aria-valuemin={320} aria-valuemax={620} aria-valuenow={inspectorWidth} tabIndex={0} onPointerDown={beginInspectorResize} onPointerMove={moveInspectorResize} onPointerUp={endInspectorResize} onPointerCancel={endInspectorResize} onKeyDown={resizeInspectorWithKeyboard}><span /></div><div className="bk-inspector-content">
+      {workspaceMode === "audit" && <aside className="bk-inspector bk-context-inspector" aria-live="polite"><div className="bk-inspector-resizer" role="separator" aria-label="Resize issue inspector" aria-orientation="vertical" aria-valuemin={320} aria-valuemax={620} aria-valuenow={inspectorWidth} tabIndex={0} onPointerDown={beginInspectorResize} onPointerMove={moveInspectorResize} onPointerUp={endInspectorResize} onPointerCancel={endInspectorResize} onKeyDown={resizeInspectorWithKeyboard}><span /></div><div className="bk-inspector-content">
         {scanning ? <div className="bk-activity-view bk-live-scan">
           <header className="bk-live-scan-header">
             <div><span><i /> Live responsive analysis</span><output aria-label={`${Math.round(scanPercent)} percent complete`}>{Math.round(scanPercent)}%</output></div>
@@ -1085,7 +1090,7 @@ export function BreakscopeWorkspace() {
           <ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : index === scanStage ? "active" : ""}><i>{step.done ? <Check size={13} /> : index === scanStage ? <span className="bk-pipeline-loader"><ScanSearch size={14} /></span> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol>
           <button type="button" className="bs-cancel" onClick={() => scanController.current?.abort()}><CircleStop size={16} /><span>Cancel test</span><small>Progress will be saved</small></button>
         </div> : hasScanned ? <ViewportIssueInspector width={displayedWidth} checkpointWidths={deviceWidths} routePath={reviewedRoute ?? "/"} issues={viewportIssues} pageWideIssues={pageWideIssues} selectedIssue={activeIssue} aiAnalysis={activeIssue ? aiReviews[activeIssue.fingerprint] : undefined} aiPending={aiIssueMutation.isPending} aiError={aiIssueError} retesting={targetedRetestMutation.isPending} url={url} onSelect={selectIssue} onClearSelection={clearSelectedIssue} onRetest={() => targetedRetestMutation.mutate({ width: displayedWidth, routePath: reviewedRoute ?? "/", browserEngine: activeBrowserEngine })} onAnalyze={(issue, mode) => aiIssueMutation.mutate({ issue, mode })} /> : <div className="bk-activity-view"><h2>Ready to inspect</h2><p>{`${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"} · ${minWidth}–${maxWidth}px`}</p><ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : ""}><i>{step.done ? <Check size={13} /> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol></div>}
-      </div></aside>
+      </div></aside>}
     </section> : <section className="bk-no-target"><ScanSearch size={36} /><h1>No test configured</h1><p>Choose a URL and routes before opening the workspace.</p><Link href="/"><ArrowRight size={17} /> Go to setup</Link></section>}
     {shortcutsOpen && <div className="bk-shortcut-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShortcutsOpen(false); }}><section className="bk-shortcut-reference" role="dialog" aria-modal="true" aria-labelledby="shortcut-dialog-title"><header><span><Keyboard size={18} /><b id="shortcut-dialog-title">Keyboard shortcuts</b></span><button type="button" aria-label="Close keyboard shortcuts" onClick={() => setShortcutsOpen(false)}><X size={16} /></button></header><p>Move through checkpoints and findings without leaving the canvas.</p><dl><div><i><Monitor size={16} /></i><dt>Previous / next checkpoint</dt><dd><kbd aria-label="Left bracket">[</kbd><kbd aria-label="Right bracket">]</kbd></dd></div><div><i><RefreshCw size={16} /></i><dt>Next browser</dt><dd><kbd>B</kbd></dd></div><div><i><ChevronLeft size={16} /><ChevronRight size={16} /></i><dt>Previous / next issue</dt><dd><kbd className="combo" aria-label="Option and left arrow"><Option size={13} /><ArrowLeft size={14} /></kbd><kbd className="combo" aria-label="Option and right arrow"><Option size={13} /><ArrowRight size={14} /></kbd></dd></div><div><i><X size={16} /></i><dt>Clear selected issue</dt><dd><kbd className="escape">Esc</kbd></dd></div><div><i><ScanSearch size={16} /></i><dt>Run test</dt><dd><kbd className="combo command-return" aria-label="Command and Return"><Command size={13} /><CornerDownLeft size={14} /></kbd></dd></div></dl></section></div>}
     <footer className="bs-footer"><span>Breakscope beta</span><button type="button" onClick={() => setShortcutsOpen((open) => !open)}><Keyboard size={12} /> ? shortcuts</button><span>{fixed.length ? `${fixed.length} fixed · ` : ""}{suppressedCount ? `${suppressedCount} suppressed · ` : ""}{browserLabels[activeBrowserEngine]} · Reduced motion</span></footer>
