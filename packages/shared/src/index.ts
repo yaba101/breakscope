@@ -41,6 +41,7 @@ export interface ViewportSample {
   snapshot: PageSnapshot;
   image?: ArrayBuffer;
   browserEngine?: BrowserEngine;
+  interactionState?: string;
 }
 
 export interface TestTarget {
@@ -94,6 +95,7 @@ export interface ResponsiveIssue {
   passingScreenshot?: ArrayBuffer;
   documentHeight?: number;
   browserEngine?: BrowserEngine;
+  interactionState?: string;
 }
 
 export interface DetectorOutcome {
@@ -187,6 +189,8 @@ export interface PageSnapshot {
   capturedAt: number;
   elements: ElementSnapshot[];
   accessibilityViolations?: AccessibilityViolation[];
+  interactionState?: string;
+  interactionCandidates?: number;
 }
 
 export interface AccessibilityViolation {

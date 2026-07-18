@@ -1,6 +1,6 @@
 import type { ElementSnapshot, ResponsiveIssue, ResponsiveIssueType, ViewportSample } from "@breakscope/shared";
 
-type Draft = Pick<ResponsiveIssue, "type" | "severity" | "confidence" | "title" | "description" | "routePath" | "selector" | "measurements" | "browserEngine"> & { width: number; elementRect?: ResponsiveIssue["elementRect"]; elementKey?: string };
+type Draft = Pick<ResponsiveIssue, "type" | "severity" | "confidence" | "title" | "description" | "routePath" | "selector" | "measurements" | "browserEngine" | "interactionState"> & { width: number; elementRect?: ResponsiveIssue["elementRect"]; elementKey?: string };
 const interactiveRoles = new Set(["button", "link", "textbox", "checkbox", "radio", "combobox", "slider"]);
 const detectorLabels: Record<ResponsiveIssueType, string> = {
   overflow: "Horizontal overflow", offscreen: "Control reachability", clipping: "Content clipping", overlap: "Element overlap",
@@ -9,8 +9,8 @@ const detectorLabels: Record<ResponsiveIssueType, string> = {
   accessibility: "Accessibility audit",
 };
 
-function stableFingerprint(type: ResponsiveIssueType, routePath: string, selector: string, elementKey?: string, browserEngine = "chromium") {
-  return `${browserEngine}:${type}:${routePath}:${elementKey || selector || "document"}`.toLowerCase().replace(/\s+/g, " ");
+function stableFingerprint(type: ResponsiveIssueType, routePath: string, selector: string, elementKey?: string, browserEngine = "chromium", interactionState = "default") {
+  return `${browserEngine}:${interactionState}:${type}:${routePath}:${elementKey || selector || "document"}`.toLowerCase().replace(/\s+/g, " ");
 }
 
 function draft(type: ResponsiveIssueType, sample: ViewportSample, element: ElementSnapshot | undefined, data: Pick<Draft, "severity" | "confidence" | "title" | "description" | "measurements">): Draft {
@@ -23,6 +23,7 @@ function draft(type: ResponsiveIssueType, sample: ViewportSample, element: Eleme
     ...(element ? { elementRect: element.rect } : {}),
     width: sample.width,
     browserEngine: sample.browserEngine ?? "chromium",
+    interactionState: sample.interactionState,
   };
 }
 
@@ -144,7 +145,7 @@ function issuesAt(sample: ViewportSample): Draft[] {
 function disappearingDrafts(samples: ViewportSample[]): Draft[] {
   const drafts: Draft[] = [];
   const byRoute = new Map<string, ViewportSample[]>();
-  for (const sample of samples) {
+  for (const sample of samples.filter((item) => !item.interactionState)) {
     const key = `${sample.browserEngine ?? "chromium"}:${sample.routePath}`;
     byRoute.set(key, [...(byRoute.get(key) ?? []), sample]);
   }
@@ -188,14 +189,14 @@ export function analyzeResponsiveSamples(samples: ViewportSample[], previousFing
   const drafts = [...sorted.flatMap(issuesAt), ...disappearingDrafts(sorted)];
   const grouped = new Map<string, Draft[]>();
   for (const item of drafts) {
-    const fingerprint = stableFingerprint(item.type, item.routePath, item.selector, item.elementKey, item.browserEngine);
+    const fingerprint = stableFingerprint(item.type, item.routePath, item.selector, item.elementKey, item.browserEngine, item.interactionState);
     grouped.set(fingerprint, [...(grouped.get(fingerprint) ?? []), item]);
   }
   const issues = [...grouped.entries()].map(([fingerprint, group], index): ResponsiveIssue => {
     const ordered = [...group].sort((a, b) => a.width - b.width);
     const evidence = ordered[0]!;
     const failing = new Set(ordered.map((item) => item.width));
-    const routeWidths = sorted.filter((sample) => sample.routePath === evidence.routePath && (sample.browserEngine ?? "chromium") === (evidence.browserEngine ?? "chromium")).map((sample) => sample.width);
+    const routeWidths = sorted.filter((sample) => sample.routePath === evidence.routePath && (sample.browserEngine ?? "chromium") === (evidence.browserEngine ?? "chromium") && (sample.interactionState ?? "default") === (evidence.interactionState ?? "default")).map((sample) => sample.width);
     const working = routeWidths.filter((width) => !failing.has(width));
     const closestWorking = [...working].sort((a, b) => Math.abs(a - evidence.width) - Math.abs(b - evidence.width))[0];
     const ranges = failureRanges(routeWidths, failing);

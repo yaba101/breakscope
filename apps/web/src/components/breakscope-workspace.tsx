@@ -302,7 +302,7 @@ function DeviceScanPlaceholder({ phase, width, kind }: { phase: string; width: n
 }
 
 function issueFamilyKey(issue: ResponsiveIssue) {
-  return `${issue.routePath}:${issue.type}:${issue.title}:${issue.failureRanges.map((range) => `${range.min}-${range.max}`).join(",")}`;
+  return `${issue.routePath}:${issue.interactionState ?? "default"}:${issue.type}:${issue.title}:${issue.failureRanges.map((range) => `${range.min}-${range.max}`).join(",")}`;
 }
 
 function issueAffectsWidth(issue: ResponsiveIssue, width: number) {
@@ -375,7 +375,7 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
       {selected && <div className="bk-viewport-issue-detail">
         {family.length > 1 && <div className="bk-occurrence-nav"><span>Affected element</span><div><button type="button" aria-label="Previous affected element" onClick={() => selectOccurrence(-1)}><ChevronLeft size={15} /></button><output>{occurrenceIndex + 1} of {family.length}</output><button type="button" aria-label="Next affected element" onClick={() => selectOccurrence(1)}><ChevronRight size={15} /></button></div></div>}
         <p>{issue.description}</p>
-        <dl><div><dt>{isPageWideIssue(issue, checkpointWidths) ? "Scope" : "Fails"}</dt><dd>{isPageWideIssue(issue, checkpointWidths) ? "Every checkpoint" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div><div><dt>Target</dt><dd><b>{issueTargetDescription(issue)}</b><small>Highlighted in the preview</small></dd></div><div><dt>Status</dt><dd>{issue.verification.replace("-", " ")}</dd></div></dl>
+        <dl><div><dt>{isPageWideIssue(issue, checkpointWidths) ? "Scope" : "Fails"}</dt><dd>{isPageWideIssue(issue, checkpointWidths) ? "Every checkpoint" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div>{issue.interactionState && <div><dt>State</dt><dd><b>Expanded controls</b><small>Reproduced after opening safe disclosures</small></dd></div>}<div><dt>Target</dt><dd><b>{issueTargetDescription(issue)}</b><small>Highlighted in the preview</small></dd></div><div><dt>Status</dt><dd>{issue.verification.replace("-", " ")}</dd></div></dl>
         <div className="bk-measurements"><span>Detector evidence</span>{Object.entries(issue.measurements).slice(0, 4).map(([key, value]) => <div key={key}><code>{key}</code><b>{String(value)}</b></div>)}</div>
         <section className="bk-element-context"><header><b>Element context</b><button type="button" onClick={() => void navigator.clipboard.writeText(stableIssueSelector(issue))}><Code2 size={13} /> Copy stable selector</button></header><dl><div><dt>DOM path</dt><dd>{selectorBreadcrumb(issue.selector)}</dd></div><div><dt>Stable target</dt><dd><code>{stableIssueSelector(issue)}</code></dd></div><div><dt>Element box</dt><dd>{issue.elementRect ? `${Math.round(issue.elementRect.width)} × ${Math.round(issue.elementRect.height)} at ${Math.round(issue.elementRect.x)}, ${Math.round(issue.elementRect.y)}` : "Not captured"}</dd></div></dl></section>
         <section className={`bk-ai-issue-review ${aiPending ? "is-loading" : ""}`} aria-busy={aiPending}>

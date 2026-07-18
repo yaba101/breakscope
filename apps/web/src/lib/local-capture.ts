@@ -65,7 +65,7 @@ export async function scanRouteLocally(input: { url: string; routePath: string; 
   });
   const payload = await response.json() as { routePath?: string; samples?: Array<{ width: number; height: number; snapshot: PageSnapshot; durationMs: number }>; error?: string };
   if (!response.ok || !payload.samples) throw new Error(payload.error ?? "Responsive scan failed");
-  return payload.samples.map((sample) => ({ routePath: input.routePath, width: sample.width, height: sample.height, snapshot: sample.snapshot, browserEngine: input.profile?.browserEngine ?? "chromium" }));
+  return payload.samples.map((sample) => ({ routePath: input.routePath, width: sample.width, height: sample.height, snapshot: sample.snapshot, browserEngine: input.profile?.browserEngine ?? "chromium", ...(sample.snapshot.interactionState ? { interactionState: sample.snapshot.interactionState } : {}) }));
 }
 
 function dataUrlToBlob(value: string) {

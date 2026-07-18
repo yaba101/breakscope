@@ -56,4 +56,14 @@ describe("analyzeResponsiveSamples", () => {
     const result = analyzeResponsiveSamples([audited]);
     expect(result.issues[0]).toMatchObject({ type: "accessibility", severity: "high", selector: "html", measurements: { rule: "color-contrast", wcag: "wcag2aa, wcag143" } });
   });
+
+  it("keeps expanded-control findings separate from the default page state", () => {
+    const baseline = sample(390, 430);
+    const expanded = sample(390, 430);
+    expanded.interactionState = "expanded";
+    expanded.snapshot.interactionState = "expanded";
+    const result = analyzeResponsiveSamples([baseline, expanded]);
+    expect(result.issues).toHaveLength(2);
+    expect(result.issues.map((issue) => issue.interactionState)).toEqual([undefined, "expanded"]);
+  });
 });

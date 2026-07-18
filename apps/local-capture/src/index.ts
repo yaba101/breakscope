@@ -154,7 +154,8 @@ async function captureWithBrowser(
   width?: number,
   height?: number,
   includeImage = true,
-  captureProfile?: CaptureProfile
+  captureProfile?: CaptureProfile,
+  interactionState?: "expanded"
 ) {
   const startedAt = Date.now();
   const profile = captureViewport(viewport, width, height);
@@ -180,6 +181,14 @@ async function captureWithBrowser(
   const contentType = navigation.headers()["content-type"] ?? "";
   if (!contentType.includes("text/html")) throw new Error("URL did not return an HTML page");
   await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
+  const interactionCandidates = await page.locator("details:not([open]), button[aria-expanded='false'][aria-controls]:not([type='submit']), [role='button'][aria-expanded='false'][aria-controls]").count();
+  if (interactionState === "expanded" && interactionCandidates) {
+    await page.evaluate(() => {
+      document.querySelectorAll("details:not([open])").forEach((element) => element.setAttribute("open", ""));
+      document.querySelectorAll<HTMLElement>("button[aria-expanded='false'][aria-controls]:not([type='submit']), [role='button'][aria-expanded='false'][aria-controls]").forEach((element) => element.click());
+    });
+    await page.waitForTimeout(180);
+  }
   let snapshotData: Omit<PageSnapshot, "url" | "capturedAt"> | undefined;
   for (let attempt = 0; attempt < 3 && !snapshotData; attempt += 1) {
     try {
@@ -343,6 +352,8 @@ async function captureWithBrowser(
   const snapshot: PageSnapshot = {
     ...snapshotData,
     accessibilityViolations,
+    interactionCandidates,
+    ...(interactionState ? { interactionState } : {}),
     url: finalUrl,
     capturedAt: Date.now(),
   };
@@ -392,6 +403,10 @@ async function scanRoute(input: ScanRouteRequest) {
         durationMs: captureResult.durationMs,
         browserEngine: input.profile?.browserEngine ?? "chromium",
       });
+      if (captureResult.snapshot.interactionCandidates) {
+        const expanded = await captureWithBrowser(browser, targetUrl(input.url, input.routePath), width <= 600 ? "mobile" : "desktop", width, input.height ?? 900, false, input.profile, "expanded");
+        samples.push({ width, height: input.height ?? 900, snapshot: expanded.snapshot, durationMs: expanded.durationMs, browserEngine: input.profile?.browserEngine ?? "chromium", interactionState: "expanded" });
+      }
     }
     return { routePath: input.routePath, samples };
   } finally {
