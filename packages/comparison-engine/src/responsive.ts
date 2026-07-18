@@ -211,5 +211,5 @@ export function analyzeResponsiveSamples(samples: ViewportSample[], previousFing
     const issueCount = issues.filter((issue) => issue.type === type).length;
     return { type, label: detectorLabels[type], status: issueCount ? "failed" as const : "passed" as const, issueCount };
   });
-  return { issues: issues.slice(0, 3), suppressedCount: Math.max(0, issues.length - 3), allIssues: issues, checks };
+  return { issues, suppressedCount: 0, allIssues: issues, checks };
 }

@@ -40,4 +40,13 @@ describe("analyzeResponsiveSamples", () => {
     const result = analyzeResponsiveSamples([sample(320, 320, [nav, link])]);
     expect(result.allIssues.some((issue) => issue.type === "occlusion")).toBe(false);
   });
+
+  it("returns the complete prioritized inventory instead of truncating findings", () => {
+    const controls = Array.from({ length: 5 }, (_, index): ElementSnapshot => ({
+      ...button(true), key: `button:${index}`, name: `Action ${index}`, selector: `main > button:nth-of-type(${index + 1})`, rect: { x: 12, y: index * 60, width: 32, height: 32 },
+    }));
+    const result = analyzeResponsiveSamples([sample(390, 390, controls)]);
+    expect(result.issues).toHaveLength(5);
+    expect(result.suppressedCount).toBe(0);
+  });
 });

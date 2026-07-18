@@ -359,8 +359,11 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
   const [copiedPromptFor, setCopiedPromptFor] = useState("");
   const [analysisMode, setAnalysisMode] = useState<"concise" | "technical">("concise");
   const [briefOutcome, setBriefOutcome] = useState<"applied" | "unhelpful" | "">("");
-  const issueFamilies = useMemo(() => groupIssueFamilies(issues), [issues]);
-  const pageWideFamilies = useMemo(() => groupIssueFamilies(pageWideIssues), [pageWideIssues]);
+  const [severityFilter, setSeverityFilter] = useState<"all" | ResponsiveIssue["severity"]>("all");
+  const filteredIssues = useMemo(() => severityFilter === "all" ? issues : issues.filter((issue) => issue.severity === severityFilter), [issues, severityFilter]);
+  const filteredPageWideIssues = useMemo(() => severityFilter === "all" ? pageWideIssues : pageWideIssues.filter((issue) => issue.severity === severityFilter), [pageWideIssues, severityFilter]);
+  const issueFamilies = useMemo(() => groupIssueFamilies(filteredIssues), [filteredIssues]);
+  const pageWideFamilies = useMemo(() => groupIssueFamilies(filteredPageWideIssues), [filteredPageWideIssues]);
   const renderFamilies = (families: ResponsiveIssue[][]) => families.map((family) => {
     const selected = family.some((issue) => selectedIssue?.fingerprint === issue.fingerprint);
     const issue = selected ? family.find((item) => item.fingerprint === selectedIssue?.fingerprint)! : family[0]!;
@@ -393,10 +396,11 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
     </article>;
   });
   return <div className="bk-viewport-inspector">
-    <header><div><span>Viewport status</span><h2>{width}px · {issues.length ? "Needs attention" : "Passed"}</h2><p><code>{routePath}</code> · {issues.length ? `${issueFamilies.length} responsive ${issueFamilies.length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b aria-label={issues.length ? `${issueFamilies.length} responsive issues` : "Responsive checks passed"}>{issues.length || "OK"}</b></header>
+    <header><div><span>Viewport status</span><h2>{width}px · {issues.length ? "Needs attention" : "Passed"}</h2><p><code>{routePath}</code> · {issues.length ? `${groupIssueFamilies(issues).length} responsive ${groupIssueFamilies(issues).length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b aria-label={issues.length ? `${groupIssueFamilies(issues).length} responsive issues` : "Responsive checks passed"}>{issues.length || "OK"}</b></header>
+    {(issues.length + pageWideIssues.length) > 0 && <div className="bk-inventory-filter"><span>{issues.length + pageWideIssues.length} findings</span><label>Severity<select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value as typeof severityFilter)}><option value="all">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label></div>}
     <button type="button" className="bk-targeted-retest" disabled={retesting} onClick={onRetest}>{retesting ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}<span><b>{retesting ? "Retesting checkpoint…" : `Retest ${width}px checkpoint`}</b><small>Refresh findings without rerunning the full test</small></span></button>
-    {pageWideIssues.length > 0 && <section className="bk-page-wide-findings"><header><div><b>Page-wide checks</b><span>Independent of viewport size</span></div><em>{pageWideFamilies.length} {pageWideFamilies.length === 1 ? "family" : "families"} · {pageWideIssues.length} {pageWideIssues.length === 1 ? "element" : "elements"}</em></header><div className="bk-viewport-issue-list">{renderFamilies(pageWideFamilies)}</div></section>}
-    {issues.length ? <div className="bk-viewport-issue-list">{renderFamilies(issueFamilies)}</div> : <details className="bk-viewport-clear"><summary><Check size={16} /><b>No responsive issues at {width}px</b><ChevronDown size={14} /></summary><p>All viewport-dependent checks passed at this checkpoint.</p></details>}
+    {filteredPageWideIssues.length > 0 && <section className="bk-page-wide-findings"><header><div><b>Page-wide checks</b><span>Independent of viewport size</span></div><em>{pageWideFamilies.length} {pageWideFamilies.length === 1 ? "family" : "families"} · {filteredPageWideIssues.length} {filteredPageWideIssues.length === 1 ? "element" : "elements"}</em></header><div className="bk-viewport-issue-list">{renderFamilies(pageWideFamilies)}</div></section>}
+    {filteredIssues.length ? <div className="bk-viewport-issue-list">{renderFamilies(issueFamilies)}</div> : issues.length ? <p className="bk-inventory-filter-empty">No {severityFilter} responsive findings at this checkpoint.</p> : <details className="bk-viewport-clear"><summary><Check size={16} /><b>No responsive issues at {width}px</b><ChevronDown size={14} /></summary><p>All viewport-dependent checks passed at this checkpoint.</p></details>}
   </div>;
 }
 
