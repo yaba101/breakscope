@@ -7,6 +7,7 @@ const requestSchema = z.object({
   url: z.string().url().max(2_000),
   width: z.number().int().min(240).max(3_840),
   screenshot: z.string().startsWith("data:image/").max(8_000_000).optional(),
+  mode: z.enum(["concise", "technical"]).default("concise"),
   issue: z.object({
     title: z.string().max(180),
     description: z.string().max(800),
@@ -66,8 +67,9 @@ export async function POST(request: Request) {
   const parsed = requestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "The issue evidence could not be analyzed." }, { status: 400 });
   const model = process.env.NVIDIA_MODEL?.trim() || "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning";
-  const { screenshot, ...evidence } = parsed.data;
-  const content: Array<Record<string, unknown>> = [{ type: "text", text: `Review this responsive issue:\n${JSON.stringify(evidence)}` }];
+  const { screenshot, mode, ...evidence } = parsed.data;
+  const modeInstruction = mode === "technical" ? "Include concrete CSS or markup direction and preserve useful technical detail." : "Keep each section concise and action-oriented.";
+  const content: Array<Record<string, unknown>> = [{ type: "text", text: `${modeInstruction}\nReview this responsive issue:\n${JSON.stringify(evidence)}` }];
   if (screenshot) content.push({ type: "image_url", image_url: { url: screenshot } });
 
   try {

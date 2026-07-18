@@ -321,8 +321,10 @@ function groupIssueFamilies(source: ResponsiveIssue[]) {
   return [...families.values()];
 }
 
-function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pageWideIssues, selectedIssue, aiAnalysis, aiPending, aiError, url, onSelect, onClearSelection, onAnalyze }: { width: number; checkpointWidths: number[]; routePath: string; issues: ResponsiveIssue[]; pageWideIssues: ResponsiveIssue[]; selectedIssue?: ResponsiveIssue; aiAnalysis?: AiIssueAnalysis; aiPending: boolean; aiError?: string; url: string; onSelect: (issue: ResponsiveIssue) => void; onClearSelection: () => void; onAnalyze: (issue: ResponsiveIssue) => void }) {
+function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pageWideIssues, selectedIssue, aiAnalysis, aiPending, aiError, url, onSelect, onClearSelection, onAnalyze }: { width: number; checkpointWidths: number[]; routePath: string; issues: ResponsiveIssue[]; pageWideIssues: ResponsiveIssue[]; selectedIssue?: ResponsiveIssue; aiAnalysis?: AiIssueAnalysis; aiPending: boolean; aiError?: string; url: string; onSelect: (issue: ResponsiveIssue) => void; onClearSelection: () => void; onAnalyze: (issue: ResponsiveIssue, mode: "concise" | "technical") => void }) {
   const [copiedPromptFor, setCopiedPromptFor] = useState("");
+  const [analysisMode, setAnalysisMode] = useState<"concise" | "technical">("concise");
+  const [briefOutcome, setBriefOutcome] = useState<"applied" | "unhelpful" | "">("");
   const issueFamilies = useMemo(() => groupIssueFamilies(issues), [issues]);
   const pageWideFamilies = useMemo(() => groupIssueFamilies(pageWideIssues), [pageWideIssues]);
   const renderFamilies = (families: ResponsiveIssue[][]) => families.map((family) => {
@@ -339,6 +341,7 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
         <div className="bk-measurements"><span>Detector evidence</span>{Object.entries(issue.measurements).slice(0, 4).map(([key, value]) => <div key={key}><code>{key}</code><b>{String(value)}</b></div>)}</div>
         <section className={`bk-ai-issue-review ${aiPending ? "is-loading" : ""}`} aria-busy={aiPending}>
           <header className="bk-ai-review-header"><span><WandSparkles size={14} /> AI repair brief</span>{aiAnalysis && <b>{Math.round(aiAnalysis.confidence * 100)}% confidence</b>}</header>
+          <div className="bk-ai-mode" role="group" aria-label="Repair brief detail"><button type="button" className={analysisMode === "concise" ? "active" : ""} aria-pressed={analysisMode === "concise"} onClick={() => setAnalysisMode("concise")}>Concise</button><button type="button" className={analysisMode === "technical" ? "active" : ""} aria-pressed={analysisMode === "technical"} onClick={() => setAnalysisMode("technical")}>Technical</button></div>
           {aiPending ? <div className="bk-ai-loading" role="status"><div aria-hidden="true"><i /><span /><span /><span /></div><b>Building a focused repair</b><small>Reading the screenshot and detector evidence…</small></div> : aiAnalysis ? <div className="bk-ai-result">
             <section><span>What’s happening</span><p>{aiAnalysis.summary}</p></section>
             <section><span>Likely cause</span><p>{aiAnalysis.likelyCause}</p></section>
@@ -346,7 +349,8 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
             {aiAnalysis.codeHint && <section className="bk-ai-code-direction"><span>Code direction</span><code>{aiAnalysis.codeHint}</code></section>}
           </div> : <div className="bk-ai-empty"><b>{aiError ? "Repair brief unavailable" : "Preparing repair brief"}</b><p>{aiError ? "Try again to rebuild the diagnosis for this selected target." : "Building a diagnosis and implementation direction for this selected target."}</p></div>}
           {!aiPending && aiError && <p className="bk-ai-error" role="alert">{aiError}</p>}
-          {(aiAnalysis || aiError) && <div className={`bs-actions bk-ai-result-actions ${aiAnalysis ? "" : "single"}`}><button type="button" aria-label={aiAnalysis ? "Regenerate repair plan" : "Try again"} disabled={aiPending} onClick={() => onAnalyze(issue)}>{aiAnalysis ? <RefreshCw size={15} /> : <RotateCcw size={15} />}<span><b>{aiAnalysis ? "Regenerate" : "Try again"}</b><small>{aiAnalysis ? "AI repair brief" : "Repair brief"}</small></span></button>{aiAnalysis && <button type="button" aria-label={copiedPromptFor === issue.fingerprint ? "Prompt copied" : "Copy fix prompt"} onClick={() => void navigator.clipboard.writeText(repairPrompt(issue, url, aiAnalysis)).then(() => setCopiedPromptFor(issue.fingerprint))}>{copiedPromptFor === issue.fingerprint ? <Check size={15} /> : <MessageSquareCode size={15} />}<span><b>{copiedPromptFor === issue.fingerprint ? "Copied" : "Copy prompt"}</b><small>Implementation text</small></span></button>}</div>}
+          {(aiAnalysis || aiError) && <div className={`bs-actions bk-ai-result-actions ${aiAnalysis ? "" : "single"}`}><button type="button" aria-label={aiAnalysis ? "Regenerate repair plan" : "Try again"} disabled={aiPending} onClick={() => onAnalyze(issue, analysisMode)}>{aiAnalysis ? <RefreshCw size={15} /> : <RotateCcw size={15} />}<span><b>{aiAnalysis ? "Regenerate" : "Try again"}</b><small>{analysisMode} brief</small></span></button>{aiAnalysis && <button type="button" aria-label={copiedPromptFor === issue.fingerprint ? "Prompt copied" : "Copy fix prompt"} onClick={() => void navigator.clipboard.writeText(repairPrompt(issue, url, aiAnalysis)).then(() => setCopiedPromptFor(issue.fingerprint))}>{copiedPromptFor === issue.fingerprint ? <Check size={15} /> : <MessageSquareCode size={15} />}<span><b>{copiedPromptFor === issue.fingerprint ? "Copied" : "Copy prompt"}</b><small>Implementation text</small></span></button>}</div>}
+          {aiAnalysis && <div className="bk-ai-feedback" aria-label="Repair brief outcome"><span>Was this direction useful?</span><button type="button" className={briefOutcome === "applied" ? "active" : ""} onClick={() => setBriefOutcome("applied")}><Check size={13} /> Applied</button><button type="button" className={briefOutcome === "unhelpful" ? "active" : ""} onClick={() => setBriefOutcome("unhelpful")}><X size={13} /> Not helpful</button></div>}
           <small>The brief runs automatically for the selected target. Regenerate only when you want a new direction.</small>
         </section>
         <div className="bs-actions bk-issue-actions"><button type="button" aria-label="Copy selector" onClick={() => void navigator.clipboard.writeText(issue.selector)}><Code2 size={15} /><span><b>Copy selector</b><small>CSS target</small></span></button><button type="button" aria-label="Copy issue" onClick={() => void navigator.clipboard.writeText(issueMarkdown(issue, url))}><FileText size={15} /><span><b>Copy issue</b><small>Share finding</small></span></button><a aria-label="Open page" href={new URL(issue.routePath, url).toString()} target="_blank" rel="noreferrer"><ExternalLink size={15} /><span><b>Open page</b><small>New tab</small></span></a></div>
@@ -451,7 +455,7 @@ export function BreakscopeWorkspace() {
   });
   const aiIssueMutation = useMutation({
     mutationKey: [...breakscopeQueryKeys.all, "ai-issue"],
-    mutationFn: async (issue: ResponsiveIssue) => {
+    mutationFn: async ({ issue, mode = "concise" }: { issue: ResponsiveIssue; mode?: "concise" | "technical" }) => {
       const screenshot = await imageDataUrl(issue.screenshot);
       const response = await fetch("/api/ai/responsive-issue", {
         method: "POST",
@@ -459,6 +463,7 @@ export function BreakscopeWorkspace() {
         body: JSON.stringify({
           url,
           width: issue.evidenceWidth,
+          mode,
           screenshot,
           issue: { title: issue.title, description: issue.description, type: issue.type, selector: issue.selector, routePath: issue.routePath, failureRanges: issue.failureRanges, measurements: issue.measurements },
         }),
@@ -476,7 +481,7 @@ export function BreakscopeWorkspace() {
   useEffect(() => {
     if (!activeIssue || aiReviews[activeIssue.fingerprint] || aiIssueMutation.isPending || autoReviewAttempted.current.has(activeIssue.fingerprint)) return;
     autoReviewAttempted.current.add(activeIssue.fingerprint);
-    aiIssueMutation.mutate(activeIssue);
+    aiIssueMutation.mutate({ issue: activeIssue });
   }, [activeIssue, aiIssueMutation, aiReviews]);
 
   useEffect(() => {
@@ -887,7 +892,7 @@ export function BreakscopeWorkspace() {
           <div className="bk-pipeline-heading"><span>Analysis pipeline</span><b>{Math.min(scanStage, activitySteps.length)}/{activitySteps.length}</b></div>
           <ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : index === scanStage ? "active" : ""}><i>{step.done ? <Check size={13} /> : index === scanStage ? <span className="bk-pipeline-loader"><ScanSearch size={14} /></span> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol>
           <button type="button" className="bs-cancel" onClick={() => scanController.current?.abort()}><CircleStop size={16} /><span>Cancel test</span><small>Progress will be saved</small></button>
-        </div> : hasScanned ? <ViewportIssueInspector width={displayedWidth} checkpointWidths={deviceWidths} routePath={reviewedRoute ?? "/"} issues={viewportIssues} pageWideIssues={pageWideIssues} selectedIssue={activeIssue} aiAnalysis={activeIssue ? aiReviews[activeIssue.fingerprint] : undefined} aiPending={aiIssueMutation.isPending} aiError={aiIssueError} url={url} onSelect={selectIssue} onClearSelection={clearSelectedIssue} onAnalyze={(issue) => aiIssueMutation.mutate(issue)} /> : <div className="bk-activity-view"><h2>Ready to inspect</h2><p>{`${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"} · ${minWidth}–${maxWidth}px`}</p><ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : ""}><i>{step.done ? <Check size={13} /> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol></div>}
+        </div> : hasScanned ? <ViewportIssueInspector width={displayedWidth} checkpointWidths={deviceWidths} routePath={reviewedRoute ?? "/"} issues={viewportIssues} pageWideIssues={pageWideIssues} selectedIssue={activeIssue} aiAnalysis={activeIssue ? aiReviews[activeIssue.fingerprint] : undefined} aiPending={aiIssueMutation.isPending} aiError={aiIssueError} url={url} onSelect={selectIssue} onClearSelection={clearSelectedIssue} onAnalyze={(issue, mode) => aiIssueMutation.mutate({ issue, mode })} /> : <div className="bk-activity-view"><h2>Ready to inspect</h2><p>{`${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"} · ${minWidth}–${maxWidth}px`}</p><ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : ""}><i>{step.done ? <Check size={13} /> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol></div>}
       </div></aside>
     </section> : <section className="bk-no-target"><ScanSearch size={36} /><h1>No test configured</h1><p>Choose a URL and routes before opening the workspace.</p><Link href="/"><ArrowRight size={17} /> Go to setup</Link></section>}
     <footer className="bs-footer"><span>Breakscope beta</span><span>{fixed.length ? `${fixed.length} fixed · ` : ""}{suppressedCount ? `${suppressedCount} suppressed · ` : ""}{browserLabels[activeBrowserEngine]} · Reduced motion</span></footer>

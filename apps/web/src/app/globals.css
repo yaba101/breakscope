@@ -48,6 +48,15 @@
 .bk-workspace-error > span { flex: 1; }
 .bk-workspace-error .bk-error-retry { display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; background: transparent; padding: 6px 9px; color: inherit; font-weight: 700; white-space: nowrap; }
 .bk-workspace-controls header span.warning { color: #a44512; font-weight: 700; }
+.bk-ai-mode,
+.bk-ai-feedback { display: flex; align-items: center; gap: 6px; }
+.bk-ai-mode { padding: 8px 0; border-bottom: 1px solid var(--setup-border); }
+.bk-ai-mode button,
+.bk-ai-feedback button { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--setup-border); background: transparent; padding: 5px 8px; color: inherit; font-size: 11px; }
+.bk-ai-mode button.active,
+.bk-ai-feedback button.active { background: var(--setup-ink); color: var(--setup-bg); }
+.bk-ai-feedback { flex-wrap: wrap; margin-top: 10px; }
+.bk-ai-feedback span { flex-basis: 100%; color: var(--setup-muted); font-size: 11px; }
 @media (max-width: 760px) {
   .bk-setup-presets { grid-template-columns: 1fr auto; }
   .bk-setup-presets > div { grid-column: 1 / -1; }
