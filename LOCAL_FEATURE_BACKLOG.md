@@ -19,30 +19,30 @@ Implementation continues on `codex/local-review-workflow`. Every feature is veri
 
 ## Detection expansion sequence
 
-1. **Complete issue inventory**
+1. **Complete issue inventory — completed**
    - Present every deterministic finding instead of limiting the review UI to the top three.
    - Add issue-family counts and severity/type filtering without losing prioritized ordering.
 
-2. **Axe-powered accessibility audit**
+2. **Axe-powered accessibility audit — completed**
    - Run axe-core in each captured route/browser/checkpoint.
    - Preserve rule, impact, WCAG tags, help URL, affected nodes, selectors, and remediation summary.
    - Merge identical violations across checkpoints and highlight individual affected elements.
 
-3. **Interaction-state coverage**
-   - Discover safe, reversible controls such as native details, tabs, and menu/dialog triggers.
+3. **Interaction-state coverage — completed**
+   - Discover safe, reversible controls: native details and non-submit controls that expose `aria-expanded` with `aria-controls`.
    - Capture named interaction states without submitting forms or following navigation.
    - Label findings with the state required to reproduce them.
 
-4. **Visual run comparison**
+4. **Visual run comparison — completed**
    - Compare matching screenshots from two local runs.
    - Report changed-pixel ratio and provide current/previous/difference evidence.
    - Keep this analysis on the dedicated History page.
 
-5. **Performance diagnostics**
+5. **Performance diagnostics — completed**
    - Record navigation timing, layout shifts, resource counts/bytes, and large-resource evidence.
    - Distinguish actionable warnings from informational metrics.
 
-6. **Source-location hints**
+6. **Source-location hints — completed**
    - Collect framework/debug source metadata when the inspected page exposes it.
    - Fall back to stable DOM selectors when source metadata is unavailable.
    - Never claim an exact source file without direct runtime evidence.
