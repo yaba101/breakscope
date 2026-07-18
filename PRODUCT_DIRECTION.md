@@ -15,9 +15,9 @@ Explore is the default review surface once checkpoint captures exist. An audit i
 ## Current implementation sequence
 
 - [x] Explicit Explore, Audit, and Compare navigation in the workspace.
-- [ ] Multi-viewport Explore overview using the selected browser's captured checkpoints.
-- [ ] Optional proportional scroll synchronization across Explore viewports.
-- [ ] Focus action from the overview into the existing device evidence view.
+- [x] Multi-viewport Explore overview using the selected browser's captured checkpoints.
+- [x] Optional proportional scroll synchronization across Explore viewports.
+- [x] Focus action from the overview into the existing device evidence view.
 - [ ] User-selected local baseline in scan history.
 - [ ] Current-versus-baseline visual comparison rather than implicit adjacent-run comparison.
 

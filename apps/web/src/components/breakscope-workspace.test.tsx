@@ -57,6 +57,11 @@ function renderWorkspace() {
   return render(<QueryClientProvider client={queryClient}><BreakscopeWorkspace /></QueryClientProvider>);
 }
 
+async function openAuditMode() {
+  await waitFor(() => expect(screen.getByRole("button", { name: /Explore/ })).toHaveAttribute("aria-pressed", "true"));
+  fireEvent.click(screen.getByRole("button", { name: /Audit/ }));
+}
+
 describe("BreakscopeWorkspace", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
@@ -256,6 +261,7 @@ describe("BreakscopeWorkspace", () => {
     });
     renderWorkspace();
 
+    await openAuditMode();
     expect(await screen.findByRole("img", { name: "Phone checkpoint at 375px" })).toBeInTheDocument();
     expect(screen.getByLabelText("iPhone 17 Pro device frame")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Fit device" })).toHaveAttribute("aria-pressed", "true");
@@ -289,6 +295,7 @@ describe("BreakscopeWorkspace", () => {
     });
     renderWorkspace();
 
+    await openAuditMode();
     expect(await screen.findByRole("img", { name: "Phone checkpoint at 375px" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Safari, capture ready/i }));
     expect(await screen.findByRole("img", { name: "Phone checkpoint at 375px" })).toBeInTheDocument();
@@ -309,6 +316,7 @@ describe("BreakscopeWorkspace", () => {
     });
     renderWorkspace();
 
+    await openAuditMode();
     expect(await screen.findByRole("button", { name: /Safari, capture ready/i })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "Device shell: iPhone 17 Pro" }));
     fireEvent.click(await screen.findByRole("button", { name: "Phone" }));
@@ -318,13 +326,28 @@ describe("BreakscopeWorkspace", () => {
   });
 
   it("separates viewport exploration from audit findings", async () => {
-    loadBreakscopeState.mockResolvedValue({ target, latestIssues: [issue], latestPreviews: [{ width: 375, label: "Phone", routePath: "/", browserEngine: "chromium", image: new ArrayBuffer(8) }], updatedAt: 1 });
+    loadBreakscopeState.mockResolvedValue({ target, latestIssues: [issue], latestPreviews: [
+      { width: 375, label: "Phone", routePath: "/", browserEngine: "chromium", image: new ArrayBuffer(8) },
+      { width: 768, label: "Tablet", routePath: "/", browserEngine: "chromium", image: new ArrayBuffer(8) },
+    ], updatedAt: 1 });
     renderWorkspace();
 
     await waitFor(() => expect(screen.getByRole("button", { name: /Explore/ })).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.getByRole("region", { name: "Viewport overview" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Scrollable Phone capture at 375px")).toBeInTheDocument();
+    expect(screen.getByLabelText("Scrollable Tablet capture at 768px")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Sync scroll/ })).toHaveAttribute("aria-pressed", "true");
+    const phonePane = screen.getByLabelText("Scrollable Phone capture at 375px");
+    const tabletPane = screen.getByLabelText("Scrollable Tablet capture at 768px");
+    Object.defineProperties(phonePane, { scrollHeight: { value: 1000 }, clientHeight: { value: 200 } });
+    Object.defineProperties(tabletPane, { scrollHeight: { value: 800 }, clientHeight: { value: 200 } });
+    phonePane.scrollTop = 400;
+    fireEvent.scroll(phonePane);
+    expect(tabletPane.scrollTop).toBe(300);
     expect(screen.queryByRole("separator", { name: "Resize issue inspector" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Audit/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Focus/ })[1]!);
     expect(screen.getByRole("button", { name: /Audit/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Tablet 768px" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("separator", { name: "Resize issue inspector" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Compare/ })).toHaveAttribute("href", "/history");
   });
@@ -405,6 +428,7 @@ describe("BreakscopeWorkspace", () => {
     });
     renderWorkspace();
 
+    await openAuditMode();
     await screen.findByRole("img", { name: "Phone checkpoint at 375px" });
     fireEvent.click(screen.getByRole("button", { name: "Tablet 768px" }));
     fireEvent.click(await screen.findByRole("button", { name: "Retry 768px capture" }));
