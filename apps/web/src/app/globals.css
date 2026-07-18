@@ -85,6 +85,9 @@
 .bk-route-tools > div button + button { margin-left: 10px; }
 .bk-route-tools > div button:disabled { opacity: .4; }
 .bk-route-filter-empty { padding: 20px 14px; color: var(--setup-muted); font-size: 12px; text-align: center; }
+.bk-local-storage-summary { display: grid; gap: 4px; border: 1px solid var(--setup-border); background: var(--setup-bg); padding: 10px; }
+.bk-local-storage-summary span,
+.bk-local-storage-summary small { color: var(--setup-muted); font-size: 11px; line-height: 1.45; }
 @media (max-width: 760px) {
   .bk-setup-presets { grid-template-columns: 1fr auto; }
   .bk-setup-presets > div { grid-column: 1 / -1; }

@@ -151,7 +151,7 @@ function DevRuntimePanel({ retainedBytes }: { retainedBytes: number }) {
   return <aside className="bk-dev-runtime" aria-label="Development runtime diagnostics"><b>Runtime diagnostics</b><span>Browser evidence retained: <strong>{formatBytes(retainedBytes)}</strong></span><span>Next heap / RSS: <strong>{formatBytes(stats.app?.heapUsedBytes)} / {formatBytes(stats.app?.rssBytes)}</strong></span><span>Capture active / completed: <strong>{stats.capture?.activeCaptures ?? "—"} / {stats.capture?.completedCaptures ?? "—"}</strong></span><span>Capture heap / RSS: <strong>{formatBytes(stats.capture?.heapUsedBytes)} / {formatBytes(stats.capture?.rssBytes)}</strong></span></aside>;
 }
 
-function WorkspaceControls({ retainedBytes, disabled, onClearEvidence, onResetWorkspace }: { retainedBytes: number; disabled: boolean; onClearEvidence: () => void; onResetWorkspace: () => void }) {
+function WorkspaceControls({ retainedBytes, disabled, onClearEvidence, onClearPreferences, onResetWorkspace }: { retainedBytes: number; disabled: boolean; onClearEvidence: () => void; onClearPreferences: () => void; onResetWorkspace: () => void }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   return <Popover.Root>
@@ -160,7 +160,7 @@ function WorkspaceControls({ retainedBytes, disabled, onClearEvidence, onResetWo
       <header><div><b>Workspace controls</b><span className={retainedBytes >= evidenceWarningBytes ? "warning" : ""}>{retainedBytes ? `${formatBytes(retainedBytes)} of ${formatBytes(evidenceLimitBytes)} evidence retained` : "No captured evidence retained"}</span></div><Popover.Close aria-label="Close workspace controls"><X size={15} /></Popover.Close></header>
       <button type="button" className="bk-workspace-control-primary" disabled={disabled || !retainedBytes} onClick={onClearEvidence}><Eraser size={16} /><span><b>Clear captured evidence</b><small>Keep this test configuration</small></span></button>
       <button type="button" className="bk-workspace-control-row" onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}><MoreHorizontal size={16} /><span>More actions</span><ChevronDown size={15} /></button>
-      {moreOpen && <div className="bk-workspace-control-more"><button type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> Reload workspace</button>{process.env.NODE_ENV === "development" && <DevRuntimePanel retainedBytes={retainedBytes} />}</div>}
+      {moreOpen && <div className="bk-workspace-control-more"><section className="bk-local-storage-summary"><b>Saved on this device</b><span>Test setup, presets, screenshots, issue evidence, and view preferences.</span><small>AI repair briefs remain in memory for this session only.</small></section><button type="button" disabled={disabled} onClick={onClearPreferences}><Settings2 size={15} /> Reset view preferences</button><button type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> Reload workspace</button>{process.env.NODE_ENV === "development" && <DevRuntimePanel retainedBytes={retainedBytes} />}</div>}
       <div className="bk-workspace-control-danger">{confirmingReset ? <><p>Remove this test, its captured evidence, and local preferences?</p><div><button type="button" onClick={() => setConfirmingReset(false)}>Cancel</button><button type="button" onClick={onResetWorkspace}><Trash2 size={15} /> Reset workspace</button></div></> : <button type="button" onClick={() => setConfirmingReset(true)}><Trash2 size={15} /> Reset workspace</button>}</div>
       <Popover.Arrow className="bk-workspace-controls-arrow" width={12} height={7} />
     </Popover.Content></Popover.Portal>
@@ -814,6 +814,15 @@ export function BreakscopeWorkspace() {
     window.location.assign("/");
   }
 
+  async function clearViewPreferences() {
+    if (scanning) return;
+    const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
+    const next = { ...stored, ui: undefined, updatedAt: Date.now() };
+    setActiveDeviceModelId("iphone-17-pro"); setDeviceOrientation("portrait"); setPreviewScaleMode("fit-device"); setPreviewZoom(72); setRecentDeviceIds(["iphone-17-pro"]); setPinnedDeviceIds([]);
+    queryClient.setQueryData(breakscopeQueryKeys.workspace(), next);
+    await saveBreakscopeState(next);
+  }
+
   function beginInspectorResize(event: ReactPointerEvent<HTMLDivElement>) {
     inspectorResizeRef.current = { startX: event.clientX, startWidth: inspectorWidth };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -888,7 +897,7 @@ export function BreakscopeWorkspace() {
             {availableRoutes.length ? <div className="bs-route-list">{availableRoutes.map((route) => <button type="button" key={route} aria-pressed="false" disabled={selectedRoutes.length >= 5} onClick={() => toggleRoute(route)}><span><Plus size={13} /></span><code>{route}</code></button>)}</div> : <p className="bk-route-empty">All discovered routes are selected.</p>}
           </section>
         </div>}
-        {!configCollapsed && <div className="bk-config-actions"><WorkspaceControls retainedBytes={retainedEvidenceBytes} disabled={scanning} onClearEvidence={() => void clearCapturedEvidence()} onResetWorkspace={() => void resetWorkspace()} /></div>}
+        {!configCollapsed && <div className="bk-config-actions"><WorkspaceControls retainedBytes={retainedEvidenceBytes} disabled={scanning} onClearEvidence={() => void clearCapturedEvidence()} onClearPreferences={() => void clearViewPreferences()} onResetWorkspace={() => void resetWorkspace()} /></div>}
       </aside>
       <section className="bk-stage-main">
         <div className="bk-canvas-toolbar"><span><i className={activeIssue ? "fail" : scanning ? "scan" : ""} />{activeIssue ? "Failure evidence" : scanning ? `Scanning section ${scanSection} of 8` : hasScanned ? "Captured evidence" : "Ready to test"}</span><CheckpointSwitcher widths={deviceWidths} activeWidth={displayedWidth} browserEngine={activeBrowserEngine} previews={previews} issues={issues} onSelect={(width) => { setActivePreviewWidth(width); setIssueDisplayWidth(undefined); setActiveDeviceModelId(modelForWidth(width).id); setResult((current) => ({ ...current, activeIssue: undefined })); setComparisonMode("failing"); setInspectorTab(hasScanned ? "findings" : "activity"); }} /><b><small>Evidence</small>{displayedWidth}px</b></div>
