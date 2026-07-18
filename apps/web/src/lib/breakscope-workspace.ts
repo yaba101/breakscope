@@ -38,7 +38,17 @@ export interface TestPreset {
   updatedAt: number;
 }
 
+export interface LocalScanRun {
+  id: string;
+  createdAt: number;
+  target: TestTarget;
+  issues: ResponsiveIssue[];
+  previews: PersistedViewportPreview[];
+  suppressedCount: number;
+}
+
 export interface BreakscopeState {
+  scanHistory?: LocalScanRun[];
   testPresets?: TestPreset[];
   recentTargets?: Array<{
     url: string;

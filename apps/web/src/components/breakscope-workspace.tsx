@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Accessibility, AlertTriangle, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, CircleStop, Code2, Eraser, ExternalLink, EyeOff, FileText, Hand, ImageOff, Keyboard, Laptop, Layers3, LoaderCircle, Maximize2, MessageSquareCode, Minus, Monitor, MoreHorizontal, MoveHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw, ScanSearch, Scissors, Search, Settings2, Smartphone, Star, Tablet, Trash2, WandSparkles, X } from "lucide-react";
+import { Accessibility, AlertTriangle, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, CircleStop, Clock3, Code2, Eraser, ExternalLink, EyeOff, FileText, Hand, ImageOff, Keyboard, Laptop, Layers3, LoaderCircle, Maximize2, MessageSquareCode, Minus, Monitor, MoreHorizontal, MoveHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw, ScanSearch, Scissors, Search, Settings2, Smartphone, Star, Tablet, Trash2, WandSparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type DeviceOrientation, type DevicePreset } from "react-device-bezels";
@@ -12,7 +12,7 @@ import type { BrowserEngine, CaptureProfile, DetectorOutcome, ResponsiveIssue, R
 import { isCaptureUrl } from "@breakscope/validation";
 import { capturePageLocally, discoverRoutesLocally, scanRouteLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys, workspaceStateQueryOptions } from "@/lib/breakscope-queries";
-import { clearBreakscopeState, loadBreakscopeState, saveBreakscopeState, type BreakscopeState, type PersistedScanJob, type PersistedViewportPreview } from "@/lib/breakscope-workspace";
+import { clearBreakscopeState, loadBreakscopeState, saveBreakscopeState, type BreakscopeState, type LocalScanRun, type PersistedScanJob, type PersistedViewportPreview } from "@/lib/breakscope-workspace";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
 
 const defaultWidths = [320, 390, 480, 600, 768, 900, 1024, 1280, 1440];
@@ -149,7 +149,7 @@ function DevRuntimePanel({ retainedBytes }: { retainedBytes: number }) {
   return <aside className="bk-dev-runtime" aria-label="Development runtime diagnostics"><b>Runtime diagnostics</b><span>Browser evidence retained: <strong>{formatBytes(retainedBytes)}</strong></span><span>Next heap / RSS: <strong>{formatBytes(stats.app?.heapUsedBytes)} / {formatBytes(stats.app?.rssBytes)}</strong></span><span>Capture active / completed: <strong>{stats.capture?.activeCaptures ?? "—"} / {stats.capture?.completedCaptures ?? "—"}</strong></span><span>Capture heap / RSS: <strong>{formatBytes(stats.capture?.heapUsedBytes)} / {formatBytes(stats.capture?.rssBytes)}</strong></span></aside>;
 }
 
-function WorkspaceControls({ retainedBytes, disabled, onClearEvidence, onClearPreferences, onResetWorkspace }: { retainedBytes: number; disabled: boolean; onClearEvidence: () => void; onClearPreferences: () => void; onResetWorkspace: () => void }) {
+function WorkspaceControls({ retainedBytes, history, disabled, onOpenRun, onClearEvidence, onClearPreferences, onResetWorkspace }: { retainedBytes: number; history: LocalScanRun[]; disabled: boolean; onOpenRun: (run: LocalScanRun) => void; onClearEvidence: () => void; onClearPreferences: () => void; onResetWorkspace: () => void }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   return <Popover.Root>
@@ -158,7 +158,7 @@ function WorkspaceControls({ retainedBytes, disabled, onClearEvidence, onClearPr
       <header><div><b>Workspace controls</b><span className={retainedBytes >= evidenceWarningBytes ? "warning" : ""}>{retainedBytes ? `${formatBytes(retainedBytes)} of ${formatBytes(evidenceLimitBytes)} evidence retained` : "No captured evidence retained"}</span></div><Popover.Close aria-label="Close workspace controls"><X size={15} /></Popover.Close></header>
       <button type="button" className="bk-workspace-control-primary" disabled={disabled || !retainedBytes} onClick={onClearEvidence}><Eraser size={16} /><span><b>Clear captured evidence</b><small>Keep this test configuration</small></span></button>
       <button type="button" className="bk-workspace-control-row" onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}><MoreHorizontal size={16} /><span>More actions</span><ChevronDown size={15} /></button>
-      {moreOpen && <div className="bk-workspace-control-more"><section className="bk-local-storage-summary"><b>Saved on this device</b><span>Test setup, presets, screenshots, issue evidence, and view preferences.</span><small>AI repair briefs remain in memory for this session only.</small></section><button type="button" disabled={disabled} onClick={onClearPreferences}><Settings2 size={15} /> Reset view preferences</button><button type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> Reload workspace</button>{process.env.NODE_ENV === "development" && <DevRuntimePanel retainedBytes={retainedBytes} />}</div>}
+      {moreOpen && <div className="bk-workspace-control-more"><section className="bk-local-storage-summary"><b>Saved on this device</b><span>Test setup, presets, screenshots, issue evidence, and view preferences.</span><small>AI repair briefs remain in memory for this session only.</small></section>{history.length > 0 && <section className="bk-run-history"><b><Clock3 size={14} /> Recent runs</b>{history.map((run) => <button type="button" key={run.id} onClick={() => onOpenRun(run)}><span>{new Date(run.createdAt).toLocaleString()}</span><small>{run.issues.length} issues · {run.target.selectedRoutes.length} routes</small></button>)}</section>}<button type="button" disabled={disabled} onClick={onClearPreferences}><Settings2 size={15} /> Reset view preferences</button><button type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> Reload workspace</button>{process.env.NODE_ENV === "development" && <DevRuntimePanel retainedBytes={retainedBytes} />}</div>}
       <div className="bk-workspace-control-danger">{confirmingReset ? <><p>Remove this test, its captured evidence, and local preferences?</p><div><button type="button" onClick={() => setConfirmingReset(false)}>Cancel</button><button type="button" onClick={onResetWorkspace}><Trash2 size={15} /> Reset workspace</button></div></> : <button type="button" onClick={() => setConfirmingReset(true)}><Trash2 size={15} /> Reset workspace</button>}</div>
       <Popover.Arrow className="bk-workspace-controls-arrow" width={12} height={7} />
     </Popover.Content></Popover.Portal>
@@ -713,7 +713,8 @@ export function BreakscopeWorkspace() {
       scanJob = { ...scanJob, status: routeErrors.length ? "failed" : "completed", errors: routeErrors, updatedAt: now };
       const finalPreviews = boundedPreviews(capturedPreviews);
       setPreviews(finalPreviews);
-      const nextState: BreakscopeState = { availableRoutes: routes, target, latestIssues: withEvidence, latestManifest: analysis.allIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), latestPreviews: finalPreviews, scanJob, ui: { selectedDeviceModelId: activeDeviceModelId, deviceOrientation, recentDeviceIds, pinnedDeviceIds, previewScaleMode, previewZoom, activeBrowserEngine }, updatedAt: now };
+      const run: LocalScanRun = { id: crypto.randomUUID(), createdAt: now, target, issues: withEvidence, previews: finalPreviews, suppressedCount: analysis.suppressedCount };
+      const nextState: BreakscopeState = { ...stored, availableRoutes: routes, target, latestIssues: withEvidence, latestManifest: analysis.allIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), latestPreviews: finalPreviews, scanHistory: [run, ...(stored.scanHistory ?? [])].slice(0, 5), scanJob, ui: { selectedDeviceModelId: activeDeviceModelId, deviceOrientation, recentDeviceIds, pinnedDeviceIds, previewScaleMode, previewZoom, activeBrowserEngine }, updatedAt: now };
       queryClient.setQueryData(breakscopeQueryKeys.workspace(), nextState);
       await saveBreakscopeState(nextState);
       if (routeErrors.length) setError(`Some routes could not be scanned: ${routeErrors.join(" · ")}`);
@@ -823,6 +824,14 @@ export function BreakscopeWorkspace() {
     await saveBreakscopeState(next);
   }
 
+  async function openHistoryRun(run: LocalScanRun) {
+    const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
+    const next = { ...stored, target: run.target, latestIssues: run.issues, latestPreviews: run.previews, updatedAt: Date.now() };
+    setUrl(run.target.url); setSelectedRoutes(run.target.selectedRoutes); setDeviceWidths(run.target.deviceWidths ?? [run.target.minWidth, run.target.maxWidth]); setBrowserEngines(run.target.browserEngines ?? allBrowserEngines); setPreviews(run.previews); setResult({ issues: run.issues, fixed: [], suppressedCount: run.suppressedCount, checks: [], activeIssue: run.issues[0], hasScanned: true });
+    queryClient.setQueryData(breakscopeQueryKeys.workspace(), next);
+    await saveBreakscopeState(next);
+  }
+
   function beginInspectorResize(event: ReactPointerEvent<HTMLDivElement>) {
     inspectorResizeRef.current = { startX: event.clientX, startWidth: inspectorWidth };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -897,7 +906,7 @@ export function BreakscopeWorkspace() {
             {availableRoutes.length ? <div className="bs-route-list">{availableRoutes.map((route) => <button type="button" key={route} aria-pressed="false" disabled={selectedRoutes.length >= 5} onClick={() => toggleRoute(route)}><span><Plus size={13} /></span><code>{route}</code></button>)}</div> : <p className="bk-route-empty">All discovered routes are selected.</p>}
           </section>
         </div>}
-        {!configCollapsed && <div className="bk-config-actions"><WorkspaceControls retainedBytes={retainedEvidenceBytes} disabled={scanning} onClearEvidence={() => void clearCapturedEvidence()} onClearPreferences={() => void clearViewPreferences()} onResetWorkspace={() => void resetWorkspace()} /></div>}
+        {!configCollapsed && <div className="bk-config-actions"><WorkspaceControls retainedBytes={retainedEvidenceBytes} history={workspaceQuery.data?.scanHistory ?? []} disabled={scanning} onOpenRun={(run) => void openHistoryRun(run)} onClearEvidence={() => void clearCapturedEvidence()} onClearPreferences={() => void clearViewPreferences()} onResetWorkspace={() => void resetWorkspace()} /></div>}
       </aside>
       <section className="bk-stage-main">
         <div className="bk-canvas-toolbar"><span><i className={activeIssue ? "fail" : scanning ? "scan" : ""} />{activeIssue ? "Failure evidence" : scanning ? `Scanning section ${scanSection} of 8` : hasScanned ? "Captured evidence" : "Ready to test"}</span><CheckpointSwitcher widths={deviceWidths} activeWidth={displayedWidth} browserEngine={activeBrowserEngine} previews={previews} issues={issues} onSelect={(width) => { setActivePreviewWidth(width); setIssueDisplayWidth(undefined); setActiveDeviceModelId(modelForWidth(width).id); setResult((current) => ({ ...current, activeIssue: undefined })); setComparisonMode("failing"); setInspectorTab(hasScanned ? "findings" : "activity"); }} /><b><small>Evidence</small>{displayedWidth}px</b></div>
