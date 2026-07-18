@@ -7687,6 +7687,14 @@ button {
 .bk-workspace-controls .bk-report-export > b { display: flex; align-items: center; gap: 7px; }
 .bk-workspace-controls .bk-report-export > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
 .bk-workspace-controls .bk-report-export button { padding: 8px 6px; border: 1px solid var(--line); background: var(--surface-soft); font-size: 11px; }
+.bk-workspace-controls .bk-run-comparison { padding: 12px; border: 1px solid var(--line); background: var(--surface); }
+.bk-workspace-controls .bk-run-comparison header { display: flex; justify-content: space-between; gap: 10px; }
+.bk-workspace-controls .bk-run-comparison header small { color: var(--muted); }
+.bk-workspace-controls .bk-run-comparison > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+.bk-workspace-controls .bk-run-comparison span { display: grid; gap: 2px; padding: 8px; background: var(--surface-soft); color: var(--muted); font-size: 10px; }
+.bk-workspace-controls .bk-run-comparison span b { color: var(--ink); font-size: 18px; }
+.bk-workspace-controls .bk-run-comparison span.new b { color: var(--danger); }
+.bk-workspace-controls .bk-run-comparison span.fixed b { color: var(--success); }
 .bk-workspace-page .bk-element-context { margin-top: 14px; padding: 12px; border: 1px solid var(--line); background: var(--surface-soft); }
 .bk-workspace-page .bk-element-context header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .bk-workspace-page .bk-element-context header button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--accent); font-size: 11px; }
