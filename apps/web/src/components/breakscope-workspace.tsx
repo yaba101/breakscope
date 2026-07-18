@@ -160,13 +160,13 @@ function DevRuntimePanel({ retainedBytes, history, onSample }: { retainedBytes: 
   const [stats, setStats] = useState<{ app?: { rssBytes: number; heapUsedBytes: number }; capture?: { activeCaptures?: number; completedCaptures?: number; rssBytes?: number; heapUsedBytes?: number; ok?: boolean } }>({});
   const lastRecordedAt = useRef(0);
   const onSampleRef = useRef(onSample);
-  onSampleRef.current = onSample;
+  useEffect(() => { onSampleRef.current = onSample; }, [onSample]);
   useEffect(() => {
     const refresh = () => void fetch("/api/dev/runtime").then((response) => response.ok ? response.json() : undefined).then((data) => { if (data) { setStats(data); if (Date.now() - lastRecordedAt.current >= 30_000) { lastRecordedAt.current = Date.now(); onSampleRef.current({ id: crypto.randomUUID(), capturedAt: Date.now(), retainedBytes, appHeapBytes: data.app?.heapUsedBytes ?? 0, appRssBytes: data.app?.rssBytes ?? 0, captureHeapBytes: data.capture?.heapUsedBytes ?? 0, captureRssBytes: data.capture?.rssBytes ?? 0, completedCaptures: data.capture?.completedCaptures ?? 0 }); } } }).catch(() => undefined);
     refresh();
     const timer = window.setInterval(refresh, 5_000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [retainedBytes]);
   const oldest = history.at(-1); const latest = history[0];
   return <aside className="bk-dev-runtime" aria-label="Development runtime diagnostics"><b>Runtime diagnostics</b><span>Browser evidence retained: <strong>{formatBytes(retainedBytes)}</strong></span><span>Next heap / RSS: <strong>{formatBytes(stats.app?.heapUsedBytes)} / {formatBytes(stats.app?.rssBytes)}</strong></span><span>Capture active / completed: <strong>{stats.capture?.activeCaptures ?? "—"} / {stats.capture?.completedCaptures ?? "—"}</strong></span><span>Capture heap / RSS: <strong>{formatBytes(stats.capture?.heapUsedBytes)} / {formatBytes(stats.capture?.rssBytes)}</strong></span>{latest && <span>Stored trend ({history.length}): <strong>{oldest ? `${formatBytes(oldest.appHeapBytes)} → ` : ""}{formatBytes(latest.appHeapBytes)} heap</strong></span>}</aside>;
 }
