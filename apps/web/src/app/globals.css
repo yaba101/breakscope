@@ -71,6 +71,11 @@
 .bk-viewport-clear summary > svg:last-child { margin-left: auto; transition: transform 180ms ease; }
 .bk-viewport-clear[open] summary > svg:last-child { transform: rotate(180deg); }
 .bk-viewport-clear > p { margin: 0; border-top: 1px solid var(--setup-border); padding: 10px 36px; color: var(--setup-muted); font-size: 12px; }
+.bk-skip-link { position: fixed; z-index: 120; left: 12px; top: 10px; transform: translateY(-160%); border: 2px solid #111827; background: #fff; padding: 8px 12px; color: #111827; font-weight: 700; transition: transform 150ms ease-out; }
+.bk-skip-link:focus { transform: translateY(0); }
+.bk-setup-page :is(button, a, input, select):focus-visible,
+.bk-workspace-page :is(button, a, input, select, summary):focus-visible { outline: 2px solid var(--control-focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .bk-skip-link { transition: none; } }
 @media (max-width: 760px) {
   .bk-setup-presets { grid-template-columns: 1fr auto; }
   .bk-setup-presets > div { grid-column: 1 / -1; }

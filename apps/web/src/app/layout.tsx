@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="min-h-full"><a href="#main-content" className="sr-only focus:not-sr-only">Skip to content</a><Providers>{children}</Providers></body>
+      <body className="min-h-full"><a href="#main-content" className="bk-skip-link">Skip to main content</a><Providers>{children}</Providers></body>
     </html>
   );
 }
