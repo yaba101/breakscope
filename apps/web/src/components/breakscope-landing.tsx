@@ -3,6 +3,7 @@
 import { ArrowRight, Clock3, LoaderCircle, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import type { BrowserEngine } from "@breakscope/shared";
 import { isCaptureUrl } from "@breakscope/validation";
@@ -80,7 +81,7 @@ export function BreakscopeLanding() {
 
   return (
     <main id="main-content" className="bk-home">
-      <header className="bk-home-header"><BreakscopeLogo /></header>
+      <header className="bk-home-header"><BreakscopeLogo /><nav aria-label="Main navigation"><Link href="/history"><Clock3 size={16} /> Scan history</Link></nav></header>
       <section className="bk-home-hero" aria-labelledby="bk-home-title">
         <div className="bk-home-art" aria-hidden="true"><span /></div>
         <div className="bk-home-copy">
