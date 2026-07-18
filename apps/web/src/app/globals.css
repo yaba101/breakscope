@@ -5789,6 +5789,15 @@ button {
 .bk-history-actions button { min-height: 38px; border: 1px solid var(--color-border); border-radius: var(--button-radius); background: var(--stratum-secondary-0); color: var(--color-foreground); }
 .bk-history-actions button.delete { display: grid; width: 38px; padding: 0; color: var(--color-muted); place-items: center; }
 .bk-history-actions button.open { display: inline-flex; align-items: center; gap: 7px; border-color: var(--color-primary); background: var(--color-primary); padding: 0 13px; color: var(--stratum-secondary-0); font-weight: 650; }
+.bk-history-actions button.compare { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; font-weight: 650; }
+.bk-history-comparison { grid-column: 1 / -1; border-top: 1px solid var(--color-border); padding-top: 18px; }
+.bk-history-comparison > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.bk-history-comparison > header b { font-size: 15px; }
+.bk-history-comparison > header span,.bk-history-comparison > p { color: var(--color-muted); font-size: 11px; }
+.bk-history-comparison > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bk-history-comparison figure { min-width: 0; margin: 0; border: 1px solid var(--color-border); background: var(--stratum-secondary-0); }
+.bk-history-comparison img { display: block; width: 100%; max-height: 220px; object-fit: cover; object-position: top; }
+.bk-history-comparison figcaption { border-top: 1px solid var(--color-border); padding: 7px 9px; color: var(--color-muted); font: 600 10px var(--font-stratum-mono), monospace; }
 .bk-history-loading,.bk-history-empty { display: grid; min-height: 300px; margin-top: 42px; align-content: center; justify-items: center; gap: 9px; border-top: 1px solid var(--color-border); color: var(--color-muted); text-align: center; }
 .bk-history-empty h2 { margin: 3px 0 0; color: var(--color-foreground); }
 .bk-history-empty p { margin: 0; }
