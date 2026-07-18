@@ -7748,6 +7748,10 @@ button {
 .bk-shortcut-reference dt { font-size: 12px; font-weight: 650; }
 .bk-shortcut-reference dd { display: flex; gap: 5px; margin: 0; }
 .bk-shortcut-reference kbd { display: grid; min-width: 28px; height: 27px; border: 1px solid var(--stratum-border-500); border-bottom-width: 2px; border-radius: 6px; background: var(--stratum-surface-soft); padding: 0 6px; font: 650 11px var(--font-stratum-mono), monospace; place-items: center; }
+.bk-shortcut-reference kbd.combo { min-width: 52px; grid-auto-flow: column; grid-auto-columns: max-content; justify-content: center; gap: 4px; }
+.bk-shortcut-reference kbd.command-return { min-width: 58px; }
+.bk-shortcut-reference kbd.escape { min-width: 42px; }
+.bk-shortcut-reference kbd svg { stroke-width: 1.9; }
 .bk-ai-issue-review .bk-ai-empty { display: grid; gap: 5px; padding: 11px 0; }
 .bk-ai-issue-review .bk-ai-empty b { color: var(--stratum-text-primary); font-size: 12px; }
 .bk-context-inspector .bk-inspector-content .bk-ai-empty p { margin: 0; color: var(--stratum-text-secondary) !important; font-size: 11px; line-height: 1.5; }
