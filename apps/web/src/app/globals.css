@@ -7744,6 +7744,17 @@ button {
 .bk-workspace-page .bk-targeted-retest { width: calc(100% - 32px); margin: 0 16px 16px; display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); background: var(--surface-soft); text-align: left; }
 .bk-workspace-page .bk-targeted-retest span { display: grid; gap: 2px; }
 .bk-workspace-page .bk-targeted-retest small { color: var(--muted); }
+.bk-finding-categories { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0 16px 12px; }
+.bk-finding-categories button { display: grid; min-width: 0; min-height: 58px; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-align: left; }
+.bk-finding-categories button:hover { border-color: var(--stratum-border-strong); background: var(--surface-soft); }
+.bk-finding-categories button.active { border-color: var(--color-brand); background: color-mix(in srgb, var(--color-accent) 9%, var(--surface)); box-shadow: inset 3px 0 0 var(--color-brand); }
+.bk-finding-categories button > svg { color: var(--muted); }
+.bk-finding-categories button.active > svg { color: var(--color-brand-hover); }
+.bk-finding-categories button > span { display: grid; min-width: 0; gap: 2px; }
+.bk-finding-categories button b { font-size: 11px; }
+.bk-finding-categories button small { overflow: hidden; color: var(--muted); font-size: 8px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.bk-finding-categories button em { display: grid; min-width: 20px; height: 20px; place-items: center; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font: 700 9px var(--font-stratum-mono), monospace; font-style: normal; }
+.bk-finding-categories button.active em { background: var(--surface); color: var(--ink); }
 .bk-workspace-page .bk-inventory-filter { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; margin: 0 16px 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 10px; }
 .bk-workspace-page .bk-inventory-filter label { display: flex; align-items: center; gap: 7px; }
 .bk-workspace-page .bk-inventory-filter select { min-height: 30px; border: 1px solid var(--line); background: var(--surface); padding: 0 25px 0 8px; color: var(--ink); font: 650 10px var(--font-stratum-mono), monospace; }
@@ -7855,13 +7866,13 @@ button {
 .bk-viewport-clear > div { display: grid; gap: 3px; }
 .bk-viewport-clear b { color: var(--stratum-text-primary); font-size: 12px; }
 .bk-viewport-clear p { margin: 0; font-size: 10px; }
-.bk-page-wide-findings { display: grid; gap: 9px; border-top: 1px solid var(--stratum-border-300); padding-top: 14px; }
-.bk-page-wide-findings > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.bk-page-wide-findings > header > div { display: grid; gap: 2px; }
-.bk-page-wide-findings > header b { color: var(--stratum-text-primary); font-size: 12px; }
-.bk-page-wide-findings > header span { color: var(--stratum-text-secondary); font-size: 10px; }
-.bk-page-wide-findings > header em { color: var(--stratum-text-muted); font: 550 9px/1.3 var(--font-stratum-mono), monospace; font-style: normal; text-align: right; }
-.bk-page-wide-findings .bk-viewport-issue-list > article { background: var(--stratum-surface-base); }
+.bk-finding-group { display: grid; gap: 9px; border-top: 1px solid var(--stratum-border-300); padding-top: 14px; }
+.bk-finding-group > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bk-finding-group > header > div { display: grid; gap: 2px; }
+.bk-finding-group > header b { color: var(--stratum-text-primary); font-size: 12px; }
+.bk-finding-group > header span { color: var(--stratum-text-secondary); font-size: 10px; }
+.bk-finding-group > header em { color: var(--stratum-text-muted); font: 550 9px/1.3 var(--font-stratum-mono), monospace; font-style: normal; text-align: right; }
+.bk-finding-group .bk-viewport-issue-list > article { background: var(--stratum-surface-base); }
 .bk-quality-reveal { display: flex; width: 100%; min-height: 38px; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--stratum-border-300); background: var(--stratum-surface-raised); color: var(--stratum-text-secondary); font-size: 11px; font-weight: 700; }
 .bk-quality-reveal[aria-expanded="true"] svg { transform: rotate(180deg); }
 

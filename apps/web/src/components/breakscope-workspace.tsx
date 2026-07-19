@@ -25,8 +25,15 @@ type DeviceKind = "phone" | "tablet" | "desktop";
 type PreviewScaleMode = "fit-device" | "fit-screen" | "actual" | "custom";
 type DeviceModelId = DeviceName | "iphone-17-pro" | "iphone-17-pro-max" | "pixel-10-pro" | "pixel-10-pro-xl" | "galaxy-s26" | "galaxy-s26-ultra" | "chrome-desktop" | "safari-desktop" | "edge-desktop";
 type DeviceFilter = "recent" | "phone" | "tablet" | "laptop" | "wide";
+type FindingCategory = "responsive" | "accessibility" | "usability" | "performance";
 const responsiveBlockerTypes = new Set<ResponsiveIssueType>(["overflow", "offscreen", "clipping", "overlap", "occlusion", "disappearing"]);
 const siteQualityTypes = new Set<ResponsiveIssueType>(["touch-target", "accessible-name", "image-alt", "accessibility", "performance"]);
+const findingCategories: { id: FindingCategory; label: string; description: string }[] = [
+  { id: "responsive", label: "Responsive", description: "Layout problems caused by viewport width" },
+  { id: "accessibility", label: "Accessibility", description: "WCAG and assistive technology checks" },
+  { id: "usability", label: "Usability", description: "Target size and interaction guidance" },
+  { id: "performance", label: "Performance", description: "Loading, transfer, and layout stability" },
+];
 
 interface DeviceModel {
   id: DeviceModelId;
@@ -374,6 +381,20 @@ function isPageWideIssue(issue: ResponsiveIssue) {
   return siteQualityTypes.has(issue.type);
 }
 
+function findingCategory(issue: ResponsiveIssue): FindingCategory {
+  if (responsiveBlockerTypes.has(issue.type)) return "responsive";
+  if (issue.type === "touch-target") return "usability";
+  if (issue.type === "performance") return "performance";
+  return "accessibility";
+}
+
+function FindingCategoryIcon({ category, size = 16 }: { category: FindingCategory; size?: number }) {
+  if (category === "responsive") return <MoveHorizontal size={size} />;
+  if (category === "accessibility") return <Accessibility size={size} />;
+  if (category === "usability") return <Hand size={size} />;
+  return <Gauge size={size} />;
+}
+
 function issueFamilyTitle(issue: ResponsiveIssue, count: number) {
   if (count === 1) return issue.title;
   if (issue.type === "image-alt") return `${count} images have no text alternative`;
@@ -430,14 +451,16 @@ function ViewportIssueInspector({ width, routePath, issues, pageWideIssues, sele
   const [analysisMode, setAnalysisMode] = useState<"concise" | "technical">("concise");
   const [briefOutcome, setBriefOutcome] = useState<"applied" | "unhelpful" | "">("");
   const [severityFilter, setSeverityFilter] = useState<"all" | ResponsiveIssue["severity"]>("all");
-  const [showAllQualityChecks, setShowAllQualityChecks] = useState(false);
-  const filteredIssues = useMemo(() => severityFilter === "all" ? issues : issues.filter((issue) => issue.severity === severityFilter), [issues, severityFilter]);
-  const filteredPageWideIssues = useMemo(() => severityFilter === "all" ? pageWideIssues : pageWideIssues.filter((issue) => issue.severity === severityFilter), [pageWideIssues, severityFilter]);
+  const [selectedCategory, setSelectedCategory] = useState<FindingCategory>(() => selectedIssue ? findingCategory(selectedIssue) : issues.length ? "responsive" : pageWideIssues[0] ? findingCategory(pageWideIssues[0]) : "accessibility");
+  const [showAllFindings, setShowAllFindings] = useState(false);
+  const allFindings = useMemo(() => [...issues, ...pageWideIssues], [issues, pageWideIssues]);
   const allIssueFamilies = useMemo(() => groupIssueFamilies(issues), [issues]);
-  const allQualityFamilies = useMemo(() => groupIssueFamilies(pageWideIssues), [pageWideIssues]);
-  const issueFamilies = useMemo(() => groupIssueFamilies(filteredIssues), [filteredIssues]);
-  const pageWideFamilies = useMemo(() => groupIssueFamilies(filteredPageWideIssues), [filteredPageWideIssues]);
-  const visibleQualityFamilies = showAllQualityChecks ? pageWideFamilies : pageWideFamilies.slice(0, 5);
+  const categoryFamilies = useMemo(() => Object.fromEntries(findingCategories.map(({ id }) => [id, groupIssueFamilies(allFindings.filter((issue) => findingCategory(issue) === id))])) as Record<FindingCategory, ResponsiveIssue[][]>, [allFindings]);
+  const activeCategory = selectedIssue ? findingCategory(selectedIssue) : selectedCategory;
+  const selectedDefinition = findingCategories.find(({ id }) => id === activeCategory)!;
+  const filteredCategoryIssues = useMemo(() => allFindings.filter((issue) => findingCategory(issue) === activeCategory && (severityFilter === "all" || issue.severity === severityFilter)), [activeCategory, allFindings, severityFilter]);
+  const filteredFamilies = useMemo(() => groupIssueFamilies(filteredCategoryIssues), [filteredCategoryIssues]);
+  const visibleFamilies = showAllFindings ? filteredFamilies : filteredFamilies.slice(0, 5);
   const renderFamilies = (families: ResponsiveIssue[][]) => families.map((family) => {
     const selected = family.some((issue) => selectedIssue?.fingerprint === issue.fingerprint);
     const issue = selected ? family.find((item) => item.fingerprint === selectedIssue?.fingerprint)! : family[0]!;
@@ -448,7 +471,7 @@ function ViewportIssueInspector({ width, routePath, issues, pageWideIssues, sele
       {selected && <div className="bk-viewport-issue-detail">
         {family.length > 1 && <div className="bk-occurrence-nav"><span>Affected element</span><div><button type="button" aria-label="Previous affected element" onClick={() => selectOccurrence(-1)}><ChevronLeft size={15} /></button><output>{occurrenceIndex + 1} of {family.length}</output><button type="button" aria-label="Next affected element" onClick={() => selectOccurrence(1)}><ChevronRight size={15} /></button></div></div>}
         <p>{issue.description}</p>
-        <dl><div><dt>{isPageWideIssue(issue) ? "Category" : "Fails"}</dt><dd>{isPageWideIssue(issue) ? "Site quality" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div>{issue.interactionState && <div><dt>State</dt><dd><b>Expanded controls</b><small>Reproduced after opening safe disclosures</small></dd></div>}<div><dt>Target</dt><dd><b>{issueTargetDescription(issue)}</b><small>Highlighted in the preview</small></dd></div><div><dt>Status</dt><dd>{issue.verification.replace("-", " ")}</dd></div></dl>
+        <dl><div><dt>{isPageWideIssue(issue) ? "Category" : "Fails"}</dt><dd>{isPageWideIssue(issue) ? findingCategories.find(({ id }) => id === findingCategory(issue))!.label : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div>{issue.interactionState && <div><dt>State</dt><dd><b>Expanded controls</b><small>Reproduced after opening safe disclosures</small></dd></div>}<div><dt>Target</dt><dd><b>{issueTargetDescription(issue)}</b><small>Highlighted in the preview</small></dd></div><div><dt>Status</dt><dd>{issue.verification.replace("-", " ")}</dd></div></dl>
         <div className="bk-measurements"><span>Detector evidence</span>{Object.entries(issue.measurements).slice(0, 4).map(([key, value]) => <div key={key}><code>{key}</code><b>{String(value)}</b></div>)}</div>
         <section className="bk-element-context"><header><b>Element context</b><button type="button" onClick={() => void navigator.clipboard.writeText(stableIssueSelector(issue))}><Code2 size={13} /> Copy stable selector</button></header><dl>{issue.sourceHint && <div><dt>Runtime source</dt><dd><b>{issue.sourceHint.component || "Component source"}</b><small>{sourceHintLabel(issue)}</small></dd></div>}<div><dt>DOM path</dt><dd>{selectorBreadcrumb(issue.selector)}</dd></div><div><dt>Stable target</dt><dd><code>{stableIssueSelector(issue)}</code></dd></div><div><dt>Element box</dt><dd>{issue.elementRect ? `${Math.round(issue.elementRect.width)} × ${Math.round(issue.elementRect.height)} at ${Math.round(issue.elementRect.x)}, ${Math.round(issue.elementRect.y)}` : "Not captured"}</dd></div></dl></section>
         <section className={`bk-ai-issue-review ${aiPending ? "is-loading" : ""}`} aria-busy={aiPending}>
@@ -471,10 +494,11 @@ function ViewportIssueInspector({ width, routePath, issues, pageWideIssues, sele
   });
   return <div className="bk-viewport-inspector">
     <header><div><span>Viewport status</span><h2>{width}px · {issues.length ? "Needs attention" : "Passed"}</h2><p><code>{routePath}</code> · {issues.length ? `${allIssueFamilies.length} responsive ${allIssueFamilies.length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b aria-label={issues.length ? `${allIssueFamilies.length} responsive issues` : "Responsive checks passed"}>{allIssueFamilies.length || "OK"}</b></header>
-    {(issues.length + pageWideIssues.length) > 0 && <div className="bk-inventory-filter"><span>{allIssueFamilies.length} responsive · {allQualityFamilies.length} site {allQualityFamilies.length === 1 ? "check" : "checks"}</span><label>Severity<select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value as typeof severityFilter)}><option value="all">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label></div>}
+    {allFindings.length > 0 && <nav className="bk-finding-categories" aria-label="Finding categories">{findingCategories.map((category) => { const count = categoryFamilies[category.id].length; return <button type="button" key={category.id} className={activeCategory === category.id ? "active" : ""} aria-pressed={activeCategory === category.id} aria-label={`${category.label}: ${count} ${count === 1 ? "finding" : "findings"}`} onClick={() => { if (selectedIssue && findingCategory(selectedIssue) !== category.id) onClearSelection(); setSelectedCategory(category.id); setShowAllFindings(false); }}><FindingCategoryIcon category={category.id} /><span><b>{category.label}</b><small>{category.description}</small></span><em>{count}</em></button>; })}</nav>}
+    {allFindings.length > 0 && <div className="bk-inventory-filter"><span>{selectedDefinition.label} findings</span><label>Severity<select value={severityFilter} onChange={(event) => { setSeverityFilter(event.target.value as typeof severityFilter); setShowAllFindings(false); }}><option value="all">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label></div>}
     <button type="button" className="bk-targeted-retest" disabled={retesting} onClick={onRetest}>{retesting ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}<span><b>{retesting ? "Retesting checkpoint…" : `Retest ${width}px checkpoint`}</b><small>Refresh findings without rerunning the full test</small></span></button>
-    {filteredPageWideIssues.length > 0 && <section className="bk-page-wide-findings"><header><div><b>Site quality</b><span>Accessibility, usability, and performance</span></div><em>{pageWideFamilies.length} {pageWideFamilies.length === 1 ? "check" : "checks"} · {filteredPageWideIssues.length} affected {filteredPageWideIssues.length === 1 ? "element" : "elements"}</em></header><div className="bk-viewport-issue-list">{renderFamilies(visibleQualityFamilies)}</div>{pageWideFamilies.length > 5 && <button type="button" className="bk-quality-reveal" aria-expanded={showAllQualityChecks} onClick={() => setShowAllQualityChecks((value) => !value)}>{showAllQualityChecks ? "Show priority checks only" : `Show ${pageWideFamilies.length - 5} additional checks`}<ChevronDown size={14} /></button>}</section>}
-    {filteredIssues.length ? <div className="bk-viewport-issue-list">{renderFamilies(issueFamilies)}</div> : issues.length ? <p className="bk-inventory-filter-empty">No {severityFilter} responsive findings at this checkpoint.</p> : <details className="bk-viewport-clear"><summary><Check size={16} /><b>No responsive issues at {width}px</b><ChevronDown size={14} /></summary><p>All viewport-dependent checks passed at this checkpoint.</p></details>}
+    {allFindings.length > 0 && <section className="bk-finding-group"><header><div><b>{selectedDefinition.label}</b><span>{selectedDefinition.description}</span></div><em>{filteredFamilies.length} {filteredFamilies.length === 1 ? "family" : "families"} · {filteredCategoryIssues.length} {filteredCategoryIssues.length === 1 ? "element" : "elements"}</em></header>{filteredFamilies.length ? <><div className="bk-viewport-issue-list">{renderFamilies(visibleFamilies)}</div>{filteredFamilies.length > 5 && <button type="button" className="bk-quality-reveal" aria-expanded={showAllFindings} onClick={() => setShowAllFindings((value) => !value)}>{showAllFindings ? "Show priority findings only" : `Show ${filteredFamilies.length - 5} additional findings`}<ChevronDown size={14} /></button>}</> : <p className="bk-inventory-filter-empty">No {severityFilter === "all" ? "" : `${severityFilter} `}{selectedDefinition.label.toLowerCase()} findings.</p>}</section>}
+    {!issues.length && <details className="bk-viewport-clear"><summary><Check size={16} /><b>No responsive issues at {width}px</b><ChevronDown size={14} /></summary><p>All viewport-dependent checks passed at this checkpoint.</p></details>}
   </div>;
 }
 

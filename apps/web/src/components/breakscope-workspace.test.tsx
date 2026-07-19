@@ -140,8 +140,8 @@ describe("BreakscopeWorkspace", () => {
     renderWorkspace();
 
     expect(await screen.findByRole("button", { name: /2 images have no text alternative/i })).toBeInTheDocument();
-    expect(screen.getByText(/1 check · 2 affected elements/i)).toBeInTheDocument();
-    expect(screen.getAllByText("Site quality").length).toBeGreaterThan(0);
+    expect(screen.getByText(/1 family · 2 elements/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Accessibility: 1 finding" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("No responsive issues at 320px")).toBeInTheDocument();
     expect(screen.getByText("1 of 2", { selector: ".bk-occurrence-nav output" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Image has no text alternative/i })).not.toBeInTheDocument();
@@ -152,7 +152,7 @@ describe("BreakscopeWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Tablet 768px" }));
     expect(screen.getByText("No responsive issues at 768px")).toBeInTheDocument();
-    expect(screen.getAllByText("Site quality").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Accessibility: 1 finding" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tablet 768px" })).not.toHaveClass("failed");
 
     fireEvent.click(screen.getByRole("button", { name: /2 images have no text alternative/i }));
@@ -184,7 +184,7 @@ describe("BreakscopeWorkspace", () => {
 
     expect(await screen.findByRole("heading", { name: "375px · Passed" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Image has no text alternative/i })).toBeInTheDocument();
-    expect(screen.getAllByText("Site quality").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Accessibility: 1 finding" })).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "Tablet 768px" }));
     expect(screen.getByRole("heading", { name: "768px · Passed" })).toBeInTheDocument();
@@ -208,10 +208,29 @@ describe("BreakscopeWorkspace", () => {
     renderWorkspace();
 
     expect(await screen.findByRole("button", { name: /Quality rule 1/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show 2 additional checks" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Show 2 additional findings" })).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("button", { name: /Quality rule 7/i })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Show 2 additional checks" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show 2 additional findings" }));
     expect(screen.getByRole("button", { name: /Quality rule 7/i })).toBeInTheDocument();
+  });
+
+  it("separates findings into clear user-impact categories", async () => {
+    const accessibilityIssue: ResponsiveIssue = { ...issue, id: "alt", fingerprint: "image-alt:/:alt", type: "image-alt", title: "Image has no text alternative", failureRanges: [{ min: 320, max: 1440 }], measurements: { tag: "img" } };
+    const usabilityIssue: ResponsiveIssue = { ...issue, id: "tap", fingerprint: "touch-target:/:tap", type: "touch-target", title: "Control is difficult to tap", failureRanges: [{ min: 320, max: 1440 }], measurements: { tag: "button" } };
+    const performanceIssue: ResponsiveIssue = { ...issue, id: "layout", fingerprint: "performance:/:layout", type: "performance", title: "Layout shifts during load", failureRanges: [{ min: 320, max: 1440 }], measurements: { score: 0.31 } };
+    loadBreakscopeState.mockResolvedValue({ target, latestIssues: [issue, accessibilityIssue, usabilityIssue, performanceIssue], updatedAt: 1 });
+    renderWorkspace();
+
+    expect(await screen.findByRole("button", { name: "Responsive: 1 finding" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Accessibility: 1 finding" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Usability: 1 finding" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Performance: 1 finding" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Horizontal overflow/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Accessibility: 1 finding" }));
+    expect(screen.getByRole("button", { name: /Image has no text alternative/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Horizontal overflow/i })).not.toBeInTheDocument();
+    expect(screen.getAllByText("WCAG and assistive technology checks")).toHaveLength(2);
   });
 
   it("shows a dedicated AI loading state and never exposes validation internals", async () => {
