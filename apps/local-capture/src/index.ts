@@ -236,6 +236,7 @@ async function captureWithBrowser(
   if (!navigation?.ok()) throw new Error(`Page returned ${navigation?.status() ?? "no response"} for ${url}`);
   const contentType = navigation.headers()["content-type"] ?? "";
   if (!contentType.includes("text/html")) throw new Error("URL did not return an HTML page");
+  await page.evaluate("globalThis.__name = (target) => target");
   await settlePageForCapture(page);
   const interactionCandidates = await page.locator("details:not([open]), button[aria-expanded='false'][aria-controls]:not([type='submit']), [role='button'][aria-expanded='false'][aria-controls]").count();
   if (interactionState === "expanded" && interactionCandidates) {
@@ -249,7 +250,6 @@ async function captureWithBrowser(
   for (let attempt = 0; attempt < 3 && !snapshotData; attempt += 1) {
     try {
       await page.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => undefined);
-      await page.evaluate("globalThis.__name = (target) => target");
       snapshotData = await page.evaluate(({ viewportWidth, viewportHeight }) => {
         const normalized = (value: string | null | undefined, limit = 240) =>
           (value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
