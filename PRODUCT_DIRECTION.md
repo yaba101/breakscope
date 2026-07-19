@@ -21,6 +21,13 @@ Explore is the default review surface once checkpoint captures exist. An audit i
 - [x] User-selected local baseline in scan history.
 - [x] Current-versus-baseline visual comparison rather than implicit adjacent-run comparison.
 
+## Signal quality
+
+- [x] Viewport badges count responsive blocker families rather than every affected element.
+- [x] Accessibility, usability, and performance checks are separated from responsive status.
+- [x] Site-quality findings are consolidated by rule and progressively disclosed.
+- [x] Touch-target checks use the WCAG minimum target size and exclude inline text links.
+
 ## Next sequence
 
 - Capture stabilization: wait for selector, delay, animation freezing, and hidden/masked selectors.

@@ -2,6 +2,7 @@ import type { ElementSnapshot, ResponsiveIssue, ResponsiveIssueType, ViewportSam
 
 type Draft = Pick<ResponsiveIssue, "type" | "severity" | "confidence" | "title" | "description" | "routePath" | "selector" | "measurements" | "browserEngine" | "interactionState"> & { width: number; elementRect?: ResponsiveIssue["elementRect"]; elementKey?: string; sourceHint?: ResponsiveIssue["sourceHint"] };
 const interactiveRoles = new Set(["button", "link", "textbox", "checkbox", "radio", "combobox", "slider"]);
+const minimumTargetSize = 24;
 const detectorLabels: Record<ResponsiveIssueType, string> = {
   overflow: "Horizontal overflow", offscreen: "Control reachability", clipping: "Content clipping", overlap: "Element overlap",
   occlusion: "Sticky content coverage", disappearing: "Responsive visibility", "touch-target": "Touch target size",
@@ -67,11 +68,12 @@ function issuesAt(sample: ViewportSample): Draft[] {
         measurements: { left: element.rect.x, right, viewportWidth: sample.width },
       }));
     }
-    if (interactive && (element.rect.width < 44 || element.rect.height < 44)) {
+    const inlineTextLink = element.role === "link" && element.styles.display === "inline";
+    if (interactive && !inlineTextLink && (element.rect.width < minimumTargetSize || element.rect.height < minimumTargetSize)) {
       issues.push(draft("touch-target", sample, element, {
         severity: "medium", confidence: 0.93, title: `${element.name || element.role || "Control"} is difficult to tap`,
-        description: "The interactive target is smaller than 44×44px.",
-        measurements: { width: element.rect.width, height: element.rect.height, minimum: 44 },
+        description: `The interactive target is smaller than ${minimumTargetSize}×${minimumTargetSize}px.`,
+        measurements: { width: element.rect.width, height: element.rect.height, minimum: minimumTargetSize },
       }));
     }
     const clippedX = element.geometry && element.geometry.scrollWidth > element.geometry.clientWidth + 2 && ["hidden", "clip"].includes(element.styles.overflowX ?? "");

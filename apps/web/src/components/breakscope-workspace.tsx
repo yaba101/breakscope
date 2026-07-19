@@ -25,6 +25,8 @@ type DeviceKind = "phone" | "tablet" | "desktop";
 type PreviewScaleMode = "fit-device" | "fit-screen" | "actual" | "custom";
 type DeviceModelId = DeviceName | "iphone-17-pro" | "iphone-17-pro-max" | "pixel-10-pro" | "pixel-10-pro-xl" | "galaxy-s26" | "galaxy-s26-ultra" | "chrome-desktop" | "safari-desktop" | "edge-desktop";
 type DeviceFilter = "recent" | "phone" | "tablet" | "laptop" | "wide";
+const responsiveBlockerTypes = new Set<ResponsiveIssueType>(["overflow", "offscreen", "clipping", "overlap", "occlusion", "disappearing"]);
+const siteQualityTypes = new Set<ResponsiveIssueType>(["touch-target", "accessible-name", "image-alt", "accessibility", "performance"]);
 
 interface DeviceModel {
   id: DeviceModelId;
@@ -291,7 +293,7 @@ function CheckpointSwitcher({ widths, activeWidth, browserEngine, previews, issu
   return <div className="bk-checkpoint-control"><span>Captured checkpoints</span><div className="bk-device-switcher" role="group" aria-label="Captured checkpoints">{widths.map((width) => {
     const choice = deviceChoices.find((device) => device.width === width);
     const ready = previews.some((preview) => preview.width === width && (preview.browserEngine ?? "chromium") === browserEngine);
-    const failed = issues.some((issue) => (issue.browserEngine ?? "chromium") === browserEngine && !isPageWideIssue(issue, widths) && issueAffectsWidth(issue, width));
+    const failed = issues.some((issue) => (issue.browserEngine ?? "chromium") === browserEngine && !isPageWideIssue(issue) && issueAffectsWidth(issue, width));
     const selected = selectedWidth === width;
     return <button type="button" key={width} className={`${selected ? "active" : ""} ${failed ? "failed" : ready ? "ready" : ""}`} aria-label={`${choice?.label ?? "Custom"} ${width}px`} aria-pressed={selected} onClick={() => onSelect(width)}>{icon(width)}<span><b>{choice?.label ?? "Custom"}</b><small>{width}px</small></span></button>;
   })}</div></div>;
@@ -319,6 +321,10 @@ function DeviceScanPlaceholder({ phase, width, kind }: { phase: string; width: n
 }
 
 function issueFamilyKey(issue: ResponsiveIssue) {
+  if (siteQualityTypes.has(issue.type)) {
+    const discriminator = issue.type === "accessibility" ? String(issue.measurements.rule ?? issue.title) : issue.type === "performance" ? issue.title : issue.type;
+    return `${issue.routePath}:${issue.interactionState ?? "default"}:${issue.type}:${discriminator}`;
+  }
   return `${issue.routePath}:${issue.interactionState ?? "default"}:${issue.type}:${issue.title}:${issue.failureRanges.map((range) => `${range.min}-${range.max}`).join(",")}`;
 }
 
@@ -351,7 +357,8 @@ function ExploreViewportGrid({ previews, issues, browserEngine, routePath, onFoc
     <header><div><b>All captured viewports</b><span>{browserLabels[browserEngine]} · {routePath}</span></div><button type="button" className={syncScroll ? "active" : ""} aria-pressed={syncScroll} onClick={() => setSyncScroll((value) => !value)}><MoveHorizontal size={15} /> Sync scroll</button></header>
     <div className="bk-explore-grid">
       {visiblePreviews.map((preview) => {
-        const issueCount = issues.filter((issue) => (issue.browserEngine ?? "chromium") === browserEngine && issue.routePath === routePath && issueAffectsWidth(issue, preview.width)).length;
+        const responsiveFamilies = groupIssueFamilies(issues.filter((issue) => (issue.browserEngine ?? "chromium") === browserEngine && issue.routePath === routePath && responsiveBlockerTypes.has(issue.type) && issueAffectsWidth(issue, preview.width)));
+        const issueCount = responsiveFamilies.length;
         return <article className="bk-explore-pane" key={`${browserEngine}-${preview.width}`}>
           <header><span><b>{preview.label}</b><small>{preview.width}px</small></span><span className={issueCount ? "has-issues" : "passed"}>{issueCount ? `${issueCount} issue${issueCount === 1 ? "" : "s"}` : "Passed"}</span><button type="button" onClick={() => onFocus(preview.width)}>Focus <ArrowRight size={13} /></button></header>
           <div className="bk-explore-pane-scroll" aria-label={`Scrollable ${preview.label} capture at ${preview.width}px`} tabIndex={0} ref={(node) => { if (node) paneRefs.current.set(preview.width, node); else paneRefs.current.delete(preview.width); }} onScroll={() => synchronize(preview.width)}>
@@ -363,8 +370,8 @@ function ExploreViewportGrid({ previews, issues, browserEngine, routePath, onFoc
   </section>;
 }
 
-function isPageWideIssue(issue: ResponsiveIssue, checkpointWidths: number[]) {
-  return checkpointWidths.length > 1 && checkpointWidths.every((width) => issueAffectsWidth(issue, width));
+function isPageWideIssue(issue: ResponsiveIssue) {
+  return siteQualityTypes.has(issue.type);
 }
 
 function issueFamilyTitle(issue: ResponsiveIssue, count: number) {
@@ -372,6 +379,7 @@ function issueFamilyTitle(issue: ResponsiveIssue, count: number) {
   if (issue.type === "image-alt") return `${count} images have no text alternative`;
   if (issue.type === "accessible-name") return `${count} controls have no accessible name`;
   if (issue.type === "touch-target") return `${count} controls are difficult to tap`;
+  if (issue.type === "accessibility" || issue.type === "performance") return issue.title;
   return `${count} occurrences · ${issue.title}`;
 }
 
@@ -417,15 +425,19 @@ function sourceHintLabel(issue: ResponsiveIssue) {
   return `${source.file}${source.line ? `:${source.line}` : ""}${source.column ? `:${source.column}` : ""}`;
 }
 
-function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pageWideIssues, selectedIssue, aiAnalysis, aiPending, aiError, retesting, url, onSelect, onClearSelection, onRetest, onAnalyze }: { width: number; checkpointWidths: number[]; routePath: string; issues: ResponsiveIssue[]; pageWideIssues: ResponsiveIssue[]; selectedIssue?: ResponsiveIssue; aiAnalysis?: AiIssueAnalysis; aiPending: boolean; aiError?: string; retesting: boolean; url: string; onSelect: (issue: ResponsiveIssue) => void; onClearSelection: () => void; onRetest: () => void; onAnalyze: (issue: ResponsiveIssue, mode: "concise" | "technical") => void }) {
+function ViewportIssueInspector({ width, routePath, issues, pageWideIssues, selectedIssue, aiAnalysis, aiPending, aiError, retesting, url, onSelect, onClearSelection, onRetest, onAnalyze }: { width: number; routePath: string; issues: ResponsiveIssue[]; pageWideIssues: ResponsiveIssue[]; selectedIssue?: ResponsiveIssue; aiAnalysis?: AiIssueAnalysis; aiPending: boolean; aiError?: string; retesting: boolean; url: string; onSelect: (issue: ResponsiveIssue) => void; onClearSelection: () => void; onRetest: () => void; onAnalyze: (issue: ResponsiveIssue, mode: "concise" | "technical") => void }) {
   const [copiedPromptFor, setCopiedPromptFor] = useState("");
   const [analysisMode, setAnalysisMode] = useState<"concise" | "technical">("concise");
   const [briefOutcome, setBriefOutcome] = useState<"applied" | "unhelpful" | "">("");
   const [severityFilter, setSeverityFilter] = useState<"all" | ResponsiveIssue["severity"]>("all");
+  const [showAllQualityChecks, setShowAllQualityChecks] = useState(false);
   const filteredIssues = useMemo(() => severityFilter === "all" ? issues : issues.filter((issue) => issue.severity === severityFilter), [issues, severityFilter]);
   const filteredPageWideIssues = useMemo(() => severityFilter === "all" ? pageWideIssues : pageWideIssues.filter((issue) => issue.severity === severityFilter), [pageWideIssues, severityFilter]);
+  const allIssueFamilies = useMemo(() => groupIssueFamilies(issues), [issues]);
+  const allQualityFamilies = useMemo(() => groupIssueFamilies(pageWideIssues), [pageWideIssues]);
   const issueFamilies = useMemo(() => groupIssueFamilies(filteredIssues), [filteredIssues]);
   const pageWideFamilies = useMemo(() => groupIssueFamilies(filteredPageWideIssues), [filteredPageWideIssues]);
+  const visibleQualityFamilies = showAllQualityChecks ? pageWideFamilies : pageWideFamilies.slice(0, 5);
   const renderFamilies = (families: ResponsiveIssue[][]) => families.map((family) => {
     const selected = family.some((issue) => selectedIssue?.fingerprint === issue.fingerprint);
     const issue = selected ? family.find((item) => item.fingerprint === selectedIssue?.fingerprint)! : family[0]!;
@@ -436,7 +448,7 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
       {selected && <div className="bk-viewport-issue-detail">
         {family.length > 1 && <div className="bk-occurrence-nav"><span>Affected element</span><div><button type="button" aria-label="Previous affected element" onClick={() => selectOccurrence(-1)}><ChevronLeft size={15} /></button><output>{occurrenceIndex + 1} of {family.length}</output><button type="button" aria-label="Next affected element" onClick={() => selectOccurrence(1)}><ChevronRight size={15} /></button></div></div>}
         <p>{issue.description}</p>
-        <dl><div><dt>{isPageWideIssue(issue, checkpointWidths) ? "Scope" : "Fails"}</dt><dd>{isPageWideIssue(issue, checkpointWidths) ? "Every checkpoint" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div>{issue.interactionState && <div><dt>State</dt><dd><b>Expanded controls</b><small>Reproduced after opening safe disclosures</small></dd></div>}<div><dt>Target</dt><dd><b>{issueTargetDescription(issue)}</b><small>Highlighted in the preview</small></dd></div><div><dt>Status</dt><dd>{issue.verification.replace("-", " ")}</dd></div></dl>
+        <dl><div><dt>{isPageWideIssue(issue) ? "Category" : "Fails"}</dt><dd>{isPageWideIssue(issue) ? "Site quality" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div>{issue.interactionState && <div><dt>State</dt><dd><b>Expanded controls</b><small>Reproduced after opening safe disclosures</small></dd></div>}<div><dt>Target</dt><dd><b>{issueTargetDescription(issue)}</b><small>Highlighted in the preview</small></dd></div><div><dt>Status</dt><dd>{issue.verification.replace("-", " ")}</dd></div></dl>
         <div className="bk-measurements"><span>Detector evidence</span>{Object.entries(issue.measurements).slice(0, 4).map(([key, value]) => <div key={key}><code>{key}</code><b>{String(value)}</b></div>)}</div>
         <section className="bk-element-context"><header><b>Element context</b><button type="button" onClick={() => void navigator.clipboard.writeText(stableIssueSelector(issue))}><Code2 size={13} /> Copy stable selector</button></header><dl>{issue.sourceHint && <div><dt>Runtime source</dt><dd><b>{issue.sourceHint.component || "Component source"}</b><small>{sourceHintLabel(issue)}</small></dd></div>}<div><dt>DOM path</dt><dd>{selectorBreadcrumb(issue.selector)}</dd></div><div><dt>Stable target</dt><dd><code>{stableIssueSelector(issue)}</code></dd></div><div><dt>Element box</dt><dd>{issue.elementRect ? `${Math.round(issue.elementRect.width)} × ${Math.round(issue.elementRect.height)} at ${Math.round(issue.elementRect.x)}, ${Math.round(issue.elementRect.y)}` : "Not captured"}</dd></div></dl></section>
         <section className={`bk-ai-issue-review ${aiPending ? "is-loading" : ""}`} aria-busy={aiPending}>
@@ -458,10 +470,10 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
     </article>;
   });
   return <div className="bk-viewport-inspector">
-    <header><div><span>Viewport status</span><h2>{width}px · {issues.length ? "Needs attention" : "Passed"}</h2><p><code>{routePath}</code> · {issues.length ? `${groupIssueFamilies(issues).length} responsive ${groupIssueFamilies(issues).length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b aria-label={issues.length ? `${groupIssueFamilies(issues).length} responsive issues` : "Responsive checks passed"}>{issues.length || "OK"}</b></header>
-    {(issues.length + pageWideIssues.length) > 0 && <div className="bk-inventory-filter"><span>{issues.length + pageWideIssues.length} findings</span><label>Severity<select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value as typeof severityFilter)}><option value="all">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label></div>}
+    <header><div><span>Viewport status</span><h2>{width}px · {issues.length ? "Needs attention" : "Passed"}</h2><p><code>{routePath}</code> · {issues.length ? `${allIssueFamilies.length} responsive ${allIssueFamilies.length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b aria-label={issues.length ? `${allIssueFamilies.length} responsive issues` : "Responsive checks passed"}>{allIssueFamilies.length || "OK"}</b></header>
+    {(issues.length + pageWideIssues.length) > 0 && <div className="bk-inventory-filter"><span>{allIssueFamilies.length} responsive · {allQualityFamilies.length} site {allQualityFamilies.length === 1 ? "check" : "checks"}</span><label>Severity<select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value as typeof severityFilter)}><option value="all">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label></div>}
     <button type="button" className="bk-targeted-retest" disabled={retesting} onClick={onRetest}>{retesting ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}<span><b>{retesting ? "Retesting checkpoint…" : `Retest ${width}px checkpoint`}</b><small>Refresh findings without rerunning the full test</small></span></button>
-    {filteredPageWideIssues.length > 0 && <section className="bk-page-wide-findings"><header><div><b>Page-wide checks</b><span>Independent of viewport size</span></div><em>{pageWideFamilies.length} {pageWideFamilies.length === 1 ? "family" : "families"} · {filteredPageWideIssues.length} {filteredPageWideIssues.length === 1 ? "element" : "elements"}</em></header><div className="bk-viewport-issue-list">{renderFamilies(pageWideFamilies)}</div></section>}
+    {filteredPageWideIssues.length > 0 && <section className="bk-page-wide-findings"><header><div><b>Site quality</b><span>Accessibility, usability, and performance</span></div><em>{pageWideFamilies.length} {pageWideFamilies.length === 1 ? "check" : "checks"} · {filteredPageWideIssues.length} affected {filteredPageWideIssues.length === 1 ? "element" : "elements"}</em></header><div className="bk-viewport-issue-list">{renderFamilies(visibleQualityFamilies)}</div>{pageWideFamilies.length > 5 && <button type="button" className="bk-quality-reveal" aria-expanded={showAllQualityChecks} onClick={() => setShowAllQualityChecks((value) => !value)}>{showAllQualityChecks ? "Show priority checks only" : `Show ${pageWideFamilies.length - 5} additional checks`}<ChevronDown size={14} /></button>}</section>}
     {filteredIssues.length ? <div className="bk-viewport-issue-list">{renderFamilies(issueFamilies)}</div> : issues.length ? <p className="bk-inventory-filter-empty">No {severityFilter} responsive findings at this checkpoint.</p> : <details className="bk-viewport-clear"><summary><Check size={16} /><b>No responsive issues at {width}px</b><ChevronDown size={14} /></summary><p>All viewport-dependent checks passed at this checkpoint.</p></details>}
   </div>;
 }
@@ -942,8 +954,8 @@ export function BreakscopeWorkspace() {
   const scanSection = Math.min(8, Math.floor(scrollProgress * 8) + 1);
   const scanWidthPosition = Math.min(100, Math.max(0, ((progress.width - minWidth) / Math.max(1, maxWidth - minWidth)) * 100));
   const retryingViewport = viewportRetryMutation.isPending ? viewportRetryMutation.variables : undefined;
-  const viewportIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && !isPageWideIssue(issue, deviceWidths) && issue.routePath === reviewedRoute && issueAffectsWidth(issue, displayedWidth));
-  const pageWideIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && isPageWideIssue(issue, deviceWidths) && issue.routePath === reviewedRoute && issueAffectsWidth(issue, displayedWidth));
+  const viewportIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && !isPageWideIssue(issue) && issue.routePath === reviewedRoute && issueAffectsWidth(issue, displayedWidth));
+  const pageWideIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && isPageWideIssue(issue) && issue.routePath === reviewedRoute && issueAffectsWidth(issue, displayedWidth));
 
   function selectModel(model: DeviceModel) {
     const availableWidth = deviceWidths.find((width) => model.kind === "phone" ? width <= 600 : model.kind === "tablet" ? width > 600 && width <= 900 : model.checkpointWidth >= 1440 ? width >= 1440 : width > 900 && width < 1440) ?? model.checkpointWidth;
@@ -1127,7 +1139,7 @@ export function BreakscopeWorkspace() {
           <div className="bk-pipeline-heading"><span>Analysis pipeline</span><b>{Math.min(scanStage + 1, activitySteps.length)}/{activitySteps.length}</b></div>
           <ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : index === scanStage ? "active" : ""}><i>{step.done ? <Check size={13} /> : index === scanStage ? <span className="bk-pipeline-loader"><ScanSearch size={14} /></span> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol>
           <button type="button" className="bs-cancel" onClick={() => scanController.current?.abort()}><CircleStop size={16} /><span>Cancel test</span><small>Progress will be saved</small></button>
-        </div> : hasScanned ? <ViewportIssueInspector width={displayedWidth} checkpointWidths={deviceWidths} routePath={reviewedRoute ?? "/"} issues={viewportIssues} pageWideIssues={pageWideIssues} selectedIssue={activeIssue} aiAnalysis={activeIssue ? aiReviews[activeIssue.fingerprint] : undefined} aiPending={aiIssueMutation.isPending} aiError={aiIssueError} retesting={targetedRetestMutation.isPending} url={url} onSelect={selectIssue} onClearSelection={clearSelectedIssue} onRetest={() => targetedRetestMutation.mutate({ width: displayedWidth, routePath: reviewedRoute ?? "/", browserEngine: activeBrowserEngine })} onAnalyze={(issue, mode) => aiIssueMutation.mutate({ issue, mode })} /> : <div className="bk-activity-view"><h2>Ready to inspect</h2><p>{`${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"} · ${minWidth}–${maxWidth}px`}</p><ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : ""}><i>{step.done ? <Check size={13} /> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol></div>}
+        </div> : hasScanned ? <ViewportIssueInspector width={displayedWidth} routePath={reviewedRoute ?? "/"} issues={viewportIssues} pageWideIssues={pageWideIssues} selectedIssue={activeIssue} aiAnalysis={activeIssue ? aiReviews[activeIssue.fingerprint] : undefined} aiPending={aiIssueMutation.isPending} aiError={aiIssueError} retesting={targetedRetestMutation.isPending} url={url} onSelect={selectIssue} onClearSelection={clearSelectedIssue} onRetest={() => targetedRetestMutation.mutate({ width: displayedWidth, routePath: reviewedRoute ?? "/", browserEngine: activeBrowserEngine })} onAnalyze={(issue, mode) => aiIssueMutation.mutate({ issue, mode })} /> : <div className="bk-activity-view"><h2>Ready to inspect</h2><p>{`${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"} · ${minWidth}–${maxWidth}px`}</p><ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : ""}><i>{step.done ? <Check size={13} /> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol></div>}
       </div></aside>}
     </section> : <section className="bk-no-target"><ScanSearch size={36} /><h1>No test configured</h1><p>Choose a URL and routes before opening the workspace.</p><Link href="/"><ArrowRight size={17} /> Go to setup</Link></section>}
     {shortcutsOpen && <div className="bk-shortcut-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShortcutsOpen(false); }}><section className="bk-shortcut-reference" role="dialog" aria-modal="true" aria-labelledby="shortcut-dialog-title"><header><span><Keyboard size={18} /><b id="shortcut-dialog-title">Keyboard shortcuts</b></span><button type="button" aria-label="Close keyboard shortcuts" onClick={() => setShortcutsOpen(false)}><X size={16} /></button></header><p>Move through checkpoints and findings without leaving the canvas.</p><dl><div><i><Monitor size={16} /></i><dt>Previous / next checkpoint</dt><dd><kbd aria-label="Left bracket">[</kbd><kbd aria-label="Right bracket">]</kbd></dd></div><div><i><RefreshCw size={16} /></i><dt>Next browser</dt><dd><kbd>B</kbd></dd></div><div><i><ChevronLeft size={16} /><ChevronRight size={16} /></i><dt>Previous / next issue</dt><dd><kbd className="combo" aria-label="Option and left arrow"><Option size={13} /><ArrowLeft size={14} /></kbd><kbd className="combo" aria-label="Option and right arrow"><Option size={13} /><ArrowRight size={14} /></kbd></dd></div><div><i><X size={16} /></i><dt>Clear selected issue</dt><dd><kbd className="escape">Esc</kbd></dd></div><div><i><ScanSearch size={16} /></i><dt>Run test</dt><dd><kbd className="combo command-return" aria-label="Command and Return"><Command size={13} /><CornerDownLeft size={14} /></kbd></dd></div></dl></section></div>}

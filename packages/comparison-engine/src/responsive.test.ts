@@ -35,7 +35,7 @@ describe("analyzeResponsiveSamples", () => {
   });
 
   it("preserves runtime source evidence for a reported element", () => {
-    const sourced = { ...button(true), rect: { x: 20, y: 20, width: 30, height: 30 }, sourceHint: { file: "/src/Checkout.tsx", line: 42, component: "Checkout", origin: "react-debug" as const } };
+    const sourced = { ...button(true), rect: { x: 20, y: 20, width: 20, height: 20 }, sourceHint: { file: "/src/Checkout.tsx", line: 42, component: "Checkout", origin: "react-debug" as const } };
     const issue = analyzeResponsiveSamples([sample(390, 390, [sourced])]).issues[0];
     expect(issue?.sourceHint).toEqual(sourced.sourceHint);
   });
@@ -49,11 +49,21 @@ describe("analyzeResponsiveSamples", () => {
 
   it("returns the complete prioritized inventory instead of truncating findings", () => {
     const controls = Array.from({ length: 5 }, (_, index): ElementSnapshot => ({
-      ...button(true), key: `button:${index}`, name: `Action ${index}`, selector: `main > button:nth-of-type(${index + 1})`, rect: { x: 12, y: index * 60, width: 32, height: 32 },
+      ...button(true), key: `button:${index}`, name: `Action ${index}`, selector: `main > button:nth-of-type(${index + 1})`, rect: { x: 12, y: index * 60, width: 20, height: 20 },
     }));
     const result = analyzeResponsiveSamples([sample(390, 390, controls)]);
     expect(result.issues).toHaveLength(5);
     expect(result.suppressedCount).toBe(0);
+  });
+
+  it("reports only genuinely undersized targets and ignores inline text links", () => {
+    const acceptable = { ...button(true), key: "acceptable", rect: { x: 12, y: 12, width: 32, height: 32 } };
+    const tiny = { ...button(true), key: "tiny", selector: "#tiny", rect: { x: 12, y: 60, width: 20, height: 20 } };
+    const inlineLink = { ...button(true), key: "inline-link", tag: "a", role: "link", selector: "p > a", rect: { x: 12, y: 100, width: 18, height: 18 }, styles: { ...button(true).styles, display: "inline" } };
+    const result = analyzeResponsiveSamples([sample(390, 390, [acceptable, tiny, inlineLink])]);
+
+    expect(result.issues.filter((issue) => issue.type === "touch-target")).toHaveLength(1);
+    expect(result.issues.find((issue) => issue.type === "touch-target")?.selector).toBe("#tiny");
   });
 
   it("turns axe violations into checkpoint findings with remediation evidence", () => {

@@ -140,8 +140,8 @@ describe("BreakscopeWorkspace", () => {
     renderWorkspace();
 
     expect(await screen.findByRole("button", { name: /2 images have no text alternative/i })).toBeInTheDocument();
-    expect(screen.getByText(/1 family · 2 elements/i)).toBeInTheDocument();
-    expect(screen.getByText("Page-wide checks")).toBeInTheDocument();
+    expect(screen.getByText(/1 check · 2 affected elements/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Site quality").length).toBeGreaterThan(0);
     expect(screen.getByText("No responsive issues at 320px")).toBeInTheDocument();
     expect(screen.getByText("1 of 2", { selector: ".bk-occurrence-nav output" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Image has no text alternative/i })).not.toBeInTheDocument();
@@ -152,7 +152,7 @@ describe("BreakscopeWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Tablet 768px" }));
     expect(screen.getByText("No responsive issues at 768px")).toBeInTheDocument();
-    expect(screen.getByText("Page-wide checks")).toBeInTheDocument();
+    expect(screen.getAllByText("Site quality").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Tablet 768px" })).not.toHaveClass("failed");
 
     fireEvent.click(screen.getByRole("button", { name: /2 images have no text alternative/i }));
@@ -182,14 +182,36 @@ describe("BreakscopeWorkspace", () => {
     loadBreakscopeState.mockResolvedValue({ target, latestIssues: [phoneOnlyImage], updatedAt: 1 });
     renderWorkspace();
 
-    expect(await screen.findByRole("heading", { name: "375px · Needs attention" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "375px · Passed" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Image has no text alternative/i })).toBeInTheDocument();
-    expect(screen.queryByText("Page-wide checks")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Site quality").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Tablet 768px" }));
     expect(screen.getByRole("heading", { name: "768px · Passed" })).toBeInTheDocument();
     expect(screen.getByText("No responsive issues at 768px")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Image has no text alternative/i })).not.toBeInTheDocument();
+  });
+
+  it("shows priority site-quality checks before revealing the full inventory", async () => {
+    const qualityIssues = Array.from({ length: 7 }, (_, index): ResponsiveIssue => ({
+      ...issue,
+      id: `quality-${index}`,
+      fingerprint: `accessibility:/:rule-${index}`,
+      type: "accessibility",
+      title: `Quality rule ${index + 1}`,
+      selector: `main > div:nth-of-type(${index + 1})`,
+      failureRanges: [{ min: 320, max: 1440 }],
+      maxFailWidth: 1440,
+      measurements: { rule: `rule-${index + 1}` },
+    }));
+    loadBreakscopeState.mockResolvedValue({ target, latestIssues: qualityIssues, updatedAt: 1 });
+    renderWorkspace();
+
+    expect(await screen.findByRole("button", { name: /Quality rule 1/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show 2 additional checks" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: /Quality rule 7/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show 2 additional checks" }));
+    expect(screen.getByRole("button", { name: /Quality rule 7/i })).toBeInTheDocument();
   });
 
   it("shows a dedicated AI loading state and never exposes validation internals", async () => {
@@ -336,6 +358,8 @@ describe("BreakscopeWorkspace", () => {
     expect(screen.getByRole("region", { name: "Viewport overview" })).toBeInTheDocument();
     expect(screen.getByLabelText("Scrollable Phone capture at 375px")).toBeInTheDocument();
     expect(screen.getByLabelText("Scrollable Tablet capture at 768px")).toBeInTheDocument();
+    expect(screen.getByText("1 issue")).toBeInTheDocument();
+    expect(screen.getByText("Passed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Sync scroll/ })).toHaveAttribute("aria-pressed", "true");
     const phonePane = screen.getByLabelText("Scrollable Phone capture at 375px");
     const tabletPane = screen.getByLabelText("Scrollable Tablet capture at 768px");
@@ -405,7 +429,7 @@ describe("BreakscopeWorkspace", () => {
       scanRequest: { id: "dedupe-run-1", requestedAt: 2, source: "setup" },
       updatedAt: 2,
     });
-    const tinyButton = (key: string, order: number) => ({ key, order, tag: "button", role: "button", name: key, text: key, selector: `#${key}`, visible: true, inViewport: true, rect: { x: 10, y: 10 + order * 40, width: 30, height: 30 }, attributes: { id: key, testId: "", href: "", type: "button", alt: "", placeholder: "", ariaLabel: key }, styles: { display: "block", position: "static", color: "", backgroundColor: "", fontSize: "16px", fontWeight: "400", borderRadius: "0" } });
+    const tinyButton = (key: string, order: number) => ({ key, order, tag: "button", role: "button", name: key, text: key, selector: `#${key}`, visible: true, inViewport: true, rect: { x: 10, y: 10 + order * 40, width: 20, height: 20 }, attributes: { id: key, testId: "", href: "", type: "button", alt: "", placeholder: "", ariaLabel: key }, styles: { display: "block", position: "static", color: "", backgroundColor: "", fontSize: "16px", fontWeight: "400", borderRadius: "0" } });
     scanRouteLocally.mockResolvedValue([{ routePath: "/", width: 320, height: 900, browserEngine: "chromium", snapshot: { url: "https://example.com", title: "Test", language: "en", viewportWidth: 320, viewportHeight: 900, documentWidth: 320, documentHeight: 900, capturedAt: 1, elements: [tinyButton("first", 0), tinyButton("second", 1)] } }]);
     capturePageLocally.mockResolvedValue({ image: { arrayBuffer: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]).buffer) }, snapshot: { documentHeight: 900 } });
 
