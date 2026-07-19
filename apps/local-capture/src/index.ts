@@ -150,6 +150,43 @@ async function navigateForCapture(page: Page, url: string): Promise<PlaywrightRe
   throw lastError;
 }
 
+async function settlePageForCapture(page: Page) {
+  await page.waitForLoadState("load", { timeout: 20_000 }).catch(() => undefined);
+  await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => undefined);
+  await page.evaluate(async () => {
+    const delay = (duration: number) => new Promise<void>((resolve) => window.setTimeout(resolve, duration));
+    await Promise.race([document.fonts.ready.then(() => undefined), delay(8_000)]);
+
+    const root = document.scrollingElement ?? document.documentElement;
+    const initialHeight = Math.min(root.scrollHeight, 30_000);
+    const step = Math.max(window.innerHeight * 0.8, 480);
+    for (let position = 0, passes = 0; position < initialHeight && passes < 24; position += step, passes += 1) {
+      window.scrollTo({ top: position, behavior: "instant" });
+      await delay(45);
+    }
+    window.scrollTo({ top: 0, behavior: "instant" });
+
+    const images = Array.from(document.images);
+    await Promise.race([
+      Promise.allSettled(images.map(async (image) => {
+        if (!image.complete) await new Promise<void>((resolve) => {
+          image.addEventListener("load", () => resolve(), { once: true });
+          image.addEventListener("error", () => resolve(), { once: true });
+        });
+        await image.decode().catch(() => undefined);
+      })),
+      delay(10_000),
+    ]);
+
+    const finiteAnimations = document.getAnimations().filter((animation) => {
+      const timing = animation.effect?.getTiming();
+      return animation.playState === "running" && timing?.iterations !== Infinity;
+    });
+    await Promise.race([Promise.allSettled(finiteAnimations.map((animation) => animation.finished)), delay(3_000)]);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
+}
+
 function contextOptions(profile: { width: number; height: number }, captureProfile?: CaptureProfile): BrowserContextOptions {
   const descriptor = captureProfile?.deviceName ? devices[captureProfile.deviceName] : undefined;
   return {
@@ -199,21 +236,19 @@ async function captureWithBrowser(
   if (!navigation?.ok()) throw new Error(`Page returned ${navigation?.status() ?? "no response"} for ${url}`);
   const contentType = navigation.headers()["content-type"] ?? "";
   if (!contentType.includes("text/html")) throw new Error("URL did not return an HTML page");
-  await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
+  await settlePageForCapture(page);
   const interactionCandidates = await page.locator("details:not([open]), button[aria-expanded='false'][aria-controls]:not([type='submit']), [role='button'][aria-expanded='false'][aria-controls]").count();
   if (interactionState === "expanded" && interactionCandidates) {
     await page.evaluate(() => {
       document.querySelectorAll("details:not([open])").forEach((element) => element.setAttribute("open", ""));
       document.querySelectorAll<HTMLElement>("button[aria-expanded='false'][aria-controls]:not([type='submit']), [role='button'][aria-expanded='false'][aria-controls]").forEach((element) => element.click());
     });
-    await page.waitForTimeout(180);
+    await settlePageForCapture(page);
   }
   let snapshotData: Omit<PageSnapshot, "url" | "capturedAt"> | undefined;
   for (let attempt = 0; attempt < 3 && !snapshotData; attempt += 1) {
     try {
       await page.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => undefined);
-      await page.evaluate(() => document.fonts.ready);
-      await page.waitForTimeout(300);
       await page.evaluate("globalThis.__name = (target) => target");
       snapshotData = await page.evaluate(({ viewportWidth, viewportHeight }) => {
         const normalized = (value: string | null | undefined, limit = 240) =>
