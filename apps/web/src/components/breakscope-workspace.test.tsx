@@ -473,6 +473,7 @@ describe("BreakscopeWorkspace", () => {
     loadBreakscopeState.mockResolvedValue({
       target: { ...target, selectedRoutes: ["/"], deviceWidths: [375], browserEngines: ["chromium"] },
       availableRoutes: ["/"],
+      testProfile: "full",
       latestIssues: [],
       scanRequest: { id: "dedupe-run-1", requestedAt: 2, source: "setup" },
       updatedAt: 2,

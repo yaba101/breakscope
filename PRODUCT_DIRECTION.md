@@ -26,6 +26,9 @@ Explore is the default review surface once checkpoint captures exist. An audit i
 - [x] Viewport badges count responsive blocker families rather than every affected element.
 - [x] Accessibility, usability, and performance checks are separated from responsive status.
 - [x] Findings use explicit Responsive, Accessibility, Usability, and Performance views instead of one mixed inventory.
+- [x] Accepted local baselines classify findings as new, regressed, existing, or fixed.
+- [x] Priority review presents important finding families one at a time.
+- [x] Test profiles keep Responsive Essentials focused while broader audits remain opt-in.
 - [x] Site-quality findings are consolidated by rule and progressively disclosed.
 - [x] Touch-target checks use the WCAG minimum target size and exclude inline text links.
 

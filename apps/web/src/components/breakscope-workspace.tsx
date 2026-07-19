@@ -12,7 +12,7 @@ import type { BrowserEngine, CaptureProfile, DetectorOutcome, ResponsiveIssue, R
 import { isCaptureUrl } from "@breakscope/validation";
 import { capturePageLocally, discoverRoutesLocally, getLocalCaptureHealth, scanRouteLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys, workspaceStateQueryOptions } from "@/lib/breakscope-queries";
-import { clearBreakscopeState, loadBreakscopeState, saveBreakscopeState, type BreakscopeState, type LocalScanRun, type PersistedScanJob, type PersistedViewportPreview, type RuntimeDiagnosticSample } from "@/lib/breakscope-workspace";
+import { clearBreakscopeState, loadBreakscopeState, saveBreakscopeState, type BreakscopeState, type LocalScanRun, type PersistedScanJob, type PersistedViewportPreview, type RuntimeDiagnosticSample, type TestProfile } from "@/lib/breakscope-workspace";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
 
 const defaultWidths = [320, 390, 480, 600, 768, 900, 1024, 1280, 1440];
@@ -30,6 +30,12 @@ type FindingChange = "new" | "regressed" | "existing";
 type FindingChangeView = "changes" | "existing" | "fixed" | "all";
 const responsiveBlockerTypes = new Set<ResponsiveIssueType>(["overflow", "offscreen", "clipping", "overlap", "occlusion", "disappearing"]);
 const siteQualityTypes = new Set<ResponsiveIssueType>(["touch-target", "accessible-name", "image-alt", "accessibility", "performance"]);
+function profileAllowsIssue(profile: TestProfile, type: ResponsiveIssueType) {
+  if (responsiveBlockerTypes.has(type)) return true;
+  if (profile === "full") return true;
+  if (profile === "accessibility") return type !== "performance";
+  return profile === "performance" && type === "performance";
+}
 const findingCategories: { id: FindingCategory; label: string; description: string }[] = [
   { id: "responsive", label: "Responsive", description: "Layout problems caused by viewport width" },
   { id: "accessibility", label: "Accessibility", description: "WCAG and assistive technology checks" },
@@ -917,10 +923,13 @@ export function BreakscopeWorkspace() {
       await persistJob();
       if (controller.signal.aborted) throw new DOMException("Scan cancelled", "AbortError");
       const analysis = analyzeResponsiveSamples(samples, previous.map((issue) => issue.fingerprint));
+      const testProfile = stored.testProfile ?? "responsive";
+      const includedIssues = analysis.issues.filter((issue) => profileAllowsIssue(testProfile, issue.type));
+      const includedAllIssues = analysis.allIssues.filter((issue) => profileAllowsIssue(testProfile, issue.type));
       setScanStage(4);
       const evidenceKey = (routePath: string, width: number, browserEngine: BrowserEngine) => `${browserEngine}:${routePath}:${width}`;
       const evidenceRequests = new Map<string, { routePath: string; width: number; browserEngine: BrowserEngine }>();
-      for (const issue of analysis.issues) {
+      for (const issue of includedIssues) {
         const browserEngine = issue.browserEngine ?? "chromium";
         evidenceRequests.set(evidenceKey(issue.routePath, issue.evidenceWidth, browserEngine), { routePath: issue.routePath, width: issue.evidenceWidth, browserEngine });
         if (issue.lastWorkingWidth) evidenceRequests.set(evidenceKey(issue.routePath, issue.lastWorkingWidth, browserEngine), { routePath: issue.routePath, width: issue.lastWorkingWidth, browserEngine });
@@ -942,18 +951,18 @@ export function BreakscopeWorkspace() {
         }
       }
       setProgress((current) => ({ ...current, phase: "Finalizing findings", evidenceCompleted: requests.length, evidenceTotal: requests.length, evidenceTarget: "Capture plan complete" }));
-      const withEvidence = analysis.issues.map((issue) => {
+      const withEvidence = includedIssues.map((issue) => {
         const browserEngine = issue.browserEngine ?? "chromium";
         const failing = evidenceResults.get(evidenceKey(issue.routePath, issue.evidenceWidth, browserEngine));
         const passing = issue.lastWorkingWidth ? evidenceResults.get(evidenceKey(issue.routePath, issue.lastWorkingWidth, browserEngine)) : undefined;
         return { ...issue, ...(failing ? { screenshot: failing.image, documentHeight: failing.documentHeight } : {}), ...(passing ? { passingScreenshot: passing.image } : {}) };
       });
-      const currentFingerprints = new Set(analysis.allIssues.map((issue) => issue.fingerprint));
-      const fixedIssues = previous.filter((issue) => !currentFingerprints.has(issue.fingerprint)).map((issue) => ({ ...issue, verification: "fixed" as const, screenshot: undefined }));
+      const currentFingerprints = new Set(includedAllIssues.map((issue) => issue.fingerprint));
+      const fixedIssues = previous.filter((issue) => profileAllowsIssue(testProfile, issue.type) && !currentFingerprints.has(issue.fingerprint)).map((issue) => ({ ...issue, verification: "fixed" as const, screenshot: undefined }));
       const firstIssue = withEvidence[0];
       autoReviewAttempted.current.clear();
       setAiReviews({});
-      setResult({ issues: withEvidence, fixed: fixedIssues, suppressedCount: analysis.suppressedCount, checks: analysis.checks, activeIssue: firstIssue, hasScanned: true });
+      setResult({ issues: withEvidence, fixed: fixedIssues, suppressedCount: analysis.suppressedCount + analysis.issues.length - includedIssues.length, checks: analysis.checks.filter((check) => profileAllowsIssue(testProfile, check.type)), activeIssue: firstIssue, hasScanned: true });
       setWorkspaceMode("explore");
       setInspectorTab(firstIssue ? "issue" : "checks"); setComparisonMode("failing");
       const now = Date.now();
@@ -961,8 +970,8 @@ export function BreakscopeWorkspace() {
       scanJob = { ...scanJob, status: routeErrors.length ? "failed" : "completed", errors: routeErrors, updatedAt: now };
       const finalPreviews = boundedPreviews(capturedPreviews);
       setPreviews(finalPreviews);
-      const run: LocalScanRun = { id: crypto.randomUUID(), createdAt: now, target, issues: withEvidence, previews: finalPreviews, suppressedCount: analysis.suppressedCount };
-      const nextState: BreakscopeState = { ...stored, availableRoutes: routes, target, latestIssues: withEvidence, latestManifest: analysis.allIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), latestPreviews: finalPreviews, scanHistory: [run, ...(stored.scanHistory ?? [])].slice(0, 5), scanJob, ui: { selectedDeviceModelId: activeDeviceModelId, deviceOrientation, recentDeviceIds, pinnedDeviceIds, previewScaleMode, previewZoom, activeBrowserEngine }, updatedAt: now };
+      const run: LocalScanRun = { id: crypto.randomUUID(), createdAt: now, target, issues: withEvidence, previews: finalPreviews, suppressedCount: analysis.suppressedCount + analysis.issues.length - includedIssues.length, profile: testProfile };
+      const nextState: BreakscopeState = { ...stored, availableRoutes: routes, target, latestIssues: withEvidence, latestManifest: includedAllIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), latestPreviews: finalPreviews, scanHistory: [run, ...(stored.scanHistory ?? [])].slice(0, 5), scanJob, ui: { selectedDeviceModelId: activeDeviceModelId, deviceOrientation, recentDeviceIds, pinnedDeviceIds, previewScaleMode, previewZoom, activeBrowserEngine }, updatedAt: now };
       queryClient.setQueryData(breakscopeQueryKeys.workspace(), nextState);
       await saveBreakscopeState(nextState);
       if (routeErrors.length) setError(`Some routes could not be scanned: ${routeErrors.join(" · ")}`);

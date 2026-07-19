@@ -46,7 +46,7 @@ export function BreakscopeHistory() {
 
   async function openRun(run: LocalScanRun) {
     const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
-    const next: BreakscopeState = { ...stored, target: run.target, latestIssues: run.issues, latestPreviews: run.previews, scanJob: undefined, updatedAt: Date.now() };
+    const next: BreakscopeState = { ...stored, target: run.target, testProfile: run.profile ?? stored.testProfile ?? "responsive", latestIssues: run.issues, latestPreviews: run.previews, scanJob: undefined, updatedAt: Date.now() };
     queryClient.setQueryData(breakscopeQueryKeys.workspace(), next);
     await saveBreakscopeState(next);
     router.push("/workspace");

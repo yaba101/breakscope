@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, Copy, Globe2, LoaderCircle, Pencil, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
+import { Accessibility, ArrowRight, Check, Copy, Gauge, Globe2, ListChecks, LoaderCircle, MoveHorizontal, Pencil, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -9,10 +9,16 @@ import type { BrowserEngine, TestTarget } from "@breakscope/shared";
 import { isCaptureUrl } from "@breakscope/validation";
 import { discoverRoutesLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys } from "@/lib/breakscope-queries";
-import { loadBreakscopeState, saveBreakscopeState, type TestPreset } from "@/lib/breakscope-workspace";
+import { loadBreakscopeState, saveBreakscopeState, type TestPreset, type TestProfile } from "@/lib/breakscope-workspace";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
 
 const allBrowserEngines: BrowserEngine[] = ["chromium", "firefox", "webkit"];
+const testProfiles: { id: TestProfile; label: string; description: string; icon: typeof MoveHorizontal }[] = [
+  { id: "responsive", label: "Responsive Essentials", description: "Viewport blockers only", icon: MoveHorizontal },
+  { id: "accessibility", label: "Accessibility Essentials", description: "Responsive plus WCAG checks", icon: Accessibility },
+  { id: "performance", label: "Performance Signals", description: "Responsive plus loading signals", icon: Gauge },
+  { id: "full", label: "Full Audit", description: "Every available detector", icon: ListChecks },
+];
 
 export function BreakscopeSetup() {
   const router = useRouter();
@@ -23,6 +29,7 @@ export function BreakscopeSetup() {
   const [selectedRoutes, setSelectedRoutes] = useState<string[]>([]);
   const [deviceWidths, setDeviceWidths] = useState<number[]>([]);
   const [browserEngines, setBrowserEngines] = useState<BrowserEngine[]>(allBrowserEngines);
+  const [profile, setProfile] = useState<TestProfile>("responsive");
   const [ready, setReady] = useState(false);
   const [opening, setOpening] = useState(false);
   const [rediscovering, setRediscovering] = useState(false);
@@ -47,6 +54,7 @@ export function BreakscopeSetup() {
       setRoutes(state.draft.routes);
       setDeviceWidths(state.draft.deviceWidths);
       setBrowserEngines(state.draft.browserEngines?.length ? state.draft.browserEngines : state.target?.browserEngines?.length ? state.target.browserEngines : allBrowserEngines);
+      setProfile(state.draft.profile ?? state.testProfile ?? "responsive");
       setSelectedRoutes(state.draft.routes.includes("/") ? ["/"] : state.draft.routes.slice(0, 1));
       setPresets(state.testPresets ?? []);
       setReady(true);
@@ -68,7 +76,7 @@ export function BreakscopeSetup() {
     const name = presetName.trim();
     if (!name || !url || !selectedRoutes.length) return;
     const previous = await loadBreakscopeState();
-    const preset: TestPreset = { id: crypto.randomUUID(), name, url, routes: selectedRoutes, deviceWidths, browserEngines, updatedAt: Date.now() };
+    const preset: TestPreset = { id: crypto.randomUUID(), name, url, routes: selectedRoutes, deviceWidths, browserEngines, profile, updatedAt: Date.now() };
     const nextPresets = [preset, ...(previous.testPresets ?? []).filter((item) => item.name.toLowerCase() !== name.toLowerCase())].slice(0, 12);
     await saveBreakscopeState({ ...previous, testPresets: nextPresets, updatedAt: Date.now() });
     setPresets(nextPresets);
@@ -85,6 +93,7 @@ export function BreakscopeSetup() {
     setSelectedRoutes(preset.routes.slice(0, 5));
     setDeviceWidths(preset.deviceWidths);
     setBrowserEngines(preset.browserEngines);
+    setProfile(preset.profile ?? "responsive");
   }
 
   async function persistPresets(nextPresets: TestPreset[]) {
@@ -146,7 +155,7 @@ export function BreakscopeSetup() {
       await saveBreakscopeState({
         ...previous,
         availableRoutes: discoveredRoutes,
-        draft: { url: value, routes: discoveredRoutes, deviceWidths, browserEngines, discoveredAt: now },
+        draft: { url: value, routes: discoveredRoutes, deviceWidths, browserEngines, profile, discoveredAt: now },
         updatedAt: now,
       });
       setUrl(value);
@@ -186,6 +195,7 @@ export function BreakscopeSetup() {
       availableRoutes: routes,
       draft: undefined,
       target,
+      testProfile: profile,
       scanRequest: { id: crypto.randomUUID(), requestedAt: now, source: "setup" },
       updatedAt: now,
     } as const;
@@ -265,8 +275,13 @@ export function BreakscopeSetup() {
             })}</div>
           </section>
 
+          <section className="bk-setup-panel bk-setup-profiles-panel" aria-labelledby="setup-profile-title">
+            <div className="bk-setup-section-heading"><div><h2 id="setup-profile-title">Testing profile</h2><p>Start focused. Add broader audits only when needed.</p></div></div>
+            <div className="bk-test-profiles" role="group" aria-label="Testing profile">{testProfiles.map(({ id, label, description, icon: Icon }) => <button type="button" key={id} aria-pressed={profile === id} onClick={() => setProfile(id)}><Icon size={17} /><span><b>{label}</b><small>{description}</small></span>{profile === id && <Check size={13} />}</button>)}</div>
+          </section>
+
           <footer className="bk-setup-action">
-            <div><strong>Ready to inspect</strong><span>{selectedRoutes.length} {selectedRoutes.length === 1 ? "page" : "pages"} · {deviceWidths.length} viewports · {browserEngines.length} browsers</span></div>
+            <div><strong>Ready to inspect</strong><span>{selectedRoutes.length} {selectedRoutes.length === 1 ? "page" : "pages"} · {deviceWidths.length} viewports · {browserEngines.length} browsers · {testProfiles.find((item) => item.id === profile)!.label}</span></div>
             <button type="button" disabled={opening} onClick={() => void openWorkspace()}>{opening ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}{opening ? "Opening canvas..." : "Open testing canvas"}</button>
           </footer>
         </div>

@@ -35,8 +35,11 @@ export interface TestPreset {
   routes: string[];
   deviceWidths: number[];
   browserEngines: BrowserEngine[];
+  profile?: TestProfile;
   updatedAt: number;
 }
+
+export type TestProfile = "responsive" | "accessibility" | "performance" | "full";
 
 export interface LocalScanRun {
   id: string;
@@ -45,6 +48,7 @@ export interface LocalScanRun {
   issues: ResponsiveIssue[];
   previews: PersistedViewportPreview[];
   suppressedCount: number;
+  profile?: TestProfile;
 }
 
 export interface RuntimeDiagnosticSample {
@@ -59,6 +63,7 @@ export interface RuntimeDiagnosticSample {
 }
 
 export interface BreakscopeState {
+  testProfile?: TestProfile;
   diagnosticsHistory?: RuntimeDiagnosticSample[];
   scanHistory?: LocalScanRun[];
   baselineRunId?: string;
@@ -79,6 +84,7 @@ export interface BreakscopeState {
     routes: string[];
     deviceWidths: number[];
     browserEngines?: BrowserEngine[];
+    profile?: TestProfile;
     discoveredAt: number;
   };
   target?: TestTarget;

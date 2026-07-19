@@ -6745,10 +6745,11 @@ button {
   min-height: 0;
   grid-template-areas:
     "routes viewports"
+    "routes profiles"
     "routes browsers"
     "routes action";
   grid-template-columns: minmax(360px, .92fr) minmax(500px, 1.08fr);
-  grid-template-rows: minmax(178px, 1fr) minmax(104px, auto) 76px;
+  grid-template-rows: minmax(178px, 1fr) minmax(124px, auto) minmax(104px, auto) 76px;
   gap: 12px;
   overflow: visible;
 }
@@ -6758,6 +6759,7 @@ button {
   grid-template-rows: auto auto;
 }
 .bk-setup-browsers-panel { grid-area: browsers; }
+.bk-setup-profiles-panel { grid-area: profiles; }
 .bk-setup-action { grid-area: action; }
 .bk-setup-viewports-panel .bk-setup-devices { padding: 14px; }
 .bk-setup-viewports-panel .bk-setup-devices button { min-height: 105px; }
@@ -6772,6 +6774,14 @@ button {
 .bk-setup-browsers button > span { display: grid; gap: 2px; }
 .bk-setup-browsers button b { color: var(--setup-ink); font-size: 12px; }
 .bk-setup-browsers button small { color: var(--setup-muted); font: 9px/1 var(--font-stratum-mono), monospace; }
+.bk-test-profiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 12px 18px 16px; }
+.bk-test-profiles button { display: grid; min-height: 48px; grid-template-columns: 22px minmax(0, 1fr) 16px; align-items: center; gap: 8px; border: 1px solid var(--setup-border); border-radius: 7px; background: var(--setup-panel); padding: 7px 9px; color: var(--setup-muted); text-align: left; }
+.bk-test-profiles button:hover { border-color: var(--setup-ink); background: var(--setup-subtle); }
+.bk-test-profiles button[aria-pressed="true"] { border-color: var(--setup-ink); background: var(--setup-selected); color: var(--setup-ink); }
+.bk-test-profiles button > span { display: grid; gap: 2px; }
+.bk-test-profiles button b { color: var(--setup-ink); font-size: 10px; }
+.bk-test-profiles button small { overflow: hidden; color: var(--setup-muted); font: 8px/1.2 var(--font-stratum-mono), monospace; text-overflow: ellipsis; white-space: nowrap; }
+.bk-test-profiles button > svg:last-child { color: var(--setup-ink); }
 
 @media (max-width: 900px) {
   .bk-setup-header { grid-template-columns: auto minmax(330px, 1fr) auto; }
@@ -6795,9 +6805,9 @@ button {
   .bk-setup-options {
     display: grid;
     height: auto;
-    grid-template-areas: "viewports" "browsers" "routes" "action";
+    grid-template-areas: "viewports" "profiles" "browsers" "routes" "action";
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto minmax(300px, 1fr) 64px;
+    grid-template-rows: auto auto auto minmax(300px, 1fr) 64px;
     overflow-y: auto;
   }
   .bk-setup-panel + .bk-setup-panel { margin-top: 0; }

@@ -66,7 +66,7 @@ export function BreakscopeLanding() {
         ...previous,
         availableRoutes: routes,
         recentTargets: nextRecentTargets,
-        draft: { url: value, routes, deviceWidths: defaultDeviceWidths, browserEngines: ["chromium", "firefox", "webkit"] as BrowserEngine[], discoveredAt: now },
+        draft: { url: value, routes, deviceWidths: defaultDeviceWidths, browserEngines: ["chromium", "firefox", "webkit"] as BrowserEngine[], profile: "responsive" as const, discoveredAt: now },
         updatedAt: now,
       };
       await saveBreakscopeState(nextState);
