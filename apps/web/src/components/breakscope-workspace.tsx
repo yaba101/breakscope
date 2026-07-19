@@ -886,11 +886,14 @@ export function BreakscopeWorkspace() {
       const samples: ViewportSample[] = [...scanJob.samples]; const routeErrors: string[] = [...scanJob.errors]; const capturedPreviews: PersistedViewportPreview[] = resumable ? [...(stored.latestPreviews ?? [])] : [];
       setProgress({ current: 0, total: selectedRoutes.length, width: minWidth, route: selectedRoutes[0]!, phase: resumable ? "Resuming scan" : "Sweeping geometry" }); setPreviews(capturedPreviews);
       const previewTask = (async () => {
-        for (const browserEngine of browserEngines) for (const width of deviceWidths) {
+        const checkpointQueue = deviceWidths.flatMap((width) => browserEngines.map((browserEngine) => ({ width, browserEngine })));
+        for (const { width, browserEngine } of checkpointQueue) {
           if (controller.signal.aborted) break;
           const checkpointKey = `${browserEngine}:${selectedRoutes[0]}:${width}`;
           if (scanJob.completedCheckpoints.includes(checkpointKey)) continue;
-          setProgress((current) => ({ ...current, width, phase: `Rendering ${width}px checkpoint` }));
+          setActivePreviewWidth(width);
+          setActiveBrowserEngine(browserEngine);
+          setProgress((current) => ({ ...current, width, phase: `Rendering ${browserLabels[browserEngine]} at ${width}px` }));
           try {
             const model = modelForWidth(width);
             const captured = await capturePageLocally({ url, routePath: selectedRoutes[0]!, viewport: width <= 600 ? "mobile" : "desktop", width, height: 900, profile: captureProfile(model, browserEngine) }, controller.signal);
@@ -909,8 +912,10 @@ export function BreakscopeWorkspace() {
           }
         }
       })();
-      const routeTasks = browserEngines.flatMap((browserEngine) => selectedRoutes.map((routePath, index) => ({ browserEngine, routePath, index })));
+      const routeTasks = selectedRoutes.flatMap((routePath, index) => browserEngines.map((browserEngine) => ({ browserEngine, routePath, index })));
       await previewTask;
+      setActivePreviewWidth(deviceWidths[0] ?? minWidth);
+      setActiveBrowserEngine(browserEngines[0] ?? "chromium");
       setScanStage(2);
       const settled: PromiseSettledResult<ViewportSample[]>[] = [];
       for (const { browserEngine, routePath, index } of routeTasks) {
