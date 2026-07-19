@@ -233,6 +233,26 @@ describe("BreakscopeWorkspace", () => {
     expect(screen.getAllByText("WCAG and assistive technology checks")).toHaveLength(2);
   });
 
+  it("shows new, existing, and fixed findings against the accepted baseline", async () => {
+    const newIssue: ResponsiveIssue = { ...issue, id: "new-overflow", fingerprint: "overflow:/:new", title: "New navigation overflow", selector: "nav" };
+    const fixedIssue: ResponsiveIssue = { ...issue, id: "fixed-alt", fingerprint: "image-alt:/:fixed", type: "image-alt", title: "Image has no text alternative", failureRanges: [{ min: 320, max: 1440 }], measurements: { tag: "img" } };
+    const baselineRun = { id: "baseline", createdAt: 1, target, issues: [issue, fixedIssue], previews: [], suppressedCount: 0 };
+    loadBreakscopeState.mockResolvedValue({ target, latestIssues: [issue, newIssue], scanHistory: [baselineRun], baselineRunId: "baseline", updatedAt: 2 });
+    renderWorkspace();
+
+    expect(await screen.findByRole("button", { name: /^Changes/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("1 new · 0 regressed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /New navigation overflow/i })).toBeInTheDocument();
+    expect(screen.getByText("new", { selector: ".bk-change-badge" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Existing/ }));
+    expect(screen.getByRole("button", { name: /Horizontal overflow/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Fixed/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Accessibility: 1 finding" }));
+    expect(screen.getByText("Image has no text alternative")).toBeInTheDocument();
+    expect(screen.getByText("fixed", { selector: ".bk-change-badge" })).toBeInTheDocument();
+  });
+
   it("shows a dedicated AI loading state and never exposes validation internals", async () => {
     loadBreakscopeState.mockResolvedValue({ target, latestIssues: [issue], updatedAt: 1 });
     let finishRequest: ((response: Response) => void) | undefined;

@@ -7652,7 +7652,7 @@ button {
   display: grid;
   width: 100%;
   min-height: 62px;
-  grid-template-columns: 28px minmax(0, 1fr) 18px;
+  grid-template-columns: 28px minmax(0, 1fr) auto 18px;
   align-items: center;
   gap: 9px;
   border: 0;
@@ -7662,6 +7662,18 @@ button {
   text-align: left;
   cursor: pointer;
 }
+.bk-change-badge { align-self: center; border-radius: 999px; padding: 4px 6px; background: var(--surface-soft); color: var(--muted); font: 750 8px var(--font-stratum-mono), monospace; font-style: normal; text-transform: uppercase; }
+.bk-change-badge.new { background: #e8f2ff; color: #1558b0; }
+.bk-change-badge.regressed { background: #fff0ed; color: #a73529; }
+.bk-change-badge.fixed { background: #e8f7ef; color: #237a56; }
+.bk-change-views { display: flex; gap: 4px; margin: 0 16px 12px; padding: 3px; border: 1px solid var(--line); background: var(--surface-soft); }
+.bk-change-views button { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: center; gap: 5px; min-height: 34px; border: 0; background: transparent; color: var(--muted); font-size: 9px; font-weight: 700; }
+.bk-change-views button.active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(24, 28, 36, .1); }
+.bk-change-views button small { color: inherit; font: 650 8px var(--font-stratum-mono), monospace; }
+.bk-baseline-empty { display: flex; align-items: flex-start; gap: 7px; margin: 0 16px 12px; padding: 9px 10px; background: var(--surface-soft); color: var(--muted); font-size: 10px; line-height: 1.45; }
+.bk-baseline-empty svg { flex: 0 0 auto; margin-top: 1px; }
+.bk-fixed-finding .bk-viewport-issue-trigger { color: var(--ink); }
+.bk-fixed-finding .bk-viewport-issue-trigger > i { background: #e8f7ef; color: #237a56; }
 .bk-viewport-issue-trigger:hover { background: color-mix(in srgb, var(--color-accent) 7%, transparent); }
 .bk-viewport-issue-trigger > i {
   display: grid;
