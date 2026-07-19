@@ -29,6 +29,21 @@
   --z-dropdown: 20;
 }
 
+/* Keep every actionable surface visually and physically recognizable. */
+.breakscope-shell :where(button:not(:disabled), a[href], summary, select:not(:disabled), [role="button"]:not([aria-disabled="true"]), input[type="checkbox"]:not(:disabled), input[type="radio"]:not(:disabled)) {
+  cursor: pointer;
+  transition: filter 140ms cubic-bezier(.25, 1, .5, 1);
+}
+.breakscope-shell :where(button:not(:disabled), a[href], summary, select:not(:disabled), [role="button"]:not([aria-disabled="true"]), input[type="checkbox"]:not(:disabled), input[type="radio"]:not(:disabled)):hover {
+  filter: brightness(.94);
+}
+.breakscope-shell :where(button:disabled, select:disabled, [role="button"][aria-disabled="true"], input[type="checkbox"]:disabled, input[type="radio"]:disabled) {
+  cursor: not-allowed;
+}
+@media (prefers-reduced-motion: reduce) {
+  .breakscope-shell :where(button, a[href], summary, select, [role="button"], input[type="checkbox"], input[type="radio"]) { transition: none; }
+}
+
 /* Local setup presets */
 .bk-setup-presets {
   display: grid;
