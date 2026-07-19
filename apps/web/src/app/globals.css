@@ -7676,8 +7676,8 @@ button {
 .bk-change-badge.new { background: #e8f2ff; color: #1558b0; }
 .bk-change-badge.regressed { background: #fff0ed; color: #a73529; }
 .bk-change-badge.fixed { background: #e8f7ef; color: #237a56; }
-.bk-change-views { display: flex; gap: 4px; margin: 0 16px 12px; padding: 3px; border: 1px solid var(--line); background: var(--surface-soft); }
-.bk-change-views button { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: center; gap: 5px; min-height: 34px; border: 0; background: transparent; color: var(--muted); font-size: 9px; font-weight: 700; }
+.bk-change-views { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; margin: 0 16px 10px; padding: 3px; border: 1px solid var(--line); background: var(--surface-soft); }
+.bk-change-views button { display: grid; min-width: 0; min-height: 34px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px; border: 0; background: transparent; padding: 0 6px; color: var(--muted); font-size: 9px; font-weight: 700; white-space: nowrap; }
 .bk-change-views button.active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(24, 28, 36, .1); }
 .bk-change-views button small { color: inherit; font: 650 8px var(--font-stratum-mono), monospace; }
 .bk-baseline-empty { display: flex; align-items: flex-start; gap: 7px; margin: 0 16px 12px; padding: 9px 10px; background: var(--surface-soft); color: var(--muted); font-size: 10px; line-height: 1.45; }
@@ -7791,18 +7791,19 @@ button {
 .bk-ai-issue-review > small { color: var(--stratum-text-muted); font-size: 9px; line-height: 1.45; }
 .bk-workspace-page .bk-issue-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .bk-workspace-page .bk-issue-actions a { min-height: 42px; }
-.bk-workspace-page .bk-targeted-retest { width: calc(100% - 32px); margin: 0 16px 16px; display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); background: var(--surface-soft); text-align: left; }
+.bk-workspace-page .bk-targeted-retest { width: calc(100% - 32px); min-height: 44px; margin: 0 16px 12px; display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line); background: var(--surface-soft); text-align: left; }
 .bk-workspace-page .bk-targeted-retest span { display: grid; gap: 2px; }
-.bk-workspace-page .bk-targeted-retest small { color: var(--muted); }
-.bk-finding-categories { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0 16px 12px; }
-.bk-finding-categories button { display: grid; min-width: 0; min-height: 58px; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-align: left; }
+.bk-workspace-page .bk-targeted-retest b { font-size: 11px; }
+.bk-workspace-page .bk-targeted-retest small { color: var(--muted); font-size: 9px; }
+.bk-finding-categories { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin: 0 16px 10px; }
+.bk-finding-categories button { display: grid; min-width: 0; min-height: 46px; grid-template-columns: 19px minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 7px 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-align: left; }
 .bk-finding-categories button:hover { border-color: var(--stratum-border-strong); background: var(--surface-soft); }
-.bk-finding-categories button.active { border-color: var(--color-brand); background: color-mix(in srgb, var(--color-accent) 9%, var(--surface)); box-shadow: inset 3px 0 0 var(--color-brand); }
+.bk-finding-categories button.active { border-color: var(--color-brand); background: color-mix(in srgb, var(--color-accent) 11%, var(--surface)); }
 .bk-finding-categories button > svg { color: var(--muted); }
 .bk-finding-categories button.active > svg { color: var(--color-brand-hover); }
-.bk-finding-categories button > span { display: grid; min-width: 0; gap: 2px; }
+.bk-finding-categories button > span { display: grid; min-width: 0; }
 .bk-finding-categories button b { font-size: 11px; }
-.bk-finding-categories button small { overflow: hidden; color: var(--muted); font-size: 8px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.bk-finding-categories button small { display: none; }
 .bk-finding-categories button em { display: grid; min-width: 20px; height: 20px; place-items: center; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font: 700 9px var(--font-stratum-mono), monospace; font-style: normal; }
 .bk-finding-categories button.active em { background: var(--surface); color: var(--ink); }
 .bk-workspace-page .bk-inventory-filter { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; margin: 0 16px 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 10px; }

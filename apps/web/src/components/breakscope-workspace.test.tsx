@@ -241,7 +241,7 @@ describe("BreakscopeWorkspace", () => {
     renderWorkspace();
 
     expect(await screen.findByRole("button", { name: /^Changes/ })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("1 new · 0 regressed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Changes1$/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /New navigation overflow/i })).toBeInTheDocument();
     expect(screen.getByText("new", { selector: ".bk-change-badge" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Review 1 important finding/i }));
@@ -256,6 +256,11 @@ describe("BreakscopeWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Accessibility: 1 finding" }));
     expect(screen.getByText("Image has no text alternative")).toBeInTheDocument();
     expect(screen.getByText("fixed", { selector: ".bk-change-badge" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Severity"), { target: { value: "low" } });
+    fireEvent.click(screen.getByRole("button", { name: /^All/ }));
+    expect(screen.getByLabelText("Severity")).toHaveValue("all");
+    expect(screen.getByRole("button", { name: "Responsive: 2 findings" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("shows a dedicated AI loading state and never exposes validation internals", async () => {
