@@ -26,7 +26,7 @@ describe("BreakscopeHistory", () => {
 
     await waitFor(() => expect(saveBreakscopeState).toHaveBeenCalledWith(expect.objectContaining({ baselineRunId: "older" })));
     expect(screen.getByRole("button", { name: "Baseline" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Compare to baseline" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Review changes" })).toBeInTheDocument();
   });
 
   it("restores the selected baseline from local state", async () => {
@@ -34,6 +34,6 @@ describe("BreakscopeHistory", () => {
     render(<QueryClientProvider client={new QueryClient()}><BreakscopeHistory /></QueryClientProvider>);
 
     expect(await screen.findByRole("button", { name: "Baseline" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Compare to baseline" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Review changes" })).toBeInTheDocument();
   });
 });

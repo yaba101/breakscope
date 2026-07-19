@@ -8,13 +8,13 @@ The product is divided into three explicit modes:
 
 1. **Explore** — inspect captured viewports together, keep their scroll positions synchronized, and focus any viewport for closer inspection.
 2. **Audit** — run deterministic responsive, accessibility, and performance checks, then inspect evidence for each finding.
-3. **Compare** — compare the current run with a user-approved local baseline and decide whether the change is expected.
+3. **Changes** — review the current run against a user-approved local baseline and understand what visually changed.
 
 Explore is the default review surface once checkpoint captures exist. An audit is an intentional action, not a loading gate before the user can see the page.
 
 ## Current implementation sequence
 
-- [x] Explicit Explore, Audit, and Compare navigation in the workspace.
+- [x] Explicit Explore, Audit, and Changes navigation in the workspace.
 - [x] Multi-viewport Explore overview using the selected browser's captured checkpoints.
 - [x] Optional proportional scroll synchronization across Explore viewports.
 - [x] Focus action from the overview into the existing device evidence view.

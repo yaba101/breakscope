@@ -373,7 +373,7 @@ describe("BreakscopeWorkspace", () => {
     expect(screen.getByRole("button", { name: /Audit/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Tablet 768px" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("separator", { name: "Resize issue inspector" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Compare/ })).toHaveAttribute("href", "/history");
+    expect(screen.getByRole("link", { name: /Changes/ })).toHaveAttribute("href", "/history");
   });
 
   it("automatically starts a setup-requested scan exactly once", async () => {
