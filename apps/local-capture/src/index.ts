@@ -1,7 +1,7 @@
 import { createServer, type ServerResponse } from "node:http";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import { chromium, devices, firefox, webkit, type Browser, type BrowserContextOptions, type BrowserType } from "@playwright/test";
+import { chromium, devices, firefox, webkit, type Browser, type BrowserContextOptions, type BrowserType, type Page, type Response as PlaywrightResponse } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { viewportProfiles, type BrowserEngine, type CaptureProfile, type PageSnapshot, type ViewportId, type ViewportSample } from "@breakscope/shared";
 import { isCaptureUrl, isLocalPreviewUrl } from "@breakscope/validation";
@@ -128,7 +128,26 @@ function publicCaptureError(error: unknown, engine: BrowserEngine = "chromium") 
     const label = engine === "webkit" ? "WebKit" : engine === "firefox" ? "Firefox" : "Chromium";
     return `${label} capture runtime is not installed. Run pnpm --filter @breakscope/local-capture exec playwright install ${engine}.`;
   }
+  if (/page\.goto: Timeout .* exceeded/i.test(message)) {
+    return "The page did not finish loading after two attempts. Check the target server logs, then retry the capture.";
+  }
   return message.split("\n")[0]?.trim().slice(0, 240) || "Capture failed";
+}
+
+async function navigateForCapture(page: Page, url: string): Promise<PlaywrightResponse | null> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    } catch (error) {
+      lastError = error;
+      const transient = /Timeout .* exceeded|ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|ERR_FAILED/i.test(error instanceof Error ? error.message : String(error));
+      if (!transient || attempt === 1) throw error;
+      await page.goto("about:blank", { waitUntil: "commit", timeout: 5_000 }).catch(() => undefined);
+      await page.waitForTimeout(600);
+    }
+  }
+  throw lastError;
 }
 
 function contextOptions(profile: { width: number; height: number }, captureProfile?: CaptureProfile): BrowserContextOptions {
@@ -176,7 +195,7 @@ async function captureWithBrowser(
     }
   });
   const page = await context.newPage();
-  const navigation = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+  const navigation = await navigateForCapture(page, url);
   if (!navigation?.ok()) throw new Error(`Page returned ${navigation?.status() ?? "no response"} for ${url}`);
   const contentType = navigation.headers()["content-type"] ?? "";
   if (!contentType.includes("text/html")) throw new Error("URL did not return an HTML page");

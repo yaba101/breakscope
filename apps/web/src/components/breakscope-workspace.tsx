@@ -912,16 +912,24 @@ export function BreakscopeWorkspace() {
       const routeTasks = browserEngines.flatMap((browserEngine) => selectedRoutes.map((routePath, index) => ({ browserEngine, routePath, index })));
       await previewTask;
       setScanStage(2);
-      const settled = await Promise.allSettled(routeTasks.map(async ({ browserEngine, routePath, index }) => {
-        const routeKey = `${browserEngine}:${routePath}`;
-        if (scanJob.completedRouteScans.includes(routeKey)) return [];
-        setProgress({ current: index, total: selectedRoutes.length, width: minWidth, route: routePath, phase: "Sweeping geometry" });
-        const profile = captureProfile(modelForWidth(minWidth), browserEngine);
-        const routeSamples = await refineBoundaries(routePath, await scanRouteLocally({ url, routePath, widths, height: 900, profile }, controller.signal), controller.signal, profile);
-        scanJob = { ...scanJob, completedRouteScans: [...scanJob.completedRouteScans, routeKey], samples: [...scanJob.samples, ...routeSamples] };
-        await persistJob();
-        return routeSamples;
-      }));
+      const settled: PromiseSettledResult<ViewportSample[]>[] = [];
+      for (const { browserEngine, routePath, index } of routeTasks) {
+        try {
+          const routeKey = `${browserEngine}:${routePath}`;
+          if (scanJob.completedRouteScans.includes(routeKey)) {
+            settled.push({ status: "fulfilled", value: [] });
+            continue;
+          }
+          setProgress({ current: index, total: selectedRoutes.length, width: minWidth, route: routePath, phase: "Sweeping geometry" });
+          const profile = captureProfile(modelForWidth(minWidth), browserEngine);
+          const routeSamples = await refineBoundaries(routePath, await scanRouteLocally({ url, routePath, widths, height: 900, profile }, controller.signal), controller.signal, profile);
+          scanJob = { ...scanJob, completedRouteScans: [...scanJob.completedRouteScans, routeKey], samples: [...scanJob.samples, ...routeSamples] };
+          await persistJob();
+          settled.push({ status: "fulfilled", value: routeSamples });
+        } catch (reason) {
+          settled.push({ status: "rejected", reason });
+        }
+      }
       settled.forEach((settledResult, index) => {
         if (settledResult.status === "fulfilled") samples.push(...settledResult.value);
         else {
