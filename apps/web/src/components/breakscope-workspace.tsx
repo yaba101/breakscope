@@ -172,6 +172,11 @@ function formatElapsed(seconds: number) {
   return minutes ? `${minutes}m ${String(seconds % 60).padStart(2, "0")}s` : `${seconds}s`;
 }
 
+function captureServiceUnavailable(reason: unknown) {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  return /capture request could not reach|capture is offline|scanner is offline|failed to fetch/i.test(message);
+}
+
 function arrayBufferBase64(buffer: ArrayBuffer) {
   const bytes = new Uint8Array(buffer); let binary = "";
   for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
@@ -863,12 +868,18 @@ export function BreakscopeWorkspace() {
   }
 
   async function runScanWorkflow() {
+    const initialHealth = await getLocalCaptureHealth().catch(() => ({ online: false, activeCaptures: 0, completedCaptures: 0 }));
+    setAgentHealth(initialHealth);
+    if (!initialHealth.online) {
+      setError("Local capture is offline. Start Breakscope with pnpm dev:local; the test will continue from completed checkpoints when you retry.");
+      return;
+    }
     setWorkspaceMode("audit"); setInspectorTab("activity"); setError(""); setScrollProgress(0); setScanStage(0); setScanElapsedSeconds(0); setIssueDisplayWidth(undefined); setResult((current) => ({ ...current, fixed: [], activeIssue: undefined, hasScanned: false }));
     const controller = new AbortController(); scanController.current = controller;
     try {
       const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
       const resumable = stored.scanJob && ["running", "paused", "failed"].includes(stored.scanJob.status) && stored.scanJob.url === url && stored.scanJob.routes.join("|") === selectedRoutes.join("|") && stored.scanJob.browserEngines.join("|") === browserEngines.join("|");
-      let scanJob: PersistedScanJob = resumable ? { ...stored.scanJob!, status: "running", updatedAt: Date.now() } : { id: crypto.randomUUID(), status: "running", url, routes: selectedRoutes, widths: deviceWidths, browserEngines, completedCheckpoints: [], completedRouteScans: [], samples: [], errors: [], createdAt: Date.now(), updatedAt: Date.now() };
+      let scanJob: PersistedScanJob = resumable ? { ...stored.scanJob!, status: "running", errors: [], updatedAt: Date.now() } : { id: crypto.randomUUID(), status: "running", url, routes: selectedRoutes, widths: deviceWidths, browserEngines, completedCheckpoints: [], completedRouteScans: [], samples: [], errors: [], createdAt: Date.now(), updatedAt: Date.now() };
       let persistChain = Promise.resolve();
       const persistJob = () => {
         scanJob = { ...scanJob, updatedAt: Date.now() };
@@ -883,7 +894,7 @@ export function BreakscopeWorkspace() {
       const sameTarget = stored.target?.url === url;
       const previous = sameTarget ? (stored.latestManifest ?? stored.latestIssues).filter((issue) => selectedRouteSet.has(issue.routePath)) : [];
       const widths = [...new Set([minWidth, ...defaultWidths.filter((width) => width > minWidth && width < maxWidth), maxWidth])].sort((a, b) => a - b);
-      const samples: ViewportSample[] = [...scanJob.samples]; const routeErrors: string[] = [...scanJob.errors]; const capturedPreviews: PersistedViewportPreview[] = resumable ? [...(stored.latestPreviews ?? [])] : [];
+      const samples: ViewportSample[] = [...scanJob.samples]; const routeErrors: string[] = []; const capturedPreviews: PersistedViewportPreview[] = resumable ? [...(stored.latestPreviews ?? [])] : [];
       setProgress({ current: 0, total: selectedRoutes.length, width: minWidth, route: selectedRoutes[0]!, phase: resumable ? "Resuming scan" : "Sweeping geometry" }); setPreviews(capturedPreviews);
       const previewTask = (async () => {
         const checkpointQueue = deviceWidths.flatMap((width) => browserEngines.map((browserEngine) => ({ width, browserEngine })));
@@ -907,6 +918,10 @@ export function BreakscopeWorkspace() {
             setActivePreviewWidth(width);
           } catch (reason) {
             if (reason instanceof DOMException && reason.name === "AbortError") break;
+            if (captureServiceUnavailable(reason)) {
+              setAgentHealth({ online: false, activeCaptures: 0, completedCaptures: initialHealth.completedCaptures });
+              throw new Error(`Local capture went offline after ${scanJob.completedCheckpoints.length} of ${checkpointQueue.length} checkpoints. Start Breakscope with pnpm dev:local, then retry to continue.`);
+            }
             const detail = reason instanceof Error ? reason.message : "Capture failed";
             routeErrors.push(`${browserLabels[browserEngine]} ${selectedRoutes[0]} at ${width}px: ${detail.split("\n")[0]?.slice(0, 180)}`);
           }
@@ -932,6 +947,10 @@ export function BreakscopeWorkspace() {
           await persistJob();
           settled.push({ status: "fulfilled", value: routeSamples });
         } catch (reason) {
+          if (captureServiceUnavailable(reason)) {
+            setAgentHealth({ online: false, activeCaptures: 0, completedCaptures: initialHealth.completedCaptures });
+            throw new Error(`Local capture went offline while analyzing ${routePath}. Start Breakscope with pnpm dev:local, then retry to continue.`);
+          }
           settled.push({ status: "rejected", reason });
         }
       }
@@ -1171,7 +1190,7 @@ export function BreakscopeWorkspace() {
   return <main id="main-content" className="breakscope-shell bk-workspace-page">
     <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Responsive lab</span><Link href="/setup" className="bk-edit-setup"><Settings2 size={14} /><span>Edit setup</span></Link></div><div className="bk-command-target"><span>{new URL(url).host}</span><code>{url}</code></div><div className="bk-command-actions"><span className={`bk-agent ${agentHealth?.online === false ? "offline" : agentHealth === null ? "checking" : ""}`} role="status" aria-label={`Local capture agent ${agentHealth === null ? "checking" : agentHealth.online ? "online" : "offline"}`}><i aria-hidden="true" /> Agent {agentHealth === null ? "checking" : agentHealth.online ? "online" : "offline"}</span><button type="button" className="bk-command-run" disabled={!selectedRoutes.length || scanning || agentHealth?.online === false} aria-describedby={scanning ? "scan-progress-announcement" : undefined} onClick={() => void scan()}>{scanning ? <span className="bk-scan-glyph"><ScanSearch size={16} /></span> : <RotateCcw size={16} />}{scanning ? "Scanning" : hasScanned ? "Run again" : "Run test"}</button></div></header>
     <span id="scan-progress-announcement" className="sr-only" aria-live="polite">{scanning ? `${scanHeadline}, ${Math.round(scanPercent)} percent complete` : hasScanned ? "Test complete" : "Ready to run"}</span>
-    {error && <div className="bs-error bk-workspace-error" role="alert"><AlertTriangle size={17} /><span>{error}</span>{workspaceQuery.data?.scanJob?.status === "failed" && <button type="button" className="bk-error-retry" disabled={scanning} onClick={() => scan()}><RefreshCw size={14} /> Retry failed captures</button>}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={15} /></button></div>}
+    {error && <div className="bs-error bk-workspace-error" role="alert"><AlertTriangle size={17} /><span>{error}</span>{workspaceQuery.data?.scanJob?.status === "failed" && <button type="button" className="bk-error-retry" disabled={scanning || agentHealth?.online === false} onClick={() => scan()}><RefreshCw size={14} /> Retry failed captures</button>}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={15} /></button></div>}
     <nav className="bk-workbench-modes" aria-label="Workspace mode"><button type="button" className={workspaceMode === "explore" ? "active" : ""} aria-pressed={workspaceMode === "explore"} disabled={!previews.length || scanning} onClick={() => { setWorkspaceMode("explore"); setResult((current) => ({ ...current, activeIssue: undefined })); }}><Monitor size={15} /><span><b>Explore</b><small>Review every viewport</small></span></button><button type="button" className={workspaceMode === "audit" ? "active" : ""} aria-pressed={workspaceMode === "audit"} disabled={!routes.length && !issues.length} onClick={() => setWorkspaceMode("audit")}><ScanSearch size={15} /><span><b>Audit</b><small>Inspect findings</small></span></button><Link href="/history"><GitCompareArrows size={15} /><span><b>Changes</b><small>Review against a baseline</small></span></Link></nav>
     {(routes.length > 0 || issues.length > 0 || scanning) ? <section className={`bs-workspace mode-${workspaceMode} ${configCollapsed ? "config-collapsed" : ""}`} style={{ "--bk-inspector-width": `${inspectorWidth}px` } as CSSProperties}>
       <aside className="bs-config" aria-label="Scan configuration">

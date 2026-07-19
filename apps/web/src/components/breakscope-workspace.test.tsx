@@ -100,6 +100,23 @@ describe("BreakscopeWorkspace", () => {
     expect(screen.getByRole("button", { name: "Run test" })).toBeDisabled();
   });
 
+  it("does not start an automatic scan while the local capture agent is offline", async () => {
+    getLocalCaptureHealth.mockResolvedValue({ online: false, activeCaptures: 0, completedCaptures: 0 });
+    loadBreakscopeState.mockResolvedValue({
+      target,
+      availableRoutes: ["/", "/pricing"],
+      latestIssues: [],
+      scanRequest: { id: "offline-run-1", requestedAt: 2, source: "setup" },
+      updatedAt: 2,
+    });
+
+    renderWorkspace();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Local capture is offline");
+    expect(capturePageLocally).not.toHaveBeenCalled();
+    expect(scanRouteLocally).not.toHaveBeenCalled();
+  });
+
   it("restores a blocker into the issue navigator and inspector", async () => {
     loadBreakscopeState.mockResolvedValue({ target, latestIssues: [issue], updatedAt: 1 });
     renderWorkspace();
