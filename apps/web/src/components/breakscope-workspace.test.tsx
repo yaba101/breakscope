@@ -244,6 +244,11 @@ describe("BreakscopeWorkspace", () => {
     expect(screen.getByText("1 new · 0 regressed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /New navigation overflow/i })).toBeInTheDocument();
     expect(screen.getByText("new", { selector: ".bk-change-badge" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Review 1 important finding/i }));
+    expect(screen.getByText("Priority review")).toBeInTheDocument();
+    expect(screen.getByText("1 of 1", { selector: ".bk-review-queue output" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Finding categories" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Exit review" }));
 
     fireEvent.click(screen.getByRole("button", { name: /^Existing/ }));
     expect(screen.getByRole("button", { name: /Horizontal overflow/i })).toBeInTheDocument();
