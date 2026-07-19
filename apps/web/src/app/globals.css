@@ -7928,6 +7928,8 @@ button {
 .bk-explore-overview > header span { color: var(--stratum-text-secondary); font-size: 12px; }
 .bk-explore-overview > header button { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 11px; border: 1px solid var(--stratum-border-300); background: var(--stratum-surface-raised); color: var(--stratum-text-primary); font-weight: 700; }
 .bk-explore-overview > header button.active { border-color: var(--stratum-accent-warm); background: var(--stratum-surface-subtle); }
+.bk-explore-overview > header button small { margin-left: 2px; padding-left: 7px; border-left: 1px solid var(--stratum-border-300); color: var(--stratum-text-muted); font: 750 9px var(--font-stratum-mono), monospace; text-transform: uppercase; }
+.bk-explore-overview > header button.active small { color: var(--stratum-text-primary); }
 .bk-explore-grid { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 12px; min-height: 0; padding: 12px; overflow: auto; }
 .bk-explore-pane { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 220px; min-height: 0; border: 1px solid var(--stratum-border-300); background: var(--stratum-surface-raised); }
 .bk-explore-pane > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; min-height: 62px; padding: 9px 10px; border-bottom: 1px solid var(--stratum-border-300); }

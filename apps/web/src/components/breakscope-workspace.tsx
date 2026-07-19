@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Accessibility, AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, CircleStop, Code2, Command, CornerDownLeft, Download, Eraser, ExternalLink, EyeOff, FileText, Gauge, GitCompareArrows, Hand, ImageOff, Keyboard, Laptop, Layers3, LoaderCircle, Maximize2, MessageSquareCode, Minus, Monitor, MoreHorizontal, MoveHorizontal, Option, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw, ScanSearch, Scissors, Search, Settings2, Smartphone, Star, Tablet, Trash2, WandSparkles, X } from "lucide-react";
+import { Accessibility, AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, CircleStop, Code2, Command, CornerDownLeft, Download, Eraser, ExternalLink, EyeOff, FileText, Gauge, GitCompareArrows, Hand, ImageOff, Keyboard, Laptop, Layers3, Link2, LoaderCircle, Maximize2, MessageSquareCode, Minus, Monitor, MoreHorizontal, MoveHorizontal, Option, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw, ScanSearch, Scissors, Search, Settings2, Smartphone, Star, Tablet, Trash2, Unlink, WandSparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type DeviceOrientation, type DevicePreset } from "react-device-bezels";
@@ -333,7 +333,7 @@ function issueAffectsWidth(issue: ResponsiveIssue, width: number) {
 }
 
 function ExploreViewportGrid({ previews, issues, browserEngine, routePath, onFocus }: { previews: PersistedViewportPreview[]; issues: ResponsiveIssue[]; browserEngine: BrowserEngine; routePath: string; onFocus: (width: number) => void }) {
-  const [syncScroll, setSyncScroll] = useState(true);
+  const [syncScroll, setSyncScroll] = useState(false);
   const paneRefs = useRef(new Map<number, HTMLDivElement>());
   const syncing = useRef(false);
   const visiblePreviews = useMemo(() => previews
@@ -354,7 +354,7 @@ function ExploreViewportGrid({ previews, issues, browserEngine, routePath, onFoc
   };
 
   return <section className="bk-explore-overview" aria-label="Viewport overview">
-    <header><div><b>All captured viewports</b><span>{browserLabels[browserEngine]} · {routePath}</span></div><button type="button" className={syncScroll ? "active" : ""} aria-pressed={syncScroll} onClick={() => setSyncScroll((value) => !value)}><MoveHorizontal size={15} /> Sync scroll</button></header>
+    <header><div><b>All captured viewports</b><span>{syncScroll ? "Scrolling one viewport moves all of them" : "Each viewport scrolls independently"}</span></div><button type="button" className={syncScroll ? "active" : ""} aria-label={`Scroll viewports together: ${syncScroll ? "on" : "off"}`} aria-pressed={syncScroll} onClick={() => setSyncScroll((value) => !value)}>{syncScroll ? <Link2 size={15} /> : <Unlink size={15} />}<span>Scroll together</span><small>{syncScroll ? "On" : "Off"}</small></button></header>
     <div className="bk-explore-grid">
       {visiblePreviews.map((preview) => {
         const responsiveFamilies = groupIssueFamilies(issues.filter((issue) => (issue.browserEngine ?? "chromium") === browserEngine && issue.routePath === routePath && responsiveBlockerTypes.has(issue.type) && issueAffectsWidth(issue, preview.width)));

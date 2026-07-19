@@ -360,7 +360,11 @@ describe("BreakscopeWorkspace", () => {
     expect(screen.getByLabelText("Scrollable Tablet capture at 768px")).toBeInTheDocument();
     expect(screen.getByText("1 issue")).toBeInTheDocument();
     expect(screen.getByText("Passed")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Sync scroll/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Each viewport scrolls independently")).toBeInTheDocument();
+    const scrollTogether = screen.getByRole("button", { name: "Scroll viewports together: off" });
+    expect(scrollTogether).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(scrollTogether);
+    expect(screen.getByRole("button", { name: "Scroll viewports together: on" })).toHaveAttribute("aria-pressed", "true");
     const phonePane = screen.getByLabelText("Scrollable Phone capture at 375px");
     const tabletPane = screen.getByLabelText("Scrollable Tablet capture at 768px");
     Object.defineProperties(phonePane, { scrollHeight: { value: 1000 }, clientHeight: { value: 200 } });
