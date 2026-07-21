@@ -26,7 +26,13 @@ The workspace reports its current route, width, page section, browser-capture co
 
 ![Breakscope running a responsive scan against Greptile](apps/web/public/readme/greptile/03-live-scan-progress.png)
 
-### 4. Keep control of local evidence
+### 4. Review the final viewport overview
+
+Explore mode places every completed checkpoint in one review surface. Each viewport can scroll independently, or proportional scroll synchronization can be enabled before focusing a single capture for closer inspection.
+
+![Breakscope final Explore overview showing Greptile across phone, tablet, laptop, and wide checkpoints](apps/web/public/readme/greptile/05-final-viewport-overview.png)
+
+### 5. Keep control of local evidence
 
 Workspace controls show how much screenshot evidence is retained, allow local report export, and provide targeted cleanup without requiring a hosted account.
 
