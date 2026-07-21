@@ -34,10 +34,60 @@ describe("analyzeResponsiveSamples", () => {
     expect(result.allIssues.some((issue) => issue.type === "disappearing" && issue.elementKey === "testid:checkout")).toBe(true);
   });
 
+  it("preserves runtime source evidence for a reported element", () => {
+    const sourced = { ...button(true), rect: { x: 20, y: 20, width: 20, height: 20 }, sourceHint: { file: "/src/Checkout.tsx", line: 42, component: "Checkout", origin: "react-debug" as const } };
+    const issue = analyzeResponsiveSamples([sample(390, 390, [sourced])]).issues[0];
+    expect(issue?.sourceHint).toEqual(sourced.sourceHint);
+  });
+
   it("does not treat controls inside sticky containers as occluded", () => {
     const nav: ElementSnapshot = { ...button(true), key: "nav", tag: "nav", role: "navigation", name: "", selector: "nav", parentKey: "body", rect: { x: 0, y: 0, width: 320, height: 64 }, styles: { ...button(true).styles, position: "sticky" } };
     const link: ElementSnapshot = { ...button(true), key: "nav-link", tag: "a", role: "link", name: "Home", selector: "nav > a", parentKey: "nav", rect: { x: 12, y: 8, width: 80, height: 48 } };
     const result = analyzeResponsiveSamples([sample(320, 320, [nav, link])]);
     expect(result.allIssues.some((issue) => issue.type === "occlusion")).toBe(false);
+  });
+
+  it("returns the complete prioritized inventory instead of truncating findings", () => {
+    const controls = Array.from({ length: 5 }, (_, index): ElementSnapshot => ({
+      ...button(true), key: `button:${index}`, name: `Action ${index}`, selector: `main > button:nth-of-type(${index + 1})`, rect: { x: 12, y: index * 60, width: 20, height: 20 },
+    }));
+    const result = analyzeResponsiveSamples([sample(390, 390, controls)]);
+    expect(result.issues).toHaveLength(5);
+    expect(result.suppressedCount).toBe(0);
+  });
+
+  it("reports only genuinely undersized targets and ignores inline text links", () => {
+    const acceptable = { ...button(true), key: "acceptable", rect: { x: 12, y: 12, width: 32, height: 32 } };
+    const tiny = { ...button(true), key: "tiny", selector: "#tiny", rect: { x: 12, y: 60, width: 20, height: 20 } };
+    const inlineLink = { ...button(true), key: "inline-link", tag: "a", role: "link", selector: "p > a", rect: { x: 12, y: 100, width: 18, height: 18 }, styles: { ...button(true).styles, display: "inline" } };
+    const result = analyzeResponsiveSamples([sample(390, 390, [acceptable, tiny, inlineLink])]);
+
+    expect(result.issues.filter((issue) => issue.type === "touch-target")).toHaveLength(1);
+    expect(result.issues.find((issue) => issue.type === "touch-target")?.selector).toBe("#tiny");
+  });
+
+  it("turns axe violations into checkpoint findings with remediation evidence", () => {
+    const audited = sample(390);
+    audited.snapshot.accessibilityViolations = [{ id: "color-contrast", impact: "serious", help: "Elements must meet minimum color contrast ratio thresholds", helpUrl: "https://dequeuniversity.com/rules/axe/color-contrast", tags: ["wcag2aa", "wcag143"], nodes: [{ selector: "main > p", html: "<p>Muted text</p>", failureSummary: "Element has insufficient color contrast" }] }];
+    const result = analyzeResponsiveSamples([audited]);
+    expect(result.issues[0]).toMatchObject({ type: "accessibility", severity: "high", selector: "html", measurements: { rule: "color-contrast", wcag: "wcag2aa, wcag143" } });
+  });
+
+  it("keeps expanded-control findings separate from the default page state", () => {
+    const baseline = sample(390, 430);
+    const expanded = sample(390, 430);
+    expanded.interactionState = "expanded";
+    expanded.snapshot.interactionState = "expanded";
+    const result = analyzeResponsiveSamples([baseline, expanded]);
+    expect(result.issues).toHaveLength(2);
+    expect(result.issues.map((issue) => issue.interactionState)).toEqual([undefined, "expanded"]);
+  });
+
+  it("reports actionable performance thresholds as separate findings", () => {
+    const slow = sample(1280);
+    slow.snapshot.performance = { domContentLoadedMs: 2400, loadMs: 7200, resourceCount: 48, transferBytes: 12_000_000, largestResourceBytes: 2_000_000, largestResourceUrl: "https://example.com/hero.png", cumulativeLayoutShift: 0.3 };
+    const result = analyzeResponsiveSamples([slow]);
+    expect(result.issues.filter((issue) => issue.type === "performance")).toHaveLength(4);
+    expect(result.issues.some((issue) => issue.title === "Page layout shifts while loading" && issue.severity === "high")).toBe(true);
   });
 });

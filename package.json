@@ -2,6 +2,7 @@
   "name": "breakscope",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "packageManager": "pnpm@10.6.0",
   "scripts": {
     "dev": "pnpm --filter @breakscope/web dev",

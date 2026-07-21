@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, Globe2, LoaderCircle, RefreshCw, Save, Search, X } from "lucide-react";
+import { Accessibility, ArrowRight, Check, Gauge, Globe2, ListChecks, LoaderCircle, MoveHorizontal, RefreshCw, Search, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -9,10 +9,16 @@ import type { BrowserEngine, TestTarget } from "@breakscope/shared";
 import { isCaptureUrl } from "@breakscope/validation";
 import { discoverRoutesLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys } from "@/lib/breakscope-queries";
-import { loadBreakscopeState, saveBreakscopeState, type TestPreset } from "@/lib/breakscope-workspace";
+import { loadBreakscopeState, saveBreakscopeState, type TestProfile } from "@/lib/breakscope-workspace";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
 
 const allBrowserEngines: BrowserEngine[] = ["chromium", "firefox", "webkit"];
+const testProfiles: { id: TestProfile; label: string; description: string; icon: typeof MoveHorizontal }[] = [
+  { id: "responsive", label: "Responsive Essentials", description: "Viewport blockers only", icon: MoveHorizontal },
+  { id: "accessibility", label: "Accessibility Essentials", description: "Responsive plus WCAG checks", icon: Accessibility },
+  { id: "performance", label: "Performance Signals", description: "Responsive plus loading signals", icon: Gauge },
+  { id: "full", label: "Full Audit", description: "Every available detector", icon: ListChecks },
+];
 
 export function BreakscopeSetup() {
   const router = useRouter();
@@ -23,12 +29,11 @@ export function BreakscopeSetup() {
   const [selectedRoutes, setSelectedRoutes] = useState<string[]>([]);
   const [deviceWidths, setDeviceWidths] = useState<number[]>([]);
   const [browserEngines, setBrowserEngines] = useState<BrowserEngine[]>(allBrowserEngines);
+  const [profile, setProfile] = useState<TestProfile>("responsive");
   const [ready, setReady] = useState(false);
   const [opening, setOpening] = useState(false);
   const [rediscovering, setRediscovering] = useState(false);
   const [urlError, setUrlError] = useState("");
-  const [presets, setPresets] = useState<TestPreset[]>([]);
-  const [presetName, setPresetName] = useState("");
   const [routeQuery, setRouteQuery] = useState("");
   const selectedSet = useMemo(() => new Set(selectedRoutes), [selectedRoutes]);
   const filteredRoutes = useMemo(() => routes.filter((route) => route.toLowerCase().includes(routeQuery.trim().toLowerCase())), [routeQuery, routes]);
@@ -46,8 +51,8 @@ export function BreakscopeSetup() {
       setRoutes(state.draft.routes);
       setDeviceWidths(state.draft.deviceWidths);
       setBrowserEngines(state.draft.browserEngines?.length ? state.draft.browserEngines : state.target?.browserEngines?.length ? state.target.browserEngines : allBrowserEngines);
+      setProfile(state.draft.profile ?? state.testProfile ?? "responsive");
       setSelectedRoutes(state.draft.routes.includes("/") ? ["/"] : state.draft.routes.slice(0, 1));
-      setPresets(state.testPresets ?? []);
       setReady(true);
     }).catch(() => router.replace("/"));
     return () => { active = false; };
@@ -57,32 +62,6 @@ export function BreakscopeSetup() {
     setSelectedRoutes((current) => current.includes(route)
       ? current.length > 1 ? current.filter((item) => item !== route) : current
       : current.length < 5 ? [...current, route] : current);
-  }
-
-  function selectVisibleRoutes() {
-    setSelectedRoutes((current) => [...current, ...filteredRoutes.filter((route) => !current.includes(route))].slice(0, 5));
-  }
-
-  async function savePreset() {
-    const name = presetName.trim();
-    if (!name || !url || !selectedRoutes.length) return;
-    const previous = await loadBreakscopeState();
-    const preset: TestPreset = { id: crypto.randomUUID(), name, url, routes: selectedRoutes, deviceWidths, browserEngines, updatedAt: Date.now() };
-    const nextPresets = [preset, ...(previous.testPresets ?? []).filter((item) => item.name.toLowerCase() !== name.toLowerCase())].slice(0, 12);
-    await saveBreakscopeState({ ...previous, testPresets: nextPresets, updatedAt: Date.now() });
-    setPresets(nextPresets);
-    setPresetName("");
-  }
-
-  function applyPreset(id: string) {
-    const preset = presets.find((item) => item.id === id);
-    if (!preset) return;
-    setUrl(preset.url);
-    setUrlInput(preset.url);
-    setRoutes((current) => Array.from(new Set([...preset.routes, ...current])));
-    setSelectedRoutes(preset.routes.slice(0, 5));
-    setDeviceWidths(preset.deviceWidths);
-    setBrowserEngines(preset.browserEngines);
   }
 
   function toggleDevice(width: number) {
@@ -115,7 +94,7 @@ export function BreakscopeSetup() {
       await saveBreakscopeState({
         ...previous,
         availableRoutes: discoveredRoutes,
-        draft: { url: value, routes: discoveredRoutes, deviceWidths, browserEngines, discoveredAt: now },
+        draft: { url: value, routes: discoveredRoutes, deviceWidths, browserEngines, profile, discoveredAt: now },
         updatedAt: now,
       });
       setUrl(value);
@@ -155,6 +134,7 @@ export function BreakscopeSetup() {
       availableRoutes: routes,
       draft: undefined,
       target,
+      testProfile: profile,
       scanRequest: { id: crypto.randomUUID(), requestedAt: now, source: "setup" },
       updatedAt: now,
     } as const;
@@ -192,20 +172,13 @@ export function BreakscopeSetup() {
           </div>
         </header>
 
-        <section className="bk-setup-presets" aria-label="Saved test presets">
-          <div><Save size={15} /><strong>Local presets</strong><span>Reuse a test configuration</span></div>
-          <label><span className="sr-only">Load preset</span><select defaultValue="" onChange={(event) => applyPreset(event.target.value)}><option value="">Choose preset…</option>{presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select></label>
-          <label><span className="sr-only">Preset name</span><input value={presetName} onChange={(event) => setPresetName(event.target.value)} placeholder="Preset name" maxLength={40} /></label>
-          <button type="button" disabled={!presetName.trim()} onClick={() => void savePreset()}><Save size={14} /> Save</button>
-        </section>
-
         <div className="bk-setup-options">
           <section className="bk-setup-panel bk-setup-routes-panel" aria-labelledby="setup-routes-title">
             <div className="bk-setup-section-heading">
               <div><h2 id="setup-routes-title">Pages to inspect</h2><p>Select up to five discovered routes.</p></div>
               <span>{selectedRoutes.length} / 5</span>
             </div>
-            <div className="bk-route-tools"><label><Search size={14} /><span className="sr-only">Filter discovered routes</span><input value={routeQuery} onChange={(event) => setRouteQuery(event.target.value)} placeholder="Filter routes…" />{routeQuery && <button type="button" aria-label="Clear route filter" onClick={() => setRouteQuery("")}><X size={13} /></button>}</label><div><button type="button" disabled={!filteredRoutes.some((route) => !selectedSet.has(route)) || selectedRoutes.length >= 5} onClick={selectVisibleRoutes}>Select visible</button><button type="button" disabled={selectedRoutes.length <= 1} onClick={() => setSelectedRoutes(selectedRoutes.slice(0, 1))}>Keep first</button></div></div>
+            <div className="bk-route-tools"><label><Search size={14} /><span className="sr-only">Filter discovered routes</span><input value={routeQuery} onChange={(event) => setRouteQuery(event.target.value)} placeholder="Filter routes…" />{routeQuery && <button type="button" aria-label="Clear route filter" onClick={() => setRouteQuery("")}><X size={13} /></button>}</label></div>
             <div className="bk-setup-routes">{filteredRoutes.map((route) => (
               <button type="button" key={route} aria-pressed={selectedSet.has(route)} onClick={() => toggleRoute(route)}>
                 <i>{selectedSet.has(route) && <Check size={13} />}</i><span>{route}</span>
@@ -233,8 +206,13 @@ export function BreakscopeSetup() {
             })}</div>
           </section>
 
+          <section className="bk-setup-panel bk-setup-profiles-panel" aria-labelledby="setup-profile-title">
+            <div className="bk-setup-section-heading"><div><h2 id="setup-profile-title">Testing profile</h2><p>Start focused. Add broader audits only when needed.</p></div></div>
+            <div className="bk-test-profiles" role="group" aria-label="Testing profile">{testProfiles.map(({ id, label, description, icon: Icon }) => <button type="button" key={id} aria-pressed={profile === id} onClick={() => setProfile(id)}><Icon size={17} /><span><b>{label}</b><small>{description}</small></span>{profile === id && <Check size={13} />}</button>)}</div>
+          </section>
+
           <footer className="bk-setup-action">
-            <div><strong>Ready to inspect</strong><span>{selectedRoutes.length} {selectedRoutes.length === 1 ? "page" : "pages"} · {deviceWidths.length} viewports · {browserEngines.length} browsers</span></div>
+            <div><strong>Ready to inspect</strong><span>{selectedRoutes.length} {selectedRoutes.length === 1 ? "page" : "pages"} · {deviceWidths.length} viewports · {browserEngines.length} browsers · {testProfiles.find((item) => item.id === profile)!.label}</span></div>
             <button type="button" disabled={opening} onClick={() => void openWorkspace()}>{opening ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}{opening ? "Opening canvas..." : "Open testing canvas"}</button>
           </footer>
         </div>

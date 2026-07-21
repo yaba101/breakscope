@@ -41,6 +41,7 @@ export interface ViewportSample {
   snapshot: PageSnapshot;
   image?: ArrayBuffer;
   browserEngine?: BrowserEngine;
+  interactionState?: string;
 }
 
 export interface TestTarget {
@@ -66,7 +67,9 @@ export type ResponsiveIssueType =
   | "disappearing"
   | "touch-target"
   | "accessible-name"
-  | "image-alt";
+  | "image-alt"
+  | "accessibility"
+  | "performance";
 
 export type VerificationState = "new" | "still-broken" | "fixed";
 
@@ -93,6 +96,16 @@ export interface ResponsiveIssue {
   passingScreenshot?: ArrayBuffer;
   documentHeight?: number;
   browserEngine?: BrowserEngine;
+  interactionState?: string;
+  sourceHint?: SourceHint;
+}
+
+export interface SourceHint {
+  file?: string;
+  line?: number;
+  column?: number;
+  component?: string;
+  origin: "runtime-attribute" | "react-debug";
 }
 
 export interface DetectorOutcome {
@@ -141,6 +154,7 @@ export interface ElementSnapshot {
   name: string;
   text: string;
   selector: string;
+  sourceHint?: SourceHint;
   parentKey?: string;
   visible: boolean;
   inViewport: boolean;
@@ -185,6 +199,29 @@ export interface PageSnapshot {
   documentHeight: number;
   capturedAt: number;
   elements: ElementSnapshot[];
+  accessibilityViolations?: AccessibilityViolation[];
+  interactionState?: string;
+  interactionCandidates?: number;
+  performance?: PerformanceSnapshot;
+}
+
+export interface PerformanceSnapshot {
+  domContentLoadedMs: number;
+  loadMs: number;
+  resourceCount: number;
+  transferBytes: number;
+  largestResourceBytes: number;
+  largestResourceUrl: string;
+  cumulativeLayoutShift: number;
+}
+
+export interface AccessibilityViolation {
+  id: string;
+  impact: "minor" | "moderate" | "serious" | "critical" | null;
+  help: string;
+  helpUrl: string;
+  tags: string[];
+  nodes: Array<{ selector: string; html: string; failureSummary: string }>;
 }
 
 export type SemanticChangeType = "added" | "removed" | "text" | "moved" | "resized" | "style" | "visibility" | "page";

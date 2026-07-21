@@ -1,15 +1,18 @@
 import type { ElementSnapshot, ResponsiveIssue, ResponsiveIssueType, ViewportSample } from "@breakscope/shared";
 
-type Draft = Pick<ResponsiveIssue, "type" | "severity" | "confidence" | "title" | "description" | "routePath" | "selector" | "measurements" | "browserEngine"> & { width: number; elementRect?: ResponsiveIssue["elementRect"]; elementKey?: string };
+type Draft = Pick<ResponsiveIssue, "type" | "severity" | "confidence" | "title" | "description" | "routePath" | "selector" | "measurements" | "browserEngine" | "interactionState"> & { width: number; elementRect?: ResponsiveIssue["elementRect"]; elementKey?: string; sourceHint?: ResponsiveIssue["sourceHint"] };
 const interactiveRoles = new Set(["button", "link", "textbox", "checkbox", "radio", "combobox", "slider"]);
+const minimumTargetSize = 24;
 const detectorLabels: Record<ResponsiveIssueType, string> = {
   overflow: "Horizontal overflow", offscreen: "Control reachability", clipping: "Content clipping", overlap: "Element overlap",
   occlusion: "Sticky content coverage", disappearing: "Responsive visibility", "touch-target": "Touch target size",
   "accessible-name": "Accessible names", "image-alt": "Image alternatives",
+  accessibility: "Accessibility audit",
+  performance: "Performance diagnostics",
 };
 
-function stableFingerprint(type: ResponsiveIssueType, routePath: string, selector: string, elementKey?: string, browserEngine = "chromium") {
-  return `${browserEngine}:${type}:${routePath}:${elementKey || selector || "document"}`.toLowerCase().replace(/\s+/g, " ");
+function stableFingerprint(type: ResponsiveIssueType, routePath: string, selector: string, elementKey?: string, browserEngine = "chromium", interactionState = "default", documentIdentity?: string) {
+  return `${browserEngine}:${interactionState}:${type}:${routePath}:${elementKey || (selector === "html" ? documentIdentity : selector) || "document"}`.toLowerCase().replace(/\s+/g, " ");
 }
 
 function draft(type: ResponsiveIssueType, sample: ViewportSample, element: ElementSnapshot | undefined, data: Pick<Draft, "severity" | "confidence" | "title" | "description" | "measurements">): Draft {
@@ -20,14 +23,32 @@ function draft(type: ResponsiveIssueType, sample: ViewportSample, element: Eleme
     selector: element?.selector ?? "html",
     ...(element ? { elementKey: element.key } : {}),
     ...(element ? { elementRect: element.rect } : {}),
+    ...(element?.sourceHint ? { sourceHint: element.sourceHint } : {}),
     width: sample.width,
     browserEngine: sample.browserEngine ?? "chromium",
+    ...(sample.interactionState ? { interactionState: sample.interactionState } : {}),
   };
 }
 
 function issuesAt(sample: ViewportSample): Draft[] {
   const issues: Draft[] = [];
   const { snapshot } = sample;
+  if (snapshot.performance) {
+    const metric = snapshot.performance;
+    if (metric.loadMs > 3_000) issues.push(draft("performance", sample, undefined, { severity: metric.loadMs > 6_000 ? "high" : "medium", confidence: 0.96, title: "Page load is slow", description: `The load event completed after ${metric.loadMs}ms in the local browser.`, measurements: { loadMs: metric.loadMs, domContentLoadedMs: metric.domContentLoadedMs, resourceCount: metric.resourceCount } }));
+    if (metric.transferBytes > 5_000_000) issues.push(draft("performance", sample, undefined, { severity: metric.transferBytes > 10_000_000 ? "high" : "medium", confidence: 0.98, title: "Page transfers too much data", description: `Resources transferred ${(metric.transferBytes / 1_000_000).toFixed(1)}MB before review.`, measurements: { transferBytes: metric.transferBytes, resourceCount: metric.resourceCount } }));
+    if (metric.largestResourceBytes > 1_000_000) issues.push(draft("performance", sample, undefined, { severity: "medium", confidence: 0.98, title: "A resource is unusually large", description: `The largest resource transferred ${(metric.largestResourceBytes / 1_000_000).toFixed(1)}MB.`, measurements: { largestResourceBytes: metric.largestResourceBytes, resource: metric.largestResourceUrl } }));
+    if (metric.cumulativeLayoutShift > 0.1) issues.push(draft("performance", sample, undefined, { severity: metric.cumulativeLayoutShift > 0.25 ? "high" : "medium", confidence: 0.9, title: "Page layout shifts while loading", description: `The observed cumulative layout shift was ${metric.cumulativeLayoutShift}.`, measurements: { cumulativeLayoutShift: metric.cumulativeLayoutShift, recommendedMaximum: 0.1 } }));
+  }
+  for (const violation of snapshot.accessibilityViolations ?? []) for (const node of violation.nodes) {
+    const element = snapshot.elements.find((candidate) => candidate.selector === node.selector);
+    const severity = violation.impact === "critical" || violation.impact === "serious" ? "high" : violation.impact === "moderate" ? "medium" : "low";
+    issues.push(draft("accessibility", sample, element, {
+      severity, confidence: 0.99, title: violation.help,
+      description: node.failureSummary || `Accessibility rule ${violation.id} failed.`,
+      measurements: { rule: violation.id, impact: violation.impact ?? "unknown", wcag: violation.tags.filter((tag) => tag.startsWith("wcag")).join(", "), helpUrl: violation.helpUrl, target: node.selector },
+    }));
+  }
   if (snapshot.documentWidth > sample.width + 2) {
     issues.push(draft("overflow", sample, undefined, {
       severity: "high", confidence: 0.99, title: "Page creates horizontal scrolling",
@@ -47,11 +68,12 @@ function issuesAt(sample: ViewportSample): Draft[] {
         measurements: { left: element.rect.x, right, viewportWidth: sample.width },
       }));
     }
-    if (interactive && (element.rect.width < 44 || element.rect.height < 44)) {
+    const inlineTextLink = element.role === "link" && element.styles.display === "inline";
+    if (interactive && !inlineTextLink && (element.rect.width < minimumTargetSize || element.rect.height < minimumTargetSize)) {
       issues.push(draft("touch-target", sample, element, {
         severity: "medium", confidence: 0.93, title: `${element.name || element.role || "Control"} is difficult to tap`,
-        description: "The interactive target is smaller than 44×44px.",
-        measurements: { width: element.rect.width, height: element.rect.height, minimum: 44 },
+        description: `The interactive target is smaller than ${minimumTargetSize}×${minimumTargetSize}px.`,
+        measurements: { width: element.rect.width, height: element.rect.height, minimum: minimumTargetSize },
       }));
     }
     const clippedX = element.geometry && element.geometry.scrollWidth > element.geometry.clientWidth + 2 && ["hidden", "clip"].includes(element.styles.overflowX ?? "");
@@ -134,7 +156,7 @@ function issuesAt(sample: ViewportSample): Draft[] {
 function disappearingDrafts(samples: ViewportSample[]): Draft[] {
   const drafts: Draft[] = [];
   const byRoute = new Map<string, ViewportSample[]>();
-  for (const sample of samples) {
+  for (const sample of samples.filter((item) => !item.interactionState)) {
     const key = `${sample.browserEngine ?? "chromium"}:${sample.routePath}`;
     byRoute.set(key, [...(byRoute.get(key) ?? []), sample]);
   }
@@ -178,22 +200,23 @@ export function analyzeResponsiveSamples(samples: ViewportSample[], previousFing
   const drafts = [...sorted.flatMap(issuesAt), ...disappearingDrafts(sorted)];
   const grouped = new Map<string, Draft[]>();
   for (const item of drafts) {
-    const fingerprint = stableFingerprint(item.type, item.routePath, item.selector, item.elementKey, item.browserEngine);
+    const fingerprint = stableFingerprint(item.type, item.routePath, item.selector, item.elementKey, item.browserEngine, item.interactionState, String(item.measurements.rule ?? item.title));
     grouped.set(fingerprint, [...(grouped.get(fingerprint) ?? []), item]);
   }
   const issues = [...grouped.entries()].map(([fingerprint, group], index): ResponsiveIssue => {
     const ordered = [...group].sort((a, b) => a.width - b.width);
     const evidence = ordered[0]!;
     const failing = new Set(ordered.map((item) => item.width));
-    const routeWidths = sorted.filter((sample) => sample.routePath === evidence.routePath && (sample.browserEngine ?? "chromium") === (evidence.browserEngine ?? "chromium")).map((sample) => sample.width);
+    const routeWidths = sorted.filter((sample) => sample.routePath === evidence.routePath && (sample.browserEngine ?? "chromium") === (evidence.browserEngine ?? "chromium") && (sample.interactionState ?? "default") === (evidence.interactionState ?? "default")).map((sample) => sample.width);
     const working = routeWidths.filter((width) => !failing.has(width));
     const closestWorking = [...working].sort((a, b) => Math.abs(a - evidence.width) - Math.abs(b - evidence.width))[0];
     const ranges = failureRanges(routeWidths, failing);
-    const { elementRect, elementKey, width: _width, ...evidenceData } = evidence;
+    const { elementRect, elementKey, sourceHint, width: _width, ...evidenceData } = evidence;
     return {
       ...evidenceData,
       ...(elementRect === undefined ? {} : { elementRect }),
       ...(elementKey === undefined ? {} : { elementKey }),
+      ...(sourceHint === undefined ? {} : { sourceHint }),
       id: `issue-${index + 1}`,
       fingerprint,
       minFailWidth: ordered[0]!.width,
@@ -211,5 +234,5 @@ export function analyzeResponsiveSamples(samples: ViewportSample[], previousFing
     const issueCount = issues.filter((issue) => issue.type === type).length;
     return { type, label: detectorLabels[type], status: issueCount ? "failed" as const : "passed" as const, issueCount };
   });
-  return { issues: issues.slice(0, 3), suppressedCount: Math.max(0, issues.length - 3), allIssues: issues, checks };
+  return { issues, suppressedCount: 0, allIssues: issues, checks };
 }

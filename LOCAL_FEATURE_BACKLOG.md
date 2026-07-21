@@ -1,37 +1,56 @@
-# Local-only feature backlog
+# Local-only feature roadmap
 
-Breakscope is a local responsive-testing lab. This backlog deliberately excludes deployment, accounts, cloud sync, sharing, and collaboration features.
+Breakscope is a local responsive-testing lab. This roadmap excludes deployment, accounts, cloud sync, sharing, and collaboration.
 
-## Next branch
+## Current branch
 
-Create `feat/local-review-workflow` from `main` for the next implementation cycle.
+Implementation continues on `codex/local-review-workflow`. Every feature is verified, committed, and pushed independently.
 
-## Priority scope
+## Completed foundation
 
-1. **Project profiles**
-   - Save named local test configurations: URL, selected routes, checkpoints, devices, and browsers.
-   - Let a user duplicate, rename, select, and delete profiles from the local workspace.
+- Named local test presets with rename, duplicate, and delete.
+- Dedicated local scan history with reopen and delete.
+- Targeted checkpoint retesting.
+- Full-page checkpoint evidence and device-shell scrolling.
+- Stable selector and DOM-context inspection.
+- Markdown, JSON, and self-contained HTML exports.
+- Persistent local runtime diagnostics.
+- Keyboard navigation and a shortcut reference.
 
-2. **Local scan history**
-   - Persist recent runs locally with their timestamp, configuration summary, issue count, and captured evidence metadata.
-   - Reopen a run without running a new scan, or compare it with the current scan.
+## Detection expansion sequence
 
-3. **Retest selected checkpoint**
-   - Rerun only the current route, browser, and checkpoint from an issue or passed viewport.
-   - Keep the existing run visible until the targeted retest completes, then show the result change.
+1. **Complete issue inventory — completed**
+   - Present every deterministic finding instead of limiting the review UI to the top three.
+   - Add issue-family counts and severity/type filtering without losing prioritized ordering.
 
-## Follow-up scope
+2. **Axe-powered accessibility audit — completed**
+   - Run axe-core in each captured route/browser/checkpoint.
+   - Preserve rule, impact, WCAG tags, help URL, affected nodes, selectors, and remediation summary.
+   - Merge identical violations across checkpoints and highlight individual affected elements.
 
-- Issue lifecycle: mark fixed locally, ignore/suppress with a reason, then restore suppressed findings.
-- Element inspection: focus the exact affected element, show nearby DOM context, and copy a stable selector.
-- Local export: copy or save a Markdown/JSON report with screenshots and selected findings.
-- Capture controls: choose exact browser/device/checkpoint combinations and quickly test the current checkpoint only.
-- Runtime diagnostics: retain memory and capture metrics across scans, warn on excessive evidence, and clear all local data.
-- Review ergonomics: keyboard shortcuts for issues/checkpoints, overlay visibility, and canvas zoom reset.
+3. **Interaction-state coverage — completed**
+   - Discover safe, reversible controls: native details and non-submit controls that expose `aria-expanded` with `aria-controls`.
+   - Capture named interaction states without submitting forms or following navigation.
+   - Label findings with the state required to reproduce them.
 
-## Definition of done for the next branch
+4. **Visual run comparison — completed**
+   - Compare matching screenshots from two local runs.
+   - Report changed-pixel ratio and provide current/previous/difference evidence.
+   - Keep this analysis on the dedicated History page.
 
-- Everything persists only on the local machine.
-- A user can save a profile, run it, reopen a prior run, and retest one selected checkpoint.
-- Partial or failed local captures remain understandable and retryable.
-- Tests cover persistence, reopening history, and targeted retest behavior.
+5. **Performance diagnostics — completed**
+   - Record navigation timing, layout shifts, resource counts/bytes, and large-resource evidence.
+   - Distinguish actionable warnings from informational metrics.
+
+6. **Source-location hints — completed**
+   - Collect framework/debug source metadata when the inspected page exposes it.
+   - Fall back to stable DOM selectors when source metadata is unavailable.
+   - Never claim an exact source file without direct runtime evidence.
+
+## Definition of done
+
+- All data remains on the local machine.
+- New detectors expose deterministic evidence and clear limitations.
+- Findings remain traceable to route, browser, checkpoint, state, and target element.
+- Existing responsive scans continue working when optional audit metadata is unavailable.
+- Typecheck, tests, and production build pass before the sequence is merged.

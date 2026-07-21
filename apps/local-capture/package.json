@@ -12,9 +12,10 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@playwright/test": "^1.58.2",
+    "@axe-core/playwright": "4.11.0",
     "@breakscope/shared": "workspace:*",
-    "@breakscope/validation": "workspace:*"
+    "@breakscope/validation": "workspace:*",
+    "@playwright/test": "^1.58.2"
   },
   "devDependencies": {
     "@types/node": "^20",

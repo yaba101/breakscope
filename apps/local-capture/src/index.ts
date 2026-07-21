@@ -1,7 +1,8 @@
 import { createServer, type ServerResponse } from "node:http";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import { chromium, devices, firefox, webkit, type Browser, type BrowserContextOptions, type BrowserType } from "@playwright/test";
+import { chromium, devices, firefox, webkit, type Browser, type BrowserContextOptions, type BrowserType, type Page, type Response as PlaywrightResponse } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { viewportProfiles, type BrowserEngine, type CaptureProfile, type PageSnapshot, type ViewportId, type ViewportSample } from "@breakscope/shared";
 import { isCaptureUrl, isLocalPreviewUrl } from "@breakscope/validation";
 
@@ -127,7 +128,63 @@ function publicCaptureError(error: unknown, engine: BrowserEngine = "chromium") 
     const label = engine === "webkit" ? "WebKit" : engine === "firefox" ? "Firefox" : "Chromium";
     return `${label} capture runtime is not installed. Run pnpm --filter @breakscope/local-capture exec playwright install ${engine}.`;
   }
+  if (/page\.goto: Timeout .* exceeded/i.test(message)) {
+    return "The page did not finish loading after two attempts. Check the target server logs, then retry the capture.";
+  }
   return message.split("\n")[0]?.trim().slice(0, 240) || "Capture failed";
+}
+
+async function navigateForCapture(page: Page, url: string): Promise<PlaywrightResponse | null> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    } catch (error) {
+      lastError = error;
+      const transient = /Timeout .* exceeded|ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED|ERR_FAILED/i.test(error instanceof Error ? error.message : String(error));
+      if (!transient || attempt === 1) throw error;
+      await page.goto("about:blank", { waitUntil: "commit", timeout: 5_000 }).catch(() => undefined);
+      await page.waitForTimeout(600);
+    }
+  }
+  throw lastError;
+}
+
+async function settlePageForCapture(page: Page) {
+  await page.waitForLoadState("load", { timeout: 20_000 }).catch(() => undefined);
+  await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => undefined);
+  await page.evaluate(async () => {
+    const delay = (duration: number) => new Promise<void>((resolve) => window.setTimeout(resolve, duration));
+    await Promise.race([document.fonts.ready.then(() => undefined), delay(8_000)]);
+
+    const root = document.scrollingElement ?? document.documentElement;
+    const initialHeight = Math.min(root.scrollHeight, 30_000);
+    const step = Math.max(window.innerHeight * 0.8, 480);
+    for (let position = 0, passes = 0; position < initialHeight && passes < 24; position += step, passes += 1) {
+      window.scrollTo({ top: position, behavior: "instant" });
+      await delay(45);
+    }
+    window.scrollTo({ top: 0, behavior: "instant" });
+
+    const images = Array.from(document.images);
+    await Promise.race([
+      Promise.allSettled(images.map(async (image) => {
+        if (!image.complete) await new Promise<void>((resolve) => {
+          image.addEventListener("load", () => resolve(), { once: true });
+          image.addEventListener("error", () => resolve(), { once: true });
+        });
+        await image.decode().catch(() => undefined);
+      })),
+      delay(10_000),
+    ]);
+
+    const finiteAnimations = document.getAnimations().filter((animation) => {
+      const timing = animation.effect?.getTiming();
+      return animation.playState === "running" && timing?.iterations !== Infinity;
+    });
+    await Promise.race([Promise.allSettled(finiteAnimations.map((animation) => animation.finished)), delay(3_000)]);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
 }
 
 function contextOptions(profile: { width: number; height: number }, captureProfile?: CaptureProfile): BrowserContextOptions {
@@ -153,7 +210,8 @@ async function captureWithBrowser(
   width?: number,
   height?: number,
   includeImage = true,
-  captureProfile?: CaptureProfile
+  captureProfile?: CaptureProfile,
+  interactionState?: "expanded"
 ) {
   const startedAt = Date.now();
   const profile = captureViewport(viewport, width, height);
@@ -174,18 +232,24 @@ async function captureWithBrowser(
     }
   });
   const page = await context.newPage();
-  const navigation = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+  const navigation = await navigateForCapture(page, url);
   if (!navigation?.ok()) throw new Error(`Page returned ${navigation?.status() ?? "no response"} for ${url}`);
   const contentType = navigation.headers()["content-type"] ?? "";
   if (!contentType.includes("text/html")) throw new Error("URL did not return an HTML page");
-  await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
+  await page.evaluate("globalThis.__name = (target) => target");
+  await settlePageForCapture(page);
+  const interactionCandidates = await page.locator("details:not([open]), button[aria-expanded='false'][aria-controls]:not([type='submit']), [role='button'][aria-expanded='false'][aria-controls]").count();
+  if (interactionState === "expanded" && interactionCandidates) {
+    await page.evaluate(() => {
+      document.querySelectorAll("details:not([open])").forEach((element) => element.setAttribute("open", ""));
+      document.querySelectorAll<HTMLElement>("button[aria-expanded='false'][aria-controls]:not([type='submit']), [role='button'][aria-expanded='false'][aria-controls]").forEach((element) => element.click());
+    });
+    await settlePageForCapture(page);
+  }
   let snapshotData: Omit<PageSnapshot, "url" | "capturedAt"> | undefined;
   for (let attempt = 0; attempt < 3 && !snapshotData; attempt += 1) {
     try {
       await page.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => undefined);
-      await page.evaluate(() => document.fonts.ready);
-      await page.waitForTimeout(300);
-      await page.evaluate("globalThis.__name = (target) => target");
       snapshotData = await page.evaluate(({ viewportWidth, viewportHeight }) => {
         const normalized = (value: string | null | undefined, limit = 240) =>
           (value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
@@ -240,6 +304,23 @@ async function captureWithBrowser(
             160,
           );
         };
+        const sourceHintFor = (element: Element) => {
+          const file = normalized(element.getAttribute("data-source-file") || element.getAttribute("data-source"), 300);
+          const component = normalized(element.getAttribute("data-component-name") || element.getAttribute("data-component"), 120);
+          const line = Number.parseInt(element.getAttribute("data-source-line") ?? "", 10);
+          const column = Number.parseInt(element.getAttribute("data-source-column") ?? "", 10);
+          if (file || component) return { ...(file ? { file } : {}), ...(component ? { component } : {}), ...(Number.isFinite(line) ? { line } : {}), ...(Number.isFinite(column) ? { column } : {}), origin: "runtime-attribute" as const };
+          const fiberKey = Object.keys(element).find((key) => key.startsWith("__reactFiber$"));
+          let fiber = fiberKey ? (element as unknown as Record<string, unknown>)[fiberKey] as { _debugSource?: { fileName?: string; lineNumber?: number; columnNumber?: number }; return?: unknown; type?: unknown } | undefined : undefined;
+          for (let depth = 0; fiber && depth < 12; depth += 1) {
+            const source = fiber._debugSource;
+            const type = fiber.type as { displayName?: string; name?: string } | string | undefined;
+            const componentName = typeof type === "string" ? "" : normalized(type?.displayName || type?.name, 120);
+            if (source?.fileName || componentName) return { ...(source?.fileName ? { file: normalized(source.fileName, 300) } : {}), ...(source?.lineNumber ? { line: source.lineNumber } : {}), ...(source?.columnNumber ? { column: source.columnNumber } : {}), ...(componentName ? { component: componentName } : {}), origin: "react-debug" as const };
+            fiber = fiber.return as typeof fiber;
+          }
+          return undefined;
+        };
         const candidates = Array.from(document.querySelectorAll(
           "h1,h2,h3,h4,h5,h6,p,li,label,a,button,input,select,textarea,img,nav,main,header,footer,aside,section,article,[role],[data-testid]",
         )).slice(0, 500);
@@ -252,6 +333,7 @@ async function captureWithBrowser(
           const role = normalized(element.getAttribute("role") || implicitRole(element), 60);
           const name = accessibleName(element);
           const selector = selectorFor(element);
+          const sourceHint = sourceHintFor(element);
           const testId = normalized(element.getAttribute("data-testid"), 100);
           const id = normalized(element.id, 100);
           const href = element instanceof HTMLAnchorElement ? normalized(element.pathname || element.href, 240) : "";
@@ -269,6 +351,7 @@ async function captureWithBrowser(
             name,
             text: normalized(element instanceof HTMLElement ? element.innerText : element.textContent),
             selector,
+            ...(sourceHint ? { sourceHint } : {}),
             parentKey: element.parentElement ? keyedElements.get(element.parentElement) ?? selectorFor(element.parentElement) : "",
             visible,
             inViewport: visible && bounds.bottom > 0 && bounds.right > 0 && bounds.top < viewportHeight && bounds.left < viewportWidth,
@@ -326,12 +409,37 @@ async function captureWithBrowser(
     }
   }
   if (!snapshotData) throw new Error("Unable to read the settled page snapshot");
-  // Full-page PNGs are unbounded and are retained by the workspace while a scan is open.
-  // Capture the inspected viewport instead, keeping evidence bounded by the configured checkpoint.
-  const png = includeImage ? await page.screenshot({ fullPage: false, animations: "disabled", type: "png" }) : undefined;
+  const accessibilityViolations = await new AxeBuilder({ page }).analyze().then((result) => result.violations.map((violation) => ({
+    id: violation.id,
+    impact: violation.impact ?? null,
+    help: violation.help,
+    helpUrl: violation.helpUrl,
+    tags: violation.tags,
+    nodes: violation.nodes.map((node) => ({ selector: node.target.map(String).join(" "), html: node.html.slice(0, 500), failureSummary: node.failureSummary ?? violation.description })),
+  }))).catch(() => []);
+  const performanceSnapshot = await page.evaluate(() => {
+    const navigation = window.performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const resources = window.performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+    const largest = [...resources].sort((left, right) => (right.transferSize || right.encodedBodySize) - (left.transferSize || left.encodedBodySize))[0];
+    const shifts = window.performance.getEntriesByType("layout-shift") as Array<PerformanceEntry & { value?: number; hadRecentInput?: boolean }>;
+    return {
+      domContentLoadedMs: Math.round(navigation?.domContentLoadedEventEnd ?? 0), loadMs: Math.round(navigation?.loadEventEnd ?? 0), resourceCount: resources.length,
+      transferBytes: resources.reduce((total, resource) => total + (resource.transferSize || resource.encodedBodySize), 0),
+      largestResourceBytes: largest ? largest.transferSize || largest.encodedBodySize : 0, largestResourceUrl: largest?.name ?? "",
+      cumulativeLayoutShift: Math.round(shifts.filter((shift) => !shift.hadRecentInput).reduce((total, shift) => total + (shift.value ?? 0), 0) * 1000) / 1000,
+    };
+  });
+  // The workspace presents captures inside a scrollable device screen. A viewport-only
+  // image creates a false bottom at the initial browser height, so retain the full page
+  // and let the workspace evidence budget decide which captures remain persisted.
+  const png = includeImage ? await page.screenshot({ fullPage: true, animations: "disabled", type: "png" }) : undefined;
   const finalUrl = page.url();
   const snapshot: PageSnapshot = {
     ...snapshotData,
+    accessibilityViolations,
+    interactionCandidates,
+    performance: performanceSnapshot,
+    ...(interactionState ? { interactionState } : {}),
     url: finalUrl,
     capturedAt: Date.now(),
   };
@@ -381,6 +489,10 @@ async function scanRoute(input: ScanRouteRequest) {
         durationMs: captureResult.durationMs,
         browserEngine: input.profile?.browserEngine ?? "chromium",
       });
+      if (captureResult.snapshot.interactionCandidates) {
+        const expanded = await captureWithBrowser(browser, targetUrl(input.url, input.routePath), width <= 600 ? "mobile" : "desktop", width, input.height ?? 900, false, input.profile, "expanded");
+        samples.push({ width, height: input.height ?? 900, snapshot: expanded.snapshot, durationMs: expanded.durationMs, browserEngine: input.profile?.browserEngine ?? "chromium", interactionState: "expanded" });
+      }
     }
     return { routePath: input.routePath, samples };
   } finally {

@@ -3,27 +3,45 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Accessibility, AlertTriangle, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, CircleStop, Code2, Eraser, ExternalLink, EyeOff, FileText, Hand, ImageOff, Keyboard, Laptop, Layers3, LoaderCircle, Maximize2, MessageSquareCode, Minus, Monitor, MoreHorizontal, MoveHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw, ScanSearch, Scissors, Search, Settings2, Smartphone, Star, Tablet, Trash2, WandSparkles, X } from "lucide-react";
+import { Accessibility, AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, CircleStop, Code2, Command, CornerDownLeft, Download, Eraser, ExternalLink, EyeOff, FileText, Flag, Gauge, GitCompareArrows, Hand, ImageOff, Keyboard, Laptop, Layers3, Link2, LoaderCircle, Maximize2, MessageSquareCode, Minus, Monitor, MoreHorizontal, MoveHorizontal, Option, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw, ScanSearch, Scissors, Search, Settings2, Smartphone, Star, Tablet, Trash2, Unlink, WandSparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type DeviceOrientation, type DevicePreset } from "react-device-bezels";
 import { analyzeResponsiveSamples } from "@breakscope/comparison-engine";
 import type { BrowserEngine, CaptureProfile, DetectorOutcome, ResponsiveIssue, ResponsiveIssueType, TestTarget, ViewportSample } from "@breakscope/shared";
 import { isCaptureUrl } from "@breakscope/validation";
-import { capturePageLocally, discoverRoutesLocally, scanRouteLocally } from "@/lib/local-capture";
+import { capturePageLocally, discoverRoutesLocally, getLocalCaptureHealth, scanRouteLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys, workspaceStateQueryOptions } from "@/lib/breakscope-queries";
-import { clearBreakscopeState, loadBreakscopeState, saveBreakscopeState, type BreakscopeState, type PersistedScanJob, type PersistedViewportPreview } from "@/lib/breakscope-workspace";
+import { clearBreakscopeState, loadBreakscopeState, saveBreakscopeState, type BreakscopeState, type LocalScanRun, type PersistedScanJob, type PersistedViewportPreview, type RuntimeDiagnosticSample, type TestProfile } from "@/lib/breakscope-workspace";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
 
 const defaultWidths = [320, 390, 480, 600, 768, 900, 1024, 1280, 1440];
 const evidenceWarningBytes = 48 * 1024 * 1024;
 const evidenceLimitBytes = 64 * 1024 * 1024;
 type InspectorTab = "activity" | "issue" | "findings" | "checks";
+type WorkspaceMode = "explore" | "audit";
 type ComparisonMode = "failing" | "passing";
 type DeviceKind = "phone" | "tablet" | "desktop";
 type PreviewScaleMode = "fit-device" | "fit-screen" | "actual" | "custom";
 type DeviceModelId = DeviceName | "iphone-17-pro" | "iphone-17-pro-max" | "pixel-10-pro" | "pixel-10-pro-xl" | "galaxy-s26" | "galaxy-s26-ultra" | "chrome-desktop" | "safari-desktop" | "edge-desktop";
 type DeviceFilter = "recent" | "phone" | "tablet" | "laptop" | "wide";
+type FindingCategory = "responsive" | "accessibility" | "usability" | "performance";
+type FindingChange = "new" | "regressed" | "existing";
+type FindingChangeView = "changes" | "existing" | "fixed" | "all";
+const responsiveBlockerTypes = new Set<ResponsiveIssueType>(["overflow", "offscreen", "clipping", "overlap", "occlusion", "disappearing"]);
+const siteQualityTypes = new Set<ResponsiveIssueType>(["touch-target", "accessible-name", "image-alt", "accessibility", "performance"]);
+function profileAllowsIssue(profile: TestProfile, type: ResponsiveIssueType) {
+  if (responsiveBlockerTypes.has(type)) return true;
+  if (profile === "full") return true;
+  if (profile === "accessibility") return type !== "performance";
+  return profile === "performance" && type === "performance";
+}
+const findingCategories: { id: FindingCategory; label: string; description: string }[] = [
+  { id: "responsive", label: "Responsive", description: "Layout problems caused by viewport width" },
+  { id: "accessibility", label: "Accessibility", description: "WCAG and assistive technology checks" },
+  { id: "usability", label: "Usability", description: "Target size and interaction guidance" },
+  { id: "performance", label: "Performance", description: "Loading, transfer, and layout stability" },
+];
 
 interface DeviceModel {
   id: DeviceModelId;
@@ -71,6 +89,17 @@ interface ResultState {
   checks: DetectorOutcome[];
   activeIssue?: ResponsiveIssue;
   hasScanned: boolean;
+}
+
+interface ScanProgress {
+  current: number;
+  total: number;
+  width: number;
+  route: string;
+  phase: string;
+  evidenceCompleted?: number;
+  evidenceTotal?: number;
+  evidenceTarget?: string;
 }
 
 interface AiIssueAnalysis {
@@ -138,18 +167,50 @@ function formatBytes(bytes = 0) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function DevRuntimePanel({ retainedBytes }: { retainedBytes: number }) {
+function formatElapsed(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  return minutes ? `${minutes}m ${String(seconds % 60).padStart(2, "0")}s` : `${seconds}s`;
+}
+
+function captureServiceUnavailable(reason: unknown) {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  return /capture request could not reach|capture is offline|scanner is offline|failed to fetch/i.test(message);
+}
+
+function arrayBufferBase64(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer); let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  return btoa(binary);
+}
+
+function downloadLocalReport(format: "md" | "json" | "html", state: BreakscopeState) {
+  const target = state.target;
+  if (!target) return;
+  const findings = state.latestIssues; const title = `Breakscope report — ${new URL(target.url).host}`;
+  const markdown = `# ${title}\n\nGenerated ${new Date().toLocaleString()}\n\n- Routes: ${target.selectedRoutes.join(", ")}\n- Range: ${target.minWidth}–${target.maxWidth}px\n- Findings: ${findings.length}\n\n${findings.map((issue, index) => `${index + 1}. **${issue.title}** — ${issue.routePath} at ${issue.evidenceWidth}px\n   - ${issue.description}\n   - Target: \`${issue.selector}\``).join("\n") || "No findings."}`;
+  const serializable = { title, generatedAt: new Date().toISOString(), target, findings: findings.map(({ screenshot: _screenshot, passingScreenshot: _passing, ...issue }) => issue) };
+  const html = `<!doctype html><meta charset="utf-8"><title>${title}</title><style>body{font:16px/1.55 system-ui;max-width:960px;margin:48px auto;padding:0 24px;color:#151923}article{border:1px solid #d8d2c7;padding:20px;margin:16px 0}code{background:#f2efe9;padding:2px 5px}img{max-width:100%;border:1px solid #ddd}</style><h1>${title}</h1><p>${new Date().toLocaleString()} · ${findings.length} findings · ${target.minWidth}–${target.maxWidth}px</p>${findings.map((issue) => `<article><h2>${issue.title}</h2><p>${issue.description}</p><p><b>${issue.routePath}</b> at ${issue.evidenceWidth}px</p><code>${issue.selector}</code>${issue.screenshot ? `<p><img alt="Evidence for ${issue.title}" src="data:image/png;base64,${arrayBufferBase64(issue.screenshot)}"></p>` : ""}</article>`).join("") || "<p>No findings.</p>"}`;
+  const content = format === "json" ? JSON.stringify(serializable, null, 2) : format === "html" ? html : markdown;
+  const href = URL.createObjectURL(new Blob([content], { type: format === "json" ? "application/json" : format === "html" ? "text/html" : "text/markdown" }));
+  const link = document.createElement("a"); link.href = href; link.download = `breakscope-${new URL(target.url).host}.${format}`; link.click(); URL.revokeObjectURL(href);
+}
+
+function DevRuntimePanel({ retainedBytes, history, onSample }: { retainedBytes: number; history: RuntimeDiagnosticSample[]; onSample: (sample: RuntimeDiagnosticSample) => void }) {
   const [stats, setStats] = useState<{ app?: { rssBytes: number; heapUsedBytes: number }; capture?: { activeCaptures?: number; completedCaptures?: number; rssBytes?: number; heapUsedBytes?: number; ok?: boolean } }>({});
+  const lastRecordedAt = useRef(0);
+  const onSampleRef = useRef(onSample);
+  useEffect(() => { onSampleRef.current = onSample; }, [onSample]);
   useEffect(() => {
-    const refresh = () => void fetch("/api/dev/runtime").then((response) => response.ok ? response.json() : undefined).then((data) => { if (data) setStats(data); }).catch(() => undefined);
+    const refresh = () => void fetch("/api/dev/runtime").then((response) => response.ok ? response.json() : undefined).then((data) => { if (data) { setStats(data); if (Date.now() - lastRecordedAt.current >= 30_000) { lastRecordedAt.current = Date.now(); onSampleRef.current({ id: crypto.randomUUID(), capturedAt: Date.now(), retainedBytes, appHeapBytes: data.app?.heapUsedBytes ?? 0, appRssBytes: data.app?.rssBytes ?? 0, captureHeapBytes: data.capture?.heapUsedBytes ?? 0, captureRssBytes: data.capture?.rssBytes ?? 0, completedCaptures: data.capture?.completedCaptures ?? 0 }); } } }).catch(() => undefined);
     refresh();
     const timer = window.setInterval(refresh, 5_000);
     return () => window.clearInterval(timer);
-  }, []);
-  return <aside className="bk-dev-runtime" aria-label="Development runtime diagnostics"><b>Runtime diagnostics</b><span>Browser evidence retained: <strong>{formatBytes(retainedBytes)}</strong></span><span>Next heap / RSS: <strong>{formatBytes(stats.app?.heapUsedBytes)} / {formatBytes(stats.app?.rssBytes)}</strong></span><span>Capture active / completed: <strong>{stats.capture?.activeCaptures ?? "—"} / {stats.capture?.completedCaptures ?? "—"}</strong></span><span>Capture heap / RSS: <strong>{formatBytes(stats.capture?.heapUsedBytes)} / {formatBytes(stats.capture?.rssBytes)}</strong></span></aside>;
+  }, [retainedBytes]);
+  const oldest = history.at(-1); const latest = history[0];
+  return <aside className="bk-dev-runtime" aria-label="Development runtime diagnostics"><b>Runtime diagnostics</b><span>Browser evidence retained: <strong>{formatBytes(retainedBytes)}</strong></span><span>Next heap / RSS: <strong>{formatBytes(stats.app?.heapUsedBytes)} / {formatBytes(stats.app?.rssBytes)}</strong></span><span>Capture active / completed: <strong>{stats.capture?.activeCaptures ?? "—"} / {stats.capture?.completedCaptures ?? "—"}</strong></span><span>Capture heap / RSS: <strong>{formatBytes(stats.capture?.heapUsedBytes)} / {formatBytes(stats.capture?.rssBytes)}</strong></span>{latest && <span>Stored trend ({history.length}): <strong>{oldest ? `${formatBytes(oldest.appHeapBytes)} → ` : ""}{formatBytes(latest.appHeapBytes)} heap</strong></span>}</aside>;
 }
 
-function WorkspaceControls({ retainedBytes, disabled, onClearEvidence, onClearPreferences, onResetWorkspace }: { retainedBytes: number; disabled: boolean; onClearEvidence: () => void; onClearPreferences: () => void; onResetWorkspace: () => void }) {
+function WorkspaceControls({ retainedBytes, diagnosticsHistory, disabled, onExport, onDiagnosticSample, onClearEvidence, onClearPreferences, onResetWorkspace }: { retainedBytes: number; diagnosticsHistory: RuntimeDiagnosticSample[]; disabled: boolean; onExport: (format: "md" | "json" | "html") => void; onDiagnosticSample: (sample: RuntimeDiagnosticSample) => void; onClearEvidence: () => void; onClearPreferences: () => void; onResetWorkspace: () => void }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   return <Popover.Root>
@@ -158,7 +219,7 @@ function WorkspaceControls({ retainedBytes, disabled, onClearEvidence, onClearPr
       <header><div><b>Workspace controls</b><span className={retainedBytes >= evidenceWarningBytes ? "warning" : ""}>{retainedBytes ? `${formatBytes(retainedBytes)} of ${formatBytes(evidenceLimitBytes)} evidence retained` : "No captured evidence retained"}</span></div><Popover.Close aria-label="Close workspace controls"><X size={15} /></Popover.Close></header>
       <button type="button" className="bk-workspace-control-primary" disabled={disabled || !retainedBytes} onClick={onClearEvidence}><Eraser size={16} /><span><b>Clear captured evidence</b><small>Keep this test configuration</small></span></button>
       <button type="button" className="bk-workspace-control-row" onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}><MoreHorizontal size={16} /><span>More actions</span><ChevronDown size={15} /></button>
-      {moreOpen && <div className="bk-workspace-control-more"><section className="bk-local-storage-summary"><b>Saved on this device</b><span>Test setup, presets, screenshots, issue evidence, and view preferences.</span><small>AI repair briefs remain in memory for this session only.</small></section><button type="button" disabled={disabled} onClick={onClearPreferences}><Settings2 size={15} /> Reset view preferences</button><button type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> Reload workspace</button>{process.env.NODE_ENV === "development" && <DevRuntimePanel retainedBytes={retainedBytes} />}</div>}
+      {moreOpen && <div className="bk-workspace-control-more"><section className="bk-local-storage-summary"><b>Saved on this device</b><span>Test setup, presets, screenshots, issue evidence, and view preferences.</span><small>AI repair briefs remain in memory for this session only.</small></section><section className="bk-report-export"><b><Download size={14} /> Export local report</b><div><button type="button" onClick={() => onExport("md")}>Markdown</button><button type="button" onClick={() => onExport("json")}>JSON</button><button type="button" onClick={() => onExport("html")}>HTML + images</button></div></section><button type="button" disabled={disabled} onClick={onClearPreferences}><Settings2 size={15} /> Reset view preferences</button><button type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> Reload workspace</button>{process.env.NODE_ENV === "development" && <DevRuntimePanel retainedBytes={retainedBytes} history={diagnosticsHistory} onSample={onDiagnosticSample} />}</div>}
       <div className="bk-workspace-control-danger">{confirmingReset ? <><p>Remove this test, its captured evidence, and local preferences?</p><div><button type="button" onClick={() => setConfirmingReset(false)}>Cancel</button><button type="button" onClick={onResetWorkspace}><Trash2 size={15} /> Reset workspace</button></div></> : <button type="button" onClick={() => setConfirmingReset(true)}><Trash2 size={15} /> Reset workspace</button>}</div>
       <Popover.Arrow className="bk-workspace-controls-arrow" width={12} height={7} />
     </Popover.Content></Popover.Portal>
@@ -187,7 +248,7 @@ function ResultImage({ image, alt, retryLabel, retrying, onRetry, onReady, child
 
 function PreviewSurface({ scanning, previewRef, scrollProgress, issuePosition, onScroll, onUserInteraction, children }: { scanning?: boolean; previewRef?: RefObject<HTMLDivElement | null>; scrollProgress: number; issuePosition?: number; onScroll?: () => void; onUserInteraction?: () => void; children: ReactNode }) {
   const section = Math.min(8, Math.floor(scrollProgress * 8) + 1);
-  return <div className="bk-library-screen-content"><div className="bs-preview" ref={previewRef} onScroll={onScroll} onWheel={onUserInteraction} onPointerDown={onUserInteraction}>{children}</div>{scanning && <div className="bk-scan-overlay"><i /><span>Scanning section {section} of 8</span></div>}{(scanning || issuePosition !== undefined) && <div className={`bk-page-minimap ${scanning ? "is-scanning" : "has-issue"}`} aria-label={`${Math.round(scrollProgress * 100)}% through page`}><span className="bk-minimap-progress" style={{ height: `${Math.max(8, scrollProgress * 100)}%` }} />{Array.from({ length: 8 }, (_, index) => <span key={index} className={`bk-minimap-section ${index < section ? "scanned" : ""}`} style={{ top: `${index * 12.5}%` }} />)}{issuePosition !== undefined && <b className="bk-minimap-issue" style={{ top: `${Math.min(96, Math.max(1, issuePosition * 100))}%` }} />}</div>}</div>;
+  return <div className="bk-library-screen-content"><div className="bs-preview" ref={previewRef} tabIndex={0} aria-label="Scrollable captured page" onScroll={onScroll} onWheel={(event) => { onUserInteraction?.(); event.stopPropagation(); }} onPointerDown={onUserInteraction} onKeyDown={(event) => { const preview = event.currentTarget; const step = preview.clientHeight * .82; const next = event.key === "PageDown" || event.key === " " ? preview.scrollTop + step : event.key === "PageUp" ? preview.scrollTop - step : event.key === "Home" ? 0 : event.key === "End" ? preview.scrollHeight : undefined; if (next !== undefined) { event.preventDefault(); preview.scrollTo({ top: next, behavior: "auto" }); } }}>{children}</div>{scanning && <div className="bk-scan-overlay"><i /><span>Scanning section {section} of 8</span></div>}{(scanning || issuePosition !== undefined) && <div className={`bk-page-minimap ${scanning ? "is-scanning" : "has-issue"}`} aria-label={`${Math.round(scrollProgress * 100)}% through page`}><span className="bk-minimap-progress" style={{ height: `${Math.max(8, scrollProgress * 100)}%` }} />{Array.from({ length: 8 }, (_, index) => <span key={index} className={`bk-minimap-section ${index < section ? "scanned" : ""}`} style={{ top: `${index * 12.5}%` }} />)}{issuePosition !== undefined && <b className="bk-minimap-issue" style={{ top: `${Math.min(96, Math.max(1, issuePosition * 100))}%` }} />}</div>}</div>;
 }
 
 function DeviceFrame({ model, browserEngine, orientation, scaleMode, previewZoom, url, scanning, previewRef, scrollProgress, issuePosition, onScroll, onUserInteraction, children }: { model: DeviceModel; browserEngine: BrowserEngine; orientation: DeviceOrientation; scaleMode: PreviewScaleMode; previewZoom: number; url: string; scanning?: boolean; previewRef?: RefObject<HTMLDivElement | null>; scrollProgress: number; issuePosition?: number; onScroll?: () => void; onUserInteraction?: () => void; children: ReactNode }) {
@@ -252,7 +313,7 @@ function CheckpointSwitcher({ widths, activeWidth, browserEngine, previews, issu
   return <div className="bk-checkpoint-control"><span>Captured checkpoints</span><div className="bk-device-switcher" role="group" aria-label="Captured checkpoints">{widths.map((width) => {
     const choice = deviceChoices.find((device) => device.width === width);
     const ready = previews.some((preview) => preview.width === width && (preview.browserEngine ?? "chromium") === browserEngine);
-    const failed = issues.some((issue) => (issue.browserEngine ?? "chromium") === browserEngine && !isPageWideIssue(issue, widths) && issueAffectsWidth(issue, width));
+    const failed = issues.some((issue) => (issue.browserEngine ?? "chromium") === browserEngine && !isPageWideIssue(issue) && issueAffectsWidth(issue, width));
     const selected = selectedWidth === width;
     return <button type="button" key={width} className={`${selected ? "active" : ""} ${failed ? "failed" : ready ? "ready" : ""}`} aria-label={`${choice?.label ?? "Custom"} ${width}px`} aria-pressed={selected} onClick={() => onSelect(width)}>{icon(width)}<span><b>{choice?.label ?? "Custom"}</b><small>{width}px</small></span></button>;
   })}</div></div>;
@@ -280,15 +341,71 @@ function DeviceScanPlaceholder({ phase, width, kind }: { phase: string; width: n
 }
 
 function issueFamilyKey(issue: ResponsiveIssue) {
-  return `${issue.routePath}:${issue.type}:${issue.title}:${issue.failureRanges.map((range) => `${range.min}-${range.max}`).join(",")}`;
+  if (siteQualityTypes.has(issue.type)) {
+    const discriminator = issue.type === "accessibility" ? String(issue.measurements.rule ?? issue.title) : issue.type === "performance" ? issue.title : issue.type;
+    return `${issue.routePath}:${issue.interactionState ?? "default"}:${issue.type}:${discriminator}`;
+  }
+  return `${issue.routePath}:${issue.interactionState ?? "default"}:${issue.type}:${issue.title}:${issue.failureRanges.map((range) => `${range.min}-${range.max}`).join(",")}`;
 }
 
 function issueAffectsWidth(issue: ResponsiveIssue, width: number) {
   return issue.failureRanges.some((range) => width >= range.min && width <= range.max);
 }
 
-function isPageWideIssue(issue: ResponsiveIssue, checkpointWidths: number[]) {
-  return checkpointWidths.length > 1 && checkpointWidths.every((width) => issueAffectsWidth(issue, width));
+function ExploreViewportGrid({ previews, issues, browserEngine, routePath, onFocus }: { previews: PersistedViewportPreview[]; issues: ResponsiveIssue[]; browserEngine: BrowserEngine; routePath: string; onFocus: (width: number) => void }) {
+  const [syncScroll, setSyncScroll] = useState(false);
+  const paneRefs = useRef(new Map<number, HTMLDivElement>());
+  const syncing = useRef(false);
+  const visiblePreviews = useMemo(() => previews
+    .filter((preview) => (preview.browserEngine ?? "chromium") === browserEngine && preview.routePath === routePath)
+    .sort((left, right) => left.width - right.width), [browserEngine, previews, routePath]);
+
+  const synchronize = (sourceWidth: number) => {
+    if (!syncScroll || syncing.current) return;
+    const source = paneRefs.current.get(sourceWidth);
+    if (!source) return;
+    const sourceRange = Math.max(1, source.scrollHeight - source.clientHeight);
+    const progress = source.scrollTop / sourceRange;
+    syncing.current = true;
+    paneRefs.current.forEach((pane, width) => {
+      if (width !== sourceWidth) pane.scrollTop = progress * Math.max(0, pane.scrollHeight - pane.clientHeight);
+    });
+    requestAnimationFrame(() => { syncing.current = false; });
+  };
+
+  return <section className="bk-explore-overview" aria-label="Viewport overview">
+    <header><div><b>All captured viewports</b><span>{syncScroll ? "Scrolling one viewport moves all of them" : "Each viewport scrolls independently"}</span></div><button type="button" className={syncScroll ? "active" : ""} aria-label={`Scroll viewports together: ${syncScroll ? "on" : "off"}`} aria-pressed={syncScroll} onClick={() => setSyncScroll((value) => !value)}>{syncScroll ? <Link2 size={15} /> : <Unlink size={15} />}<span>Scroll together</span><small>{syncScroll ? "On" : "Off"}</small></button></header>
+    <div className="bk-explore-grid">
+      {visiblePreviews.map((preview) => {
+        const responsiveFamilies = groupIssueFamilies(issues.filter((issue) => (issue.browserEngine ?? "chromium") === browserEngine && issue.routePath === routePath && responsiveBlockerTypes.has(issue.type) && issueAffectsWidth(issue, preview.width)));
+        const issueCount = responsiveFamilies.length;
+        return <article className="bk-explore-pane" key={`${browserEngine}-${preview.width}`}>
+          <header><span><b>{preview.label}</b><small>{preview.width}px</small></span><span className={issueCount ? "has-issues" : "passed"}>{issueCount ? `${issueCount} issue${issueCount === 1 ? "" : "s"}` : "Passed"}</span><button type="button" onClick={() => onFocus(preview.width)}>Focus <ChevronRight size={14} /></button></header>
+          <div className="bk-explore-pane-scroll" aria-label={`Scrollable ${preview.label} capture at ${preview.width}px`} tabIndex={0} ref={(node) => { if (node) paneRefs.current.set(preview.width, node); else paneRefs.current.delete(preview.width); }} onScroll={() => synchronize(preview.width)}>
+            <ResultImage image={preview.image} alt={`${preview.label} overview at ${preview.width}px`} />
+          </div>
+        </article>;
+      })}
+    </div>
+  </section>;
+}
+
+function isPageWideIssue(issue: ResponsiveIssue) {
+  return siteQualityTypes.has(issue.type);
+}
+
+function findingCategory(issue: ResponsiveIssue): FindingCategory {
+  if (responsiveBlockerTypes.has(issue.type)) return "responsive";
+  if (issue.type === "touch-target") return "usability";
+  if (issue.type === "performance") return "performance";
+  return "accessibility";
+}
+
+function FindingCategoryIcon({ category, size = 16 }: { category: FindingCategory; size?: number }) {
+  if (category === "responsive") return <MoveHorizontal size={size} />;
+  if (category === "accessibility") return <Accessibility size={size} />;
+  if (category === "usability") return <Hand size={size} />;
+  return <Gauge size={size} />;
 }
 
 function issueFamilyTitle(issue: ResponsiveIssue, count: number) {
@@ -296,6 +413,7 @@ function issueFamilyTitle(issue: ResponsiveIssue, count: number) {
   if (issue.type === "image-alt") return `${count} images have no text alternative`;
   if (issue.type === "accessible-name") return `${count} controls have no accessible name`;
   if (issue.type === "touch-target") return `${count} controls are difficult to tap`;
+  if (issue.type === "accessibility" || issue.type === "performance") return issue.title;
   return `${count} occurrences · ${issue.title}`;
 }
 
@@ -304,7 +422,21 @@ function issueTargetDescription(issue: ResponsiveIssue) {
   return issue.type === "image-alt" ? `${tag || "image"} missing alternative text` : `${tag || "element"} affected by this check`;
 }
 
+function stableIssueSelector(issue: ResponsiveIssue) {
+  const values = issue.measurements as Record<string, unknown>;
+  if (typeof values.testId === "string" && values.testId) return `[data-testid="${values.testId}"]`;
+  if (typeof values.id === "string" && values.id) return `#${CSS.escape(values.id)}`;
+  if (typeof values.ariaLabel === "string" && values.ariaLabel) return `[aria-label="${values.ariaLabel}"]`;
+  return issue.selector;
+}
+
+function selectorBreadcrumb(selector: string) {
+  return selector.split(">" ).map((part) => part.trim()).filter(Boolean).slice(-4).join(" › ");
+}
+
 function IssueTypeIcon({ type, size = 16 }: { type: ResponsiveIssueType; size?: number }) {
+  if (type === "accessibility") return <Accessibility size={size} />;
+  if (type === "performance") return <Gauge size={size} />;
   if (type === "image-alt") return <ImageOff size={size} />;
   if (type === "accessible-name") return <Accessibility size={size} />;
   if (type === "touch-target") return <Hand size={size} />;
@@ -321,24 +453,80 @@ function groupIssueFamilies(source: ResponsiveIssue[]) {
   return [...families.values()];
 }
 
-function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pageWideIssues, selectedIssue, aiAnalysis, aiPending, aiError, url, onSelect, onClearSelection, onAnalyze }: { width: number; checkpointWidths: number[]; routePath: string; issues: ResponsiveIssue[]; pageWideIssues: ResponsiveIssue[]; selectedIssue?: ResponsiveIssue; aiAnalysis?: AiIssueAnalysis; aiPending: boolean; aiError?: string; url: string; onSelect: (issue: ResponsiveIssue) => void; onClearSelection: () => void; onAnalyze: (issue: ResponsiveIssue, mode: "concise" | "technical") => void }) {
+function issueFailureSpan(issue: ResponsiveIssue) {
+  return issue.failureRanges.reduce((total, range) => total + Math.max(1, range.max - range.min + 1), 0);
+}
+
+function findingChange(issue: ResponsiveIssue, baselineIssues: ResponsiveIssue[]): FindingChange {
+  const baseline = baselineIssues.find((candidate) => candidate.fingerprint === issue.fingerprint);
+  if (!baseline) return "new";
+  const severityRank = { low: 1, medium: 2, high: 3 } as const;
+  return severityRank[issue.severity] > severityRank[baseline.severity] || issueFailureSpan(issue) > issueFailureSpan(baseline) ? "regressed" : "existing";
+}
+
+function sourceHintLabel(issue: ResponsiveIssue) {
+  const source = issue.sourceHint;
+  if (!source?.file) return "Component name exposed by the inspected page";
+  return `${source.file}${source.line ? `:${source.line}` : ""}${source.column ? `:${source.column}` : ""}`;
+}
+
+function ViewportIssueInspector({ width, routePath, issues, pageWideIssues, baselineIssues, baselineAvailable, selectedIssue, aiAnalysis, aiPending, aiError, retesting, url, onSelect, onClearSelection, onRetest, onAnalyze }: { width: number; routePath: string; issues: ResponsiveIssue[]; pageWideIssues: ResponsiveIssue[]; baselineIssues: ResponsiveIssue[]; baselineAvailable: boolean; selectedIssue?: ResponsiveIssue; aiAnalysis?: AiIssueAnalysis; aiPending: boolean; aiError?: string; retesting: boolean; url: string; onSelect: (issue: ResponsiveIssue) => void; onClearSelection: () => void; onRetest: () => void; onAnalyze: (issue: ResponsiveIssue, mode: "concise" | "technical") => void }) {
   const [copiedPromptFor, setCopiedPromptFor] = useState("");
   const [analysisMode, setAnalysisMode] = useState<"concise" | "technical">("concise");
   const [briefOutcome, setBriefOutcome] = useState<"applied" | "unhelpful" | "">("");
-  const issueFamilies = useMemo(() => groupIssueFamilies(issues), [issues]);
-  const pageWideFamilies = useMemo(() => groupIssueFamilies(pageWideIssues), [pageWideIssues]);
+  const [severityFilter, setSeverityFilter] = useState<"all" | ResponsiveIssue["severity"]>("all");
+  const [changeView, setChangeView] = useState<FindingChangeView>(baselineAvailable ? "changes" : "all");
+  const [selectedCategory, setSelectedCategory] = useState<FindingCategory>(() => selectedIssue ? findingCategory(selectedIssue) : issues.length ? "responsive" : pageWideIssues[0] ? findingCategory(pageWideIssues[0]) : "accessibility");
+  const [showAllFindings, setShowAllFindings] = useState(false);
+  const [reviewMode, setReviewMode] = useState(false);
+  const allFindings = useMemo(() => [...issues, ...pageWideIssues], [issues, pageWideIssues]);
+  const currentFingerprints = useMemo(() => new Set(allFindings.map((issue) => issue.fingerprint)), [allFindings]);
+  const fixedFindings = useMemo(() => baselineIssues.filter((issue) => !currentFingerprints.has(issue.fingerprint)), [baselineIssues, currentFingerprints]);
+  const changeCounts = useMemo(() => ({
+    new: groupIssueFamilies(allFindings.filter((issue) => findingChange(issue, baselineIssues) === "new")).length,
+    regressed: groupIssueFamilies(allFindings.filter((issue) => findingChange(issue, baselineIssues) === "regressed")).length,
+    existing: groupIssueFamilies(allFindings.filter((issue) => findingChange(issue, baselineIssues) === "existing")).length,
+    fixed: groupIssueFamilies(fixedFindings).length,
+  }), [allFindings, baselineIssues, fixedFindings]);
+  const allIssueFamilies = useMemo(() => groupIssueFamilies(issues), [issues]);
+  const allFindingFamilyCount = useMemo(() => groupIssueFamilies(allFindings).length, [allFindings]);
+  const viewFindings = useMemo(() => changeView === "fixed" ? fixedFindings : changeView === "all" ? allFindings : allFindings.filter((issue) => changeView === "changes" ? findingChange(issue, baselineIssues) !== "existing" : findingChange(issue, baselineIssues) === "existing"), [allFindings, baselineIssues, changeView, fixedFindings]);
+  const categoryFamilies = useMemo(() => Object.fromEntries(findingCategories.map(({ id }) => [id, groupIssueFamilies(viewFindings.filter((issue) => findingCategory(issue) === id))])) as Record<FindingCategory, ResponsiveIssue[][]>, [viewFindings]);
+  const requestedCategory = selectedIssue ? findingCategory(selectedIssue) : selectedCategory;
+  const activeCategory = categoryFamilies[requestedCategory].length ? requestedCategory : findingCategories.find(({ id }) => categoryFamilies[id].length)?.id ?? requestedCategory;
+  const selectedDefinition = findingCategories.find(({ id }) => id === activeCategory)!;
+  const filteredCategoryIssues = useMemo(() => viewFindings.filter((issue) => findingCategory(issue) === activeCategory && (severityFilter === "all" || issue.severity === severityFilter)), [activeCategory, severityFilter, viewFindings]);
+  const filteredFamilies = useMemo(() => groupIssueFamilies(filteredCategoryIssues), [filteredCategoryIssues]);
+  const visibleFamilies = showAllFindings ? filteredFamilies : filteredFamilies.slice(0, 5);
+  const reviewFamilies = useMemo(() => groupIssueFamilies(allFindings.filter((issue) => baselineAvailable ? findingChange(issue, baselineIssues) !== "existing" : responsiveBlockerTypes.has(issue.type) || issue.severity === "high")).sort((left, right) => ({ high: 0, medium: 1, low: 2 })[left[0]!.severity] - ({ high: 0, medium: 1, low: 2 })[right[0]!.severity]), [allFindings, baselineAvailable, baselineIssues]);
+  const reviewIndex = selectedIssue ? reviewFamilies.findIndex((family) => family.some((issue) => issue.fingerprint === selectedIssue.fingerprint)) : -1;
+  const activeReviewIndex = Math.max(0, reviewIndex);
+  const selectReviewFinding = (index: number) => {
+    const family = reviewFamilies[(index + reviewFamilies.length) % reviewFamilies.length];
+    if (family?.[0]) onSelect(family[0]);
+  };
+  const selectChangeView = (nextView: FindingChangeView) => {
+    const nextFindings = nextView === "fixed" ? fixedFindings : nextView === "all" ? allFindings : allFindings.filter((issue) => nextView === "changes" ? findingChange(issue, baselineIssues) !== "existing" : findingChange(issue, baselineIssues) === "existing");
+    const firstCategory = findingCategories.find(({ id }) => nextFindings.some((issue) => findingCategory(issue) === id))?.id;
+    onClearSelection();
+    setChangeView(nextView);
+    setSeverityFilter("all");
+    setShowAllFindings(false);
+    if (firstCategory) setSelectedCategory(firstCategory);
+  };
   const renderFamilies = (families: ResponsiveIssue[][]) => families.map((family) => {
     const selected = family.some((issue) => selectedIssue?.fingerprint === issue.fingerprint);
     const issue = selected ? family.find((item) => item.fingerprint === selectedIssue?.fingerprint)! : family[0]!;
     const occurrenceIndex = family.findIndex((item) => item.fingerprint === issue.fingerprint);
     const selectOccurrence = (direction: -1 | 1) => onSelect(family[(occurrenceIndex + direction + family.length) % family.length]!);
     return <article key={issueFamilyKey(issue)} className={selected ? "active" : ""}>
-      <button type="button" className="bk-viewport-issue-trigger" aria-expanded={selected} onClick={() => selected ? onClearSelection() : onSelect(issue)}><i aria-label={`${issue.type.replaceAll("-", " ")} issue`}><IssueTypeIcon type={issue.type} /></i><span><b>{issueFamilyTitle(issue, family.length)}</b><small>{issue.type.replaceAll("-", " ")} · {issue.severity} severity{family.length > 1 ? ` · ${family.length} occurrences` : ""}</small></span><ChevronDown size={16} /></button>
+      <button type="button" className="bk-viewport-issue-trigger" aria-expanded={selected} onClick={() => selected ? onClearSelection() : onSelect(issue)}><i aria-label={`${issue.type.replaceAll("-", " ")} issue`}><IssueTypeIcon type={issue.type} /></i><span><b>{issueFamilyTitle(issue, family.length)}</b><small>{issue.type.replaceAll("-", " ")} · {issue.severity} severity{family.length > 1 ? ` · ${family.length} occurrences` : ""}</small></span>{baselineAvailable && <em className={`bk-change-badge ${findingChange(issue, baselineIssues)}`}>{findingChange(issue, baselineIssues)}</em>}<ChevronDown size={16} /></button>
       {selected && <div className="bk-viewport-issue-detail">
         {family.length > 1 && <div className="bk-occurrence-nav"><span>Affected element</span><div><button type="button" aria-label="Previous affected element" onClick={() => selectOccurrence(-1)}><ChevronLeft size={15} /></button><output>{occurrenceIndex + 1} of {family.length}</output><button type="button" aria-label="Next affected element" onClick={() => selectOccurrence(1)}><ChevronRight size={15} /></button></div></div>}
         <p>{issue.description}</p>
-        <dl><div><dt>{isPageWideIssue(issue, checkpointWidths) ? "Scope" : "Fails"}</dt><dd>{isPageWideIssue(issue, checkpointWidths) ? "Every checkpoint" : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div><div><dt>Target</dt><dd><b>{issueTargetDescription(issue)}</b><small>Highlighted in the preview</small></dd></div><div><dt>Status</dt><dd>{issue.verification.replace("-", " ")}</dd></div></dl>
+        <dl><div><dt>{isPageWideIssue(issue) ? "Category" : "Fails"}</dt><dd>{isPageWideIssue(issue) ? findingCategories.find(({ id }) => id === findingCategory(issue))!.label : `${issue.failureRanges.map((range) => range.min === range.max ? range.min : `${range.min}–${range.max}`).join(", ")}px`}</dd></div>{issue.interactionState && <div><dt>State</dt><dd><b>Expanded controls</b><small>Reproduced after opening safe disclosures</small></dd></div>}<div><dt>Target</dt><dd><b>{issueTargetDescription(issue)}</b><small>Highlighted in the preview</small></dd></div><div><dt>Status</dt><dd>{issue.verification.replace("-", " ")}</dd></div></dl>
         <div className="bk-measurements"><span>Detector evidence</span>{Object.entries(issue.measurements).slice(0, 4).map(([key, value]) => <div key={key}><code>{key}</code><b>{String(value)}</b></div>)}</div>
+        <section className="bk-element-context"><header><b>Element context</b><button type="button" onClick={() => void navigator.clipboard.writeText(stableIssueSelector(issue))}><Code2 size={13} /> Copy stable selector</button></header><dl>{issue.sourceHint && <div><dt>Runtime source</dt><dd><b>{issue.sourceHint.component || "Component source"}</b><small>{sourceHintLabel(issue)}</small></dd></div>}<div><dt>DOM path</dt><dd>{selectorBreadcrumb(issue.selector)}</dd></div><div><dt>Stable target</dt><dd><code>{stableIssueSelector(issue)}</code></dd></div><div><dt>Element box</dt><dd>{issue.elementRect ? `${Math.round(issue.elementRect.width)} × ${Math.round(issue.elementRect.height)} at ${Math.round(issue.elementRect.x)}, ${Math.round(issue.elementRect.y)}` : "Not captured"}</dd></div></dl></section>
         <section className={`bk-ai-issue-review ${aiPending ? "is-loading" : ""}`} aria-busy={aiPending}>
           <header className="bk-ai-review-header"><span><WandSparkles size={14} /> AI repair brief</span>{aiAnalysis && <b>{Math.round(aiAnalysis.confidence * 100)}% confidence</b>}</header>
           <div className="bk-ai-mode" role="group" aria-label="Repair brief detail"><button type="button" className={analysisMode === "concise" ? "active" : ""} aria-pressed={analysisMode === "concise"} onClick={() => setAnalysisMode("concise")}>Concise</button><button type="button" className={analysisMode === "technical" ? "active" : ""} aria-pressed={analysisMode === "technical"} onClick={() => setAnalysisMode("technical")}>Technical</button></div>
@@ -358,9 +546,16 @@ function ViewportIssueInspector({ width, checkpointWidths, routePath, issues, pa
     </article>;
   });
   return <div className="bk-viewport-inspector">
-    <header><div><span>Viewport status</span><h2>{width}px · {issues.length ? "Needs attention" : "Passed"}</h2><p><code>{routePath}</code> · {issues.length ? `${issueFamilies.length} responsive ${issueFamilies.length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b aria-label={issues.length ? `${issueFamilies.length} responsive issues` : "Responsive checks passed"}>{issues.length || "OK"}</b></header>
-    {pageWideIssues.length > 0 && <section className="bk-page-wide-findings"><header><div><b>Page-wide checks</b><span>Independent of viewport size</span></div><em>{pageWideFamilies.length} {pageWideFamilies.length === 1 ? "family" : "families"} · {pageWideIssues.length} {pageWideIssues.length === 1 ? "element" : "elements"}</em></header><div className="bk-viewport-issue-list">{renderFamilies(pageWideFamilies)}</div></section>}
-    {issues.length ? <div className="bk-viewport-issue-list">{renderFamilies(issueFamilies)}</div> : <details className="bk-viewport-clear"><summary><Check size={16} /><b>No responsive issues at {width}px</b><ChevronDown size={14} /></summary><p>All viewport-dependent checks passed at this checkpoint.</p></details>}
+    <header><div><span>Viewport status</span><h2>{width}px · {issues.length ? "Needs attention" : "Passed"}</h2><p><code>{routePath}</code> · {issues.length ? `${allIssueFamilies.length} responsive ${allIssueFamilies.length === 1 ? "issue" : "issues"} at this checkpoint` : "No responsive failures at this checkpoint"}</p></div><b aria-label={issues.length ? `${allIssueFamilies.length} responsive issues` : "Responsive checks passed"}>{allIssueFamilies.length || "OK"}</b></header>
+    {!reviewMode && reviewFamilies.length > 0 && <button type="button" className="bk-start-review" onClick={() => { setReviewMode(true); selectReviewFinding(0); }}><ScanSearch size={17} /><span><b>Review {reviewFamilies.length} important {reviewFamilies.length === 1 ? "finding" : "findings"}</b><small>Work through the priority queue one at a time</small></span><ArrowRight size={16} /></button>}
+    {reviewMode && reviewFamilies.length > 0 ? <section className="bk-review-queue"><header><button type="button" onClick={() => { setReviewMode(false); onClearSelection(); }}><X size={14} /> Exit review</button><span>Priority review</span><output>{activeReviewIndex + 1} of {reviewFamilies.length}</output></header><div className="bk-review-progress"><i style={{ width: `${(activeReviewIndex + 1) / reviewFamilies.length * 100}%` }} /></div><div className="bk-viewport-issue-list">{renderFamilies([reviewFamilies[activeReviewIndex]!])}</div><footer><button type="button" disabled={reviewFamilies.length < 2} onClick={() => selectReviewFinding(activeReviewIndex - 1)}><ChevronLeft size={15} /> Previous</button><button type="button" disabled={reviewFamilies.length < 2} onClick={() => selectReviewFinding(activeReviewIndex + 1)}>Next finding <ChevronRight size={15} /></button></footer></section> : <>
+    {allFindings.length > 0 && <nav className="bk-finding-categories" aria-label="Finding categories">{findingCategories.map((category) => { const count = categoryFamilies[category.id].length; return <button type="button" key={category.id} className={activeCategory === category.id ? "active" : ""} aria-pressed={activeCategory === category.id} aria-label={`${category.label}: ${count} ${count === 1 ? "finding" : "findings"}`} onClick={() => { if (selectedIssue && findingCategory(selectedIssue) !== category.id) onClearSelection(); setSelectedCategory(category.id); setSeverityFilter("all"); setShowAllFindings(false); }}><FindingCategoryIcon category={category.id} /><span><b>{category.label}</b><small>{category.description}</small></span><em>{count}</em></button>; })}</nav>}
+    {baselineAvailable ? <nav className="bk-change-views" aria-label="Baseline status"><button type="button" className={changeView === "changes" ? "active" : ""} aria-pressed={changeView === "changes"} onClick={() => selectChangeView("changes")}><span>Changes</span><small>{changeCounts.new + changeCounts.regressed}</small></button><button type="button" className={changeView === "fixed" ? "active" : ""} aria-pressed={changeView === "fixed"} onClick={() => selectChangeView("fixed")}><span>Fixed</span><small>{changeCounts.fixed}</small></button><button type="button" className={changeView === "existing" ? "active" : ""} aria-pressed={changeView === "existing"} onClick={() => selectChangeView("existing")}><span>Existing</span><small>{changeCounts.existing}</small></button><button type="button" className={changeView === "all" ? "active" : ""} aria-pressed={changeView === "all"} onClick={() => selectChangeView("all")}><span>All</span><small>{allFindingFamilyCount}</small></button></nav> : allFindings.length > 0 && <p className="bk-baseline-empty"><Flag size={14} /> Set a trusted scan as the baseline in Changes to separate new regressions from existing findings.</p>}
+    {allFindings.length > 0 && <div className="bk-inventory-filter"><span>{selectedDefinition.label} findings</span><label>Severity<select value={severityFilter} onChange={(event) => { setSeverityFilter(event.target.value as typeof severityFilter); setShowAllFindings(false); }}><option value="all">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label></div>}
+    <button type="button" className="bk-targeted-retest" disabled={retesting} onClick={onRetest}>{retesting ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}<span><b>{retesting ? "Retesting checkpoint…" : `Retest ${width}px checkpoint`}</b><small>Refresh findings without rerunning the full test</small></span></button>
+    {allFindings.length > 0 && <section className="bk-finding-group"><header><div><b>{selectedDefinition.label}</b><span>{selectedDefinition.description}</span></div><em>{filteredFamilies.length} {filteredFamilies.length === 1 ? "family" : "families"} · {filteredCategoryIssues.length} {filteredCategoryIssues.length === 1 ? "element" : "elements"}</em></header>{filteredFamilies.length ? <><div className="bk-viewport-issue-list">{changeView === "fixed" ? visibleFamilies.map((family) => { const issue = family[0]!; return <article key={issueFamilyKey(issue)} className="bk-fixed-finding"><div className="bk-viewport-issue-trigger"><i><Check size={15} /></i><span><b>{issueFamilyTitle(issue, family.length)}</b><small>{issue.type.replaceAll("-", " ")} · no longer detected</small></span><em className="bk-change-badge fixed">fixed</em></div></article>; }) : renderFamilies(visibleFamilies)}</div>{filteredFamilies.length > 5 && <button type="button" className="bk-quality-reveal" aria-expanded={showAllFindings} onClick={() => setShowAllFindings((value) => !value)}>{showAllFindings ? "Show priority findings only" : `Show ${filteredFamilies.length - 5} additional findings`}<ChevronDown size={14} /></button>}</> : <p className="bk-inventory-filter-empty">No {severityFilter === "all" ? "" : `${severityFilter} `}{selectedDefinition.label.toLowerCase()} findings in this baseline view.</p>}</section>}
+    </>}
+    {!issues.length && <details className="bk-viewport-clear"><summary><Check size={16} /><b>No responsive issues at {width}px</b><ChevronDown size={14} /></summary><p>All viewport-dependent checks passed at this checkpoint.</p></details>}
   </div>;
 }
 
@@ -400,7 +595,7 @@ export function BreakscopeWorkspace() {
   const [recentDeviceIds, setRecentDeviceIds] = useState<DeviceModelId[]>(["iphone-17-pro"]);
   const [pinnedDeviceIds, setPinnedDeviceIds] = useState<DeviceModelId[]>([]);
   const [preferencesReady, setPreferencesReady] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0, width: 0, route: "", phase: "Preparing" });
+  const [progress, setProgress] = useState<ScanProgress>({ current: 0, total: 0, width: 0, route: "", phase: "Preparing" });
   const [scanStage, setScanStage] = useState(0);
   const [result, setResult] = useState<ResultState>({ issues: [], fixed: [], suppressedCount: 0, checks: [], hasScanned: false });
   const [error, setError] = useState("");
@@ -412,6 +607,9 @@ export function BreakscopeWorkspace() {
   const [inspectorWidth, setInspectorWidth] = useState(380);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("audit");
+  const [agentHealth, setAgentHealth] = useState<{ online: boolean; activeCaptures: number; completedCaptures: number } | null>(null);
+  const [scanElapsedSeconds, setScanElapsedSeconds] = useState(0);
   const scanController = useRef<AbortController | undefined>(undefined);
   const scanPreviewRef = useRef<HTMLDivElement | null>(null);
   const issuePreviewRef = useRef<HTMLDivElement | null>(null);
@@ -425,6 +623,30 @@ export function BreakscopeWorkspace() {
   const { issues, fixed, suppressedCount, activeIssue, hasScanned } = result;
   const retainedEvidenceBytes = useMemo(() => previews.reduce((total, preview) => total + preview.image.byteLength, 0) + issues.reduce((total, issue) => total + (issue.screenshot?.byteLength ?? 0) + (issue.passingScreenshot?.byteLength ?? 0), 0), [previews, issues]);
   const scanMutation = useMutation({ mutationKey: breakscopeQueryKeys.scan(), mutationFn: runScanWorkflow });
+  const scanning = scanMutation.isPending;
+
+  useEffect(() => {
+    let active = true;
+    const refreshAgentHealth = async () => {
+      try {
+        const health = await getLocalCaptureHealth();
+        if (active) setAgentHealth(health);
+      } catch {
+        if (active) setAgentHealth({ online: false, activeCaptures: 0, completedCaptures: 0 });
+      }
+    };
+    void refreshAgentHealth();
+    const timer = window.setInterval(refreshAgentHealth, 5_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+
+  useEffect(() => {
+    if (!scanning) return;
+    const startedAt = Date.now();
+    const refresh = () => setScanElapsedSeconds(Math.floor((Date.now() - startedAt) / 1_000));
+    const timer = window.setInterval(refresh, 1_000);
+    return () => window.clearInterval(timer);
+  }, [scanning]);
   const viewportRetryMutation = useMutation({
     mutationKey: [...breakscopeQueryKeys.all, "viewport-retry"],
     mutationFn: async (request: { kind: "checkpoint" | "issue"; width: number; routePath: string; browserEngine?: BrowserEngine; issueFingerprint?: string; evidenceMode?: ComparisonMode }) => {
@@ -454,6 +676,29 @@ export function BreakscopeWorkspace() {
     },
     onError: (reason) => setError(reason instanceof Error ? `Could not recapture this viewport: ${reason.message}` : "Could not recapture this viewport"),
   });
+  const targetedRetestMutation = useMutation({
+    mutationKey: [...breakscopeQueryKeys.all, "targeted-retest"],
+    mutationFn: async ({ width, routePath, browserEngine }: { width: number; routePath: string; browserEngine: BrowserEngine }) => {
+      const sampleWidths = [...new Set([Math.max(minWidth, width - 1), width, Math.min(maxWidth, width + 1)])];
+      const profile = captureProfile(modelForWidth(width), browserEngine);
+      const samples = await scanRouteLocally({ url, routePath, widths: sampleWidths, height: 900, profile });
+      const analysis = analyzeResponsiveSamples(samples);
+      const captured = await capturePageLocally({ url, routePath, viewport: width <= 600 ? "mobile" : "desktop", width, height: 900, profile });
+      const screenshot = await captured.image.arrayBuffer();
+      return { width, routePath, browserEngine, fresh: analysis.issues.map((issue) => ({ ...issue, screenshot, documentHeight: captured.snapshot.documentHeight })) };
+    },
+    onMutate: () => setError(""),
+    onSuccess: async ({ width, routePath, browserEngine, fresh }) => {
+      const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
+      const keep = (issue: ResponsiveIssue) => !((issue.browserEngine ?? "chromium") === browserEngine && issue.routePath === routePath && issueAffectsWidth(issue, width));
+      const nextIssues = [...stored.latestIssues.filter(keep), ...fresh];
+      const next = { ...stored, latestIssues: nextIssues, latestManifest: nextIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), updatedAt: Date.now() };
+      setResult((current) => ({ ...current, issues: [...current.issues.filter(keep), ...fresh], activeIssue: fresh[0] }));
+      queryClient.setQueryData(breakscopeQueryKeys.workspace(), next);
+      await saveBreakscopeState(next);
+    },
+    onError: (reason) => setError(reason instanceof Error ? `Checkpoint retest failed: ${reason.message}` : "Checkpoint retest failed"),
+  });
   const aiIssueMutation = useMutation({
     mutationKey: [...breakscopeQueryKeys.all, "ai-issue"],
     mutationFn: async ({ issue, mode = "concise" }: { issue: ResponsiveIssue; mode?: "concise" | "technical" }) => {
@@ -477,8 +722,6 @@ export function BreakscopeWorkspace() {
     onSuccess: ({ fingerprint, analysis }) => setAiReviews((current) => ({ ...current, [fingerprint]: analysis })),
     onError: (reason) => setAiIssueError(reason instanceof Error ? reason.message : "AI could not analyze this issue."),
   });
-  const scanning = scanMutation.isPending;
-
   useEffect(() => {
     if (!activeIssue || aiReviews[activeIssue.fingerprint] || aiIssueMutation.isPending || autoReviewAttempted.current.has(activeIssue.fingerprint)) return;
     autoReviewAttempted.current.add(activeIssue.fingerprint);
@@ -507,6 +750,7 @@ export function BreakscopeWorkspace() {
     }
     const restoredPreviews = state.scanRequest ? [] : state.latestPreviews ?? [];
     setPreviews(restoredPreviews);
+    if (restoredPreviews.length) setWorkspaceMode("explore");
     if (state.ui?.selectedDeviceModelId && deviceModels.some((model) => model.id === state.ui?.selectedDeviceModelId)) setActiveDeviceModelId(state.ui.selectedDeviceModelId as DeviceModelId);
     if (state.ui?.deviceOrientation) setDeviceOrientation(state.ui.deviceOrientation);
     if (state.ui?.previewScaleMode) setPreviewScaleMode(state.ui.previewScaleMode);
@@ -514,7 +758,8 @@ export function BreakscopeWorkspace() {
 
     if (state.ui?.recentDeviceIds) setRecentDeviceIds(state.ui.recentDeviceIds.filter((id): id is DeviceModelId => deviceModels.some((model) => model.id === id)).slice(0, 8));
     if (state.ui?.pinnedDeviceIds) setPinnedDeviceIds(state.ui.pinnedDeviceIds.filter((id): id is DeviceModelId => deviceModels.some((model) => model.id === id)));
-    const firstIssue = state.latestIssues[0];
+    const restoredBaseline = state.scanHistory?.find((run) => run.id === state.baselineRunId);
+    const firstIssue = restoredBaseline ? state.latestIssues.find((issue) => findingChange(issue, restoredBaseline.issues) !== "existing") : state.latestIssues[0];
     setResult((current) => ({ ...current, issues: state.scanRequest ? [] : state.latestIssues, activeIssue: state.scanRequest ? undefined : firstIssue, hasScanned: state.scanRequest ? false : Boolean(state.latestIssues.length || restoredPreviews.length) }));
     if (firstIssue) setInspectorTab("issue");
     setPreferencesReady(true);
@@ -623,12 +868,18 @@ export function BreakscopeWorkspace() {
   }
 
   async function runScanWorkflow() {
-    setInspectorTab("activity"); setError(""); setScrollProgress(0); setScanStage(0); setIssueDisplayWidth(undefined); setResult((current) => ({ ...current, fixed: [], activeIssue: undefined, hasScanned: false }));
+    const initialHealth = await getLocalCaptureHealth().catch(() => ({ online: false, activeCaptures: 0, completedCaptures: 0 }));
+    setAgentHealth(initialHealth);
+    if (!initialHealth.online) {
+      setError("Local capture is offline. Start Breakscope with pnpm dev:local; the test will continue from completed checkpoints when you retry.");
+      return;
+    }
+    setWorkspaceMode("audit"); setInspectorTab("activity"); setError(""); setScrollProgress(0); setScanStage(0); setScanElapsedSeconds(0); setIssueDisplayWidth(undefined); setResult((current) => ({ ...current, fixed: [], activeIssue: undefined, hasScanned: false }));
     const controller = new AbortController(); scanController.current = controller;
     try {
       const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
       const resumable = stored.scanJob && ["running", "paused", "failed"].includes(stored.scanJob.status) && stored.scanJob.url === url && stored.scanJob.routes.join("|") === selectedRoutes.join("|") && stored.scanJob.browserEngines.join("|") === browserEngines.join("|");
-      let scanJob: PersistedScanJob = resumable ? { ...stored.scanJob!, status: "running", updatedAt: Date.now() } : { id: crypto.randomUUID(), status: "running", url, routes: selectedRoutes, widths: deviceWidths, browserEngines, completedCheckpoints: [], completedRouteScans: [], samples: [], errors: [], createdAt: Date.now(), updatedAt: Date.now() };
+      let scanJob: PersistedScanJob = resumable ? { ...stored.scanJob!, status: "running", errors: [], updatedAt: Date.now() } : { id: crypto.randomUUID(), status: "running", url, routes: selectedRoutes, widths: deviceWidths, browserEngines, completedCheckpoints: [], completedRouteScans: [], samples: [], errors: [], createdAt: Date.now(), updatedAt: Date.now() };
       let persistChain = Promise.resolve();
       const persistJob = () => {
         scanJob = { ...scanJob, updatedAt: Date.now() };
@@ -643,14 +894,17 @@ export function BreakscopeWorkspace() {
       const sameTarget = stored.target?.url === url;
       const previous = sameTarget ? (stored.latestManifest ?? stored.latestIssues).filter((issue) => selectedRouteSet.has(issue.routePath)) : [];
       const widths = [...new Set([minWidth, ...defaultWidths.filter((width) => width > minWidth && width < maxWidth), maxWidth])].sort((a, b) => a - b);
-      const samples: ViewportSample[] = [...scanJob.samples]; const routeErrors: string[] = [...scanJob.errors]; const capturedPreviews: PersistedViewportPreview[] = resumable ? [...(stored.latestPreviews ?? [])] : [];
+      const samples: ViewportSample[] = [...scanJob.samples]; const routeErrors: string[] = []; const capturedPreviews: PersistedViewportPreview[] = resumable ? [...(stored.latestPreviews ?? [])] : [];
       setProgress({ current: 0, total: selectedRoutes.length, width: minWidth, route: selectedRoutes[0]!, phase: resumable ? "Resuming scan" : "Sweeping geometry" }); setPreviews(capturedPreviews);
       const previewTask = (async () => {
-        for (const browserEngine of browserEngines) for (const width of deviceWidths) {
+        const checkpointQueue = deviceWidths.flatMap((width) => browserEngines.map((browserEngine) => ({ width, browserEngine })));
+        for (const { width, browserEngine } of checkpointQueue) {
           if (controller.signal.aborted) break;
           const checkpointKey = `${browserEngine}:${selectedRoutes[0]}:${width}`;
           if (scanJob.completedCheckpoints.includes(checkpointKey)) continue;
-          setProgress((current) => ({ ...current, width, phase: `Rendering ${width}px checkpoint` }));
+          setActivePreviewWidth(width);
+          setActiveBrowserEngine(browserEngine);
+          setProgress((current) => ({ ...current, width, phase: `Rendering ${browserLabels[browserEngine]} at ${width}px` }));
           try {
             const model = modelForWidth(width);
             const captured = await capturePageLocally({ url, routePath: selectedRoutes[0]!, viewport: width <= 600 ? "mobile" : "desktop", width, height: 900, profile: captureProfile(model, browserEngine) }, controller.signal);
@@ -664,24 +918,42 @@ export function BreakscopeWorkspace() {
             setActivePreviewWidth(width);
           } catch (reason) {
             if (reason instanceof DOMException && reason.name === "AbortError") break;
+            if (captureServiceUnavailable(reason)) {
+              setAgentHealth({ online: false, activeCaptures: 0, completedCaptures: initialHealth.completedCaptures });
+              throw new Error(`Local capture went offline after ${scanJob.completedCheckpoints.length} of ${checkpointQueue.length} checkpoints. Start Breakscope with pnpm dev:local, then retry to continue.`);
+            }
             const detail = reason instanceof Error ? reason.message : "Capture failed";
             routeErrors.push(`${browserLabels[browserEngine]} ${selectedRoutes[0]} at ${width}px: ${detail.split("\n")[0]?.slice(0, 180)}`);
           }
         }
       })();
-      const routeTasks = browserEngines.flatMap((browserEngine) => selectedRoutes.map((routePath, index) => ({ browserEngine, routePath, index })));
+      const routeTasks = selectedRoutes.flatMap((routePath, index) => browserEngines.map((browserEngine) => ({ browserEngine, routePath, index })));
       await previewTask;
+      setActivePreviewWidth(deviceWidths[0] ?? minWidth);
+      setActiveBrowserEngine(browserEngines[0] ?? "chromium");
       setScanStage(2);
-      const settled = await Promise.allSettled(routeTasks.map(async ({ browserEngine, routePath, index }) => {
-        const routeKey = `${browserEngine}:${routePath}`;
-        if (scanJob.completedRouteScans.includes(routeKey)) return [];
-        setProgress({ current: index, total: selectedRoutes.length, width: minWidth, route: routePath, phase: "Sweeping geometry" });
-        const profile = captureProfile(modelForWidth(minWidth), browserEngine);
-        const routeSamples = await refineBoundaries(routePath, await scanRouteLocally({ url, routePath, widths, height: 900, profile }, controller.signal), controller.signal, profile);
-        scanJob = { ...scanJob, completedRouteScans: [...scanJob.completedRouteScans, routeKey], samples: [...scanJob.samples, ...routeSamples] };
-        await persistJob();
-        return routeSamples;
-      }));
+      const settled: PromiseSettledResult<ViewportSample[]>[] = [];
+      for (const { browserEngine, routePath, index } of routeTasks) {
+        try {
+          const routeKey = `${browserEngine}:${routePath}`;
+          if (scanJob.completedRouteScans.includes(routeKey)) {
+            settled.push({ status: "fulfilled", value: [] });
+            continue;
+          }
+          setProgress({ current: index, total: selectedRoutes.length, width: minWidth, route: routePath, phase: "Sweeping geometry" });
+          const profile = captureProfile(modelForWidth(minWidth), browserEngine);
+          const routeSamples = await refineBoundaries(routePath, await scanRouteLocally({ url, routePath, widths, height: 900, profile }, controller.signal), controller.signal, profile);
+          scanJob = { ...scanJob, completedRouteScans: [...scanJob.completedRouteScans, routeKey], samples: [...scanJob.samples, ...routeSamples] };
+          await persistJob();
+          settled.push({ status: "fulfilled", value: routeSamples });
+        } catch (reason) {
+          if (captureServiceUnavailable(reason)) {
+            setAgentHealth({ online: false, activeCaptures: 0, completedCaptures: initialHealth.completedCaptures });
+            throw new Error(`Local capture went offline while analyzing ${routePath}. Start Breakscope with pnpm dev:local, then retry to continue.`);
+          }
+          settled.push({ status: "rejected", reason });
+        }
+      }
       settled.forEach((settledResult, index) => {
         if (settledResult.status === "fulfilled") samples.push(...settledResult.value);
         else {
@@ -694,26 +966,55 @@ export function BreakscopeWorkspace() {
       await persistJob();
       if (controller.signal.aborted) throw new DOMException("Scan cancelled", "AbortError");
       const analysis = analyzeResponsiveSamples(samples, previous.map((issue) => issue.fingerprint));
+      const testProfile = stored.testProfile ?? "responsive";
+      const includedIssues = analysis.issues.filter((issue) => profileAllowsIssue(testProfile, issue.type));
+      const includedAllIssues = analysis.allIssues.filter((issue) => profileAllowsIssue(testProfile, issue.type));
       setScanStage(4);
-      setProgress({ current: selectedRoutes.length, total: selectedRoutes.length, width: analysis.issues[0]?.evidenceWidth ?? minWidth, route: analysis.issues[0]?.routePath ?? selectedRoutes[0]!, phase: "Capturing evidence" });
-      const withEvidence = await Promise.all(analysis.issues.map(async (issue) => {
-        const profile = captureProfile(modelForWidth(issue.evidenceWidth), issue.browserEngine ?? "chromium");
-        const [captured, passing] = await Promise.all([capturePageLocally({ url, routePath: issue.routePath, viewport: issue.evidenceWidth <= 600 ? "mobile" : "desktop", width: issue.evidenceWidth, height: 900, profile }, controller.signal), issue.lastWorkingWidth ? capturePageLocally({ url, routePath: issue.routePath, viewport: issue.lastWorkingWidth <= 600 ? "mobile" : "desktop", width: issue.lastWorkingWidth, height: 900, profile }, controller.signal) : undefined]);
-        return { ...issue, screenshot: await captured.image.arrayBuffer(), documentHeight: captured.snapshot.documentHeight, ...(passing ? { passingScreenshot: await passing.image.arrayBuffer() } : {}) };
-      }));
-      const currentFingerprints = new Set(analysis.allIssues.map((issue) => issue.fingerprint));
-      const fixedIssues = previous.filter((issue) => !currentFingerprints.has(issue.fingerprint)).map((issue) => ({ ...issue, verification: "fixed" as const, screenshot: undefined }));
+      const evidenceKey = (routePath: string, width: number, browserEngine: BrowserEngine) => `${browserEngine}:${routePath}:${width}`;
+      const evidenceRequests = new Map<string, { routePath: string; width: number; browserEngine: BrowserEngine }>();
+      for (const issue of includedIssues) {
+        const browserEngine = issue.browserEngine ?? "chromium";
+        evidenceRequests.set(evidenceKey(issue.routePath, issue.evidenceWidth, browserEngine), { routePath: issue.routePath, width: issue.evidenceWidth, browserEngine });
+        if (issue.lastWorkingWidth) evidenceRequests.set(evidenceKey(issue.routePath, issue.lastWorkingWidth, browserEngine), { routePath: issue.routePath, width: issue.lastWorkingWidth, browserEngine });
+      }
+      const evidenceResults = new Map<string, { image: ArrayBuffer; documentHeight: number }>();
+      const requests = [...evidenceRequests.entries()];
+      setProgress({ current: selectedRoutes.length, total: selectedRoutes.length, width: requests[0]?.[1].width ?? minWidth, route: requests[0]?.[1].routePath ?? selectedRoutes[0]!, phase: "Preparing evidence captures", evidenceCompleted: 0, evidenceTotal: requests.length });
+      for (const [key, request] of requests) {
+        const completed = evidenceResults.size;
+        setProgress({ current: selectedRoutes.length, total: selectedRoutes.length, width: request.width, route: request.routePath, phase: `Capturing evidence ${completed + 1} of ${requests.length}`, evidenceCompleted: completed, evidenceTotal: requests.length, evidenceTarget: `${browserLabels[request.browserEngine]} · ${request.width}px` });
+        const profile = captureProfile(modelForWidth(request.width), request.browserEngine);
+        try {
+          const captured = await capturePageLocally({ url, routePath: request.routePath, viewport: request.width <= 600 ? "mobile" : "desktop", width: request.width, height: 900, profile }, controller.signal);
+          evidenceResults.set(key, { image: await captured.image.arrayBuffer(), documentHeight: captured.snapshot.documentHeight });
+        } catch (reason) {
+          if (reason instanceof DOMException && reason.name === "AbortError") throw reason;
+          const detail = reason instanceof Error ? reason.message : "Capture failed";
+          throw new Error(`Evidence capture failed for ${browserLabels[request.browserEngine]} ${request.routePath} at ${request.width}px: ${detail}`);
+        }
+      }
+      setProgress((current) => ({ ...current, phase: "Finalizing findings", evidenceCompleted: requests.length, evidenceTotal: requests.length, evidenceTarget: "Capture plan complete" }));
+      const withEvidence = includedIssues.map((issue) => {
+        const browserEngine = issue.browserEngine ?? "chromium";
+        const failing = evidenceResults.get(evidenceKey(issue.routePath, issue.evidenceWidth, browserEngine));
+        const passing = issue.lastWorkingWidth ? evidenceResults.get(evidenceKey(issue.routePath, issue.lastWorkingWidth, browserEngine)) : undefined;
+        return { ...issue, ...(failing ? { screenshot: failing.image, documentHeight: failing.documentHeight } : {}), ...(passing ? { passingScreenshot: passing.image } : {}) };
+      });
+      const currentFingerprints = new Set(includedAllIssues.map((issue) => issue.fingerprint));
+      const fixedIssues = previous.filter((issue) => profileAllowsIssue(testProfile, issue.type) && !currentFingerprints.has(issue.fingerprint)).map((issue) => ({ ...issue, verification: "fixed" as const, screenshot: undefined }));
       const firstIssue = withEvidence[0];
       autoReviewAttempted.current.clear();
       setAiReviews({});
-      setResult({ issues: withEvidence, fixed: fixedIssues, suppressedCount: analysis.suppressedCount, checks: analysis.checks, activeIssue: firstIssue, hasScanned: true });
+      setResult({ issues: withEvidence, fixed: fixedIssues, suppressedCount: analysis.suppressedCount + analysis.issues.length - includedIssues.length, checks: analysis.checks.filter((check) => profileAllowsIssue(testProfile, check.type)), activeIssue: firstIssue, hasScanned: true });
+      setWorkspaceMode("explore");
       setInspectorTab(firstIssue ? "issue" : "checks"); setComparisonMode("failing");
       const now = Date.now();
       const target: TestTarget = { id: "current", name: new URL(url).host, url, selectedRoutes, minWidth, maxWidth, executionMode: "local", deviceWidths, browserEngines, createdAt: stored.target?.createdAt ?? now, updatedAt: now };
       scanJob = { ...scanJob, status: routeErrors.length ? "failed" : "completed", errors: routeErrors, updatedAt: now };
       const finalPreviews = boundedPreviews(capturedPreviews);
       setPreviews(finalPreviews);
-      const nextState: BreakscopeState = { availableRoutes: routes, target, latestIssues: withEvidence, latestManifest: analysis.allIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), latestPreviews: finalPreviews, scanJob, ui: { selectedDeviceModelId: activeDeviceModelId, deviceOrientation, recentDeviceIds, pinnedDeviceIds, previewScaleMode, previewZoom, activeBrowserEngine }, updatedAt: now };
+      const run: LocalScanRun = { id: crypto.randomUUID(), createdAt: now, target, issues: withEvidence, previews: finalPreviews, suppressedCount: analysis.suppressedCount + analysis.issues.length - includedIssues.length, profile: testProfile };
+      const nextState: BreakscopeState = { ...stored, availableRoutes: routes, target, latestIssues: withEvidence, latestManifest: includedAllIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), latestPreviews: finalPreviews, scanHistory: [run, ...(stored.scanHistory ?? [])].slice(0, 5), scanJob, ui: { selectedDeviceModelId: activeDeviceModelId, deviceOrientation, recentDeviceIds, pinnedDeviceIds, previewScaleMode, previewZoom, activeBrowserEngine }, updatedAt: now };
       queryClient.setQueryData(breakscopeQueryKeys.workspace(), nextState);
       await saveBreakscopeState(nextState);
       if (routeErrors.length) setError(`Some routes could not be scanned: ${routeErrors.join(" · ")}`);
@@ -758,14 +1059,17 @@ export function BreakscopeWorkspace() {
     { label: "Render checkpoints", detail: `${readyCheckpointCount} of ${checkpointTotal} browser captures`, done: hasScanned || scanStage > 1 },
     { label: "Sweep responsive range", detail: `${minWidth}–${maxWidth}px`, done: hasScanned || scanStage > 2 },
     { label: "Refine breakpoints", detail: "Within 2px accuracy", done: hasScanned || scanStage > 3 },
-    { label: "Capture evidence", detail: "Prioritized blockers", done: hasScanned || scanStage > 4 },
+    { label: "Capture evidence", detail: progress.evidenceTotal !== undefined ? `${progress.evidenceCompleted ?? 0} of ${progress.evidenceTotal} unique captures${progress.evidenceTarget ? ` · ${progress.evidenceTarget}` : ""}` : "Deduplicating findings", done: hasScanned || scanStage > 4 },
   ];
-  const scanPercent = scanStage === 0 ? 5 : scanStage === 1 ? 8 + (readyCheckpointCount / Math.max(1, checkpointTotal)) * 27 : scanStage === 2 ? 48 : scanStage === 3 ? 76 : 94;
+  const evidenceRatio = (progress.evidenceCompleted ?? 0) / Math.max(1, progress.evidenceTotal ?? 1);
+  const scanPercent = scanStage === 0 ? 5 : scanStage === 1 ? 8 + (readyCheckpointCount / Math.max(1, checkpointTotal)) * 27 : scanStage === 2 ? 48 : scanStage === 3 ? 76 : 90 + evidenceRatio * 9;
   const scanSection = Math.min(8, Math.floor(scrollProgress * 8) + 1);
   const scanWidthPosition = Math.min(100, Math.max(0, ((progress.width - minWidth) / Math.max(1, maxWidth - minWidth)) * 100));
   const retryingViewport = viewportRetryMutation.isPending ? viewportRetryMutation.variables : undefined;
-  const viewportIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && !isPageWideIssue(issue, deviceWidths) && issue.routePath === reviewedRoute && issueAffectsWidth(issue, displayedWidth));
-  const pageWideIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && isPageWideIssue(issue, deviceWidths) && issue.routePath === reviewedRoute && issueAffectsWidth(issue, displayedWidth));
+  const viewportIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && !isPageWideIssue(issue) && issue.routePath === reviewedRoute && issueAffectsWidth(issue, displayedWidth));
+  const pageWideIssues = issues.filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && isPageWideIssue(issue) && issue.routePath === reviewedRoute && issueAffectsWidth(issue, displayedWidth));
+  const baselineRun = workspaceQuery.data?.scanHistory?.find((run) => run.id === workspaceQuery.data?.baselineRunId);
+  const baselineIssues = (baselineRun?.issues ?? []).filter((issue) => (issue.browserEngine ?? "chromium") === activeBrowserEngine && issue.routePath === reviewedRoute && issueAffectsWidth(issue, displayedWidth));
 
   function selectModel(model: DeviceModel) {
     const availableWidth = deviceWidths.find((width) => model.kind === "phone" ? width <= 600 : model.kind === "tablet" ? width > 600 && width <= 900 : model.checkpointWidth >= 1440 ? width >= 1440 : width > 900 && width < 1440) ?? model.checkpointWidth;
@@ -823,6 +1127,14 @@ export function BreakscopeWorkspace() {
     await saveBreakscopeState(next);
   }
 
+  async function recordDiagnosticSample(sample: RuntimeDiagnosticSample) {
+    const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
+    const next = { ...stored, diagnosticsHistory: [sample, ...(stored.diagnosticsHistory ?? [])].slice(0, 60), updatedAt: Date.now() };
+    queryClient.setQueryData(breakscopeQueryKeys.workspace(), next);
+    await saveBreakscopeState(next);
+  }
+
+
   function beginInspectorResize(event: ReactPointerEvent<HTMLDivElement>) {
     inspectorResizeRef.current = { startX: event.clientX, startWidth: inspectorWidth };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -851,6 +1163,7 @@ export function BreakscopeWorkspace() {
       const target = event.target as HTMLElement | null;
       if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
       if (event.key === "?") { event.preventDefault(); setShortcutsOpen((open) => !open); return; }
+      if (event.key === "Escape" && shortcutsOpen) { event.preventDefault(); setShortcutsOpen(false); return; }
       if (event.key === "Escape" && activeIssue) { event.preventDefault(); clearSelectedIssue(); return; }
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); scan(); return; }
       if (event.altKey && event.key === "ArrowLeft") { event.preventDefault(); stepIssue(-1); return; }
@@ -875,10 +1188,11 @@ export function BreakscopeWorkspace() {
   });
 
   return <main id="main-content" className="breakscope-shell bk-workspace-page">
-    <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Responsive lab</span><Link href="/setup" className="bk-edit-setup"><Settings2 size={14} /><span>Edit setup</span></Link></div><div className="bk-command-target"><span>{new URL(url).host}</span><code>{url}</code></div><div className="bk-command-actions"><span className="bk-agent" role="status" aria-label="Local capture agent online"><i aria-hidden="true" /> Agent online</span><button type="button" className="bk-command-run" disabled={!selectedRoutes.length || scanning} aria-describedby={scanning ? "scan-progress-announcement" : undefined} onClick={() => void scan()}>{scanning ? <span className="bk-scan-glyph"><ScanSearch size={16} /></span> : <RotateCcw size={16} />}{scanning ? "Scanning" : hasScanned ? "Run again" : "Run test"}</button></div></header>
+    <header className="bk-command-bar"><div className="bk-command-brand"><BreakscopeLogo /><span>Responsive lab</span><Link href="/setup" className="bk-edit-setup"><Settings2 size={14} /><span>Edit setup</span></Link></div><div className="bk-command-target"><span>{new URL(url).host}</span><code>{url}</code></div><div className="bk-command-actions"><span className={`bk-agent ${agentHealth?.online === false ? "offline" : agentHealth === null ? "checking" : ""}`} role="status" aria-label={`Local capture agent ${agentHealth === null ? "checking" : agentHealth.online ? "online" : "offline"}`}><i aria-hidden="true" /> Agent {agentHealth === null ? "checking" : agentHealth.online ? "online" : "offline"}</span><button type="button" className="bk-command-run" disabled={!selectedRoutes.length || scanning || agentHealth?.online === false} aria-describedby={scanning ? "scan-progress-announcement" : undefined} onClick={() => void scan()}>{scanning ? <span className="bk-scan-glyph"><ScanSearch size={16} /></span> : <RotateCcw size={16} />}{scanning ? "Scanning" : hasScanned ? "Run again" : "Run test"}</button></div></header>
     <span id="scan-progress-announcement" className="sr-only" aria-live="polite">{scanning ? `${scanHeadline}, ${Math.round(scanPercent)} percent complete` : hasScanned ? "Test complete" : "Ready to run"}</span>
-    {error && <div className="bs-error bk-workspace-error" role="alert"><AlertTriangle size={17} /><span>{error}</span>{workspaceQuery.data?.scanJob?.status === "failed" && <button type="button" className="bk-error-retry" disabled={scanning} onClick={() => scan()}><RefreshCw size={14} /> Retry failed captures</button>}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={15} /></button></div>}
-    {(routes.length > 0 || issues.length > 0 || scanning) ? <section className={`bs-workspace ${configCollapsed ? "config-collapsed" : ""}`} style={{ "--bk-inspector-width": `${inspectorWidth}px` } as CSSProperties}>
+    {error && <div className="bs-error bk-workspace-error" role="alert"><AlertTriangle size={17} /><span>{error}</span>{workspaceQuery.data?.scanJob?.status === "failed" && <button type="button" className="bk-error-retry" disabled={scanning || agentHealth?.online === false} onClick={() => scan()}><RefreshCw size={14} /> Retry failed captures</button>}<button type="button" aria-label="Dismiss error" onClick={() => setError("")}><X size={15} /></button></div>}
+    <nav className="bk-workbench-modes" aria-label="Workspace mode"><button type="button" className={workspaceMode === "explore" ? "active" : ""} aria-pressed={workspaceMode === "explore"} disabled={!previews.length || scanning} onClick={() => { setWorkspaceMode("explore"); setResult((current) => ({ ...current, activeIssue: undefined })); }}><Monitor size={15} /><span><b>Explore</b><small>Review every viewport</small></span></button><button type="button" className={workspaceMode === "audit" ? "active" : ""} aria-pressed={workspaceMode === "audit"} disabled={!routes.length && !issues.length} onClick={() => setWorkspaceMode("audit")}><ScanSearch size={15} /><span><b>Audit</b><small>Inspect findings</small></span></button><Link href="/history"><GitCompareArrows size={15} /><span><b>Changes</b><small>Review against a baseline</small></span></Link></nav>
+    {(routes.length > 0 || issues.length > 0 || scanning) ? <section className={`bs-workspace mode-${workspaceMode} ${configCollapsed ? "config-collapsed" : ""}`} style={{ "--bk-inspector-width": `${inspectorWidth}px` } as CSSProperties}>
       <aside className="bs-config" aria-label="Scan configuration">
         <div className="bk-panel-title">
           <span>Test scope</span>
@@ -897,13 +1211,14 @@ export function BreakscopeWorkspace() {
             {availableRoutes.length ? <div className="bs-route-list">{availableRoutes.map((route) => <button type="button" key={route} aria-pressed="false" disabled={selectedRoutes.length >= 5} onClick={() => toggleRoute(route)}><span><Plus size={13} /></span><code>{route}</code></button>)}</div> : <p className="bk-route-empty">All discovered routes are selected.</p>}
           </section>
         </div>}
-        {!configCollapsed && <div className="bk-config-actions"><WorkspaceControls retainedBytes={retainedEvidenceBytes} disabled={scanning} onClearEvidence={() => void clearCapturedEvidence()} onClearPreferences={() => void clearViewPreferences()} onResetWorkspace={() => void resetWorkspace()} /></div>}
+        {!configCollapsed && <div className="bk-config-actions"><WorkspaceControls retainedBytes={retainedEvidenceBytes} diagnosticsHistory={workspaceQuery.data?.diagnosticsHistory ?? []} disabled={scanning} onExport={(format) => { const state = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()); if (state) downloadLocalReport(format, state); }} onDiagnosticSample={(sample) => void recordDiagnosticSample(sample)} onClearEvidence={() => void clearCapturedEvidence()} onClearPreferences={() => void clearViewPreferences()} onResetWorkspace={() => void resetWorkspace()} /></div>}
       </aside>
       <section className="bk-stage-main">
         <div className="bk-canvas-toolbar"><span><i className={activeIssue ? "fail" : scanning ? "scan" : ""} />{activeIssue ? "Failure evidence" : scanning ? `Scanning section ${scanSection} of 8` : hasScanned ? "Captured evidence" : "Ready to test"}</span><CheckpointSwitcher widths={deviceWidths} activeWidth={displayedWidth} browserEngine={activeBrowserEngine} previews={previews} issues={issues} onSelect={(width) => { setActivePreviewWidth(width); setIssueDisplayWidth(undefined); setActiveDeviceModelId(modelForWidth(width).id); setResult((current) => ({ ...current, activeIssue: undefined })); setComparisonMode("failing"); setInspectorTab(hasScanned ? "findings" : "activity"); }} /><b><small>Evidence</small>{displayedWidth}px</b></div>
         <div className="bk-preview-toolbar"><div className="bk-environment-controls"><DevicePicker activeModel={displayedModel} orientation={deviceOrientation} recentIds={recentDeviceIds} pinnedIds={pinnedDeviceIds} onModelSelect={selectModel} onOrientationChange={setDeviceOrientation} onTogglePin={togglePin} /><BrowserSwitcher engines={browserEngines} activeEngine={activeBrowserEngine} activeWidth={activePreviewWidth} routePath={selectedRoutes[0] ?? "/"} previews={previews} issues={issues} onSelect={(engine) => { setActiveBrowserEngine(engine); setIssueDisplayWidth(undefined); setResult((current) => ({ ...current, activeIssue: undefined })); setComparisonMode("failing"); }} /></div><div className="bk-preview-scale"><span>Preview</span><div role="group" aria-label="Preview scale mode"><button type="button" className={previewScaleMode === "fit-device" ? "active" : ""} aria-pressed={previewScaleMode === "fit-device"} onClick={() => setPreviewScaleMode("fit-device")}><Maximize2 size={14} /> Fit device</button><button type="button" className={previewScaleMode === "fit-screen" ? "active" : ""} aria-pressed={previewScaleMode === "fit-screen"} onClick={() => setPreviewScaleMode("fit-screen")}>Fit screen</button><button type="button" className={previewScaleMode === "actual" ? "active" : ""} aria-pressed={previewScaleMode === "actual"} onClick={() => setPreviewScaleMode("actual")}>100%</button></div><div className="bk-zoom-stepper"><button type="button" aria-label="Zoom out" onClick={() => { setPreviewScaleMode("custom"); setPreviewZoom((value) => Math.max(40, value - 10)); }}><Minus size={14} /></button><output>{previewScaleMode === "actual" ? 100 : previewScaleMode === "custom" ? previewZoom : previewScaleMode === "fit-screen" ? "Fill" : "Fit"}</output><button type="button" aria-label="Zoom in" onClick={() => { setPreviewScaleMode("custom"); setPreviewZoom((value) => Math.min(140, value + 10)); }}><Plus size={14} /></button></div></div></div>
         <div className="bk-stage-canvas checkpoint-grid">
-          {scanning && activePreview ? <DeviceFrame model={displayedModel} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} previewZoom={previewZoom} url={url} scanning previewRef={scanPreviewRef} scrollProgress={scrollProgress} onScroll={updatePreviewProgress} onUserInteraction={pauseStagedScan}><ResultImage image={activePreview.image} alt={`${activePreview.label} checkpoint at ${activePreview.width}px`} /></DeviceFrame>
+          {workspaceMode === "explore" && !scanning && previews.length ? <ExploreViewportGrid previews={previews} issues={issues} browserEngine={activeBrowserEngine} routePath={selectedRoutes[0] ?? "/"} onFocus={(width) => { setActivePreviewWidth(width); setActiveDeviceModelId(modelForWidth(width).id); setWorkspaceMode("audit"); setResult((current) => ({ ...current, activeIssue: undefined })); }} />
+          : scanning && activePreview ? <DeviceFrame model={displayedModel} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} previewZoom={previewZoom} url={url} scanning previewRef={scanPreviewRef} scrollProgress={scrollProgress} onScroll={updatePreviewProgress} onUserInteraction={pauseStagedScan}><ResultImage image={activePreview.image} alt={`${activePreview.label} checkpoint at ${activePreview.width}px`} /></DeviceFrame>
           : scanning ? <DeviceFrame model={displayedModel} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} previewZoom={previewZoom} url={url} scanning scrollProgress={0}><DeviceScanPlaceholder phase={scanHeadline} width={progress.width || minWidth} kind={displayedDevice} /></DeviceFrame>
           : activeIssue ? <div className="bk-evidence-view"><div className="bk-evidence-bar"><span className={comparisonMode}>{comparisonMode === "passing" ? <Check size={14} /> : <AlertTriangle size={14} />}{comparisonMode === "passing" ? `Passing · ${activeIssue.lastWorkingWidth}px` : `Failing · ${displayedWidth}px`}<small>{issueTargetDescription(activeIssue)}</small></span><div className="bk-issue-stepper" aria-label={`Issue ${activeIssueIndex + 1} of ${navigableIssues.length}`}><button type="button" aria-label="Previous issue" onClick={() => stepIssue(-1)}><ChevronLeft size={15} /></button><em><span>Issue</span> {activeIssueIndex + 1} of {navigableIssues.length}</em><button type="button" aria-label="Next issue" onClick={() => stepIssue(1)}><ChevronRight size={15} /></button></div>{activeIssue.passingScreenshot && <div><button className={comparisonMode === "failing" ? "active" : ""} onClick={() => setComparisonMode("failing")}>Failing</button><button className={comparisonMode === "passing" ? "active" : ""} onClick={() => setComparisonMode("passing")}>Passing</button></div>}</div><DeviceFrame model={displayedModel} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} previewZoom={previewZoom} url={url} previewRef={issuePreviewRef} scrollProgress={scrollProgress} issuePosition={comparisonMode === "failing" ? ((activeIssue.elementRect?.y ?? 0) + (activeIssue.elementRect?.height ?? 40) / 2) / Math.max(1, activeIssue.documentHeight ?? 900) : undefined}><ResultImage image={issueImage} alt={`${comparisonMode} evidence for ${activeIssue.title}`} retryLabel={`Retry ${displayedWidth}px capture`} retrying={retryingViewport?.kind === "issue" && retryingViewport.issueFingerprint === activeIssue.fingerprint && retryingViewport.evidenceMode === comparisonMode} onReady={revealActiveIssue} onRetry={() => viewportRetryMutation.mutate({ kind: "issue", width: displayedWidth, routePath: activeIssue.routePath, issueFingerprint: activeIssue.fingerprint, evidenceMode: comparisonMode })}>{comparisonMode === "failing" && issueImage && activeIssue.elementRect && <span key={activeIssue.fingerprint} className="bs-highlight pulse" aria-label={`Highlighted target: ${issueTargetDescription(activeIssue)}`} style={{ left: `${Math.max(0, activeIssue.elementRect.x / activeIssue.evidenceWidth * 100)}%`, top: `${Math.max(0, activeIssue.elementRect.y / Math.max(1, activeIssue.documentHeight ?? 900) * 100)}%`, width: `${Math.min(100, activeIssue.elementRect.width / activeIssue.evidenceWidth * 100)}%`, height: `${Math.min(100, activeIssue.elementRect.height / Math.max(1, activeIssue.documentHeight ?? 900) * 100)}%` }}><b>{issueTargetDescription(activeIssue)}</b><i /></span>}</ResultImage></DeviceFrame></div>
           : activePreview ? <DeviceFrame model={displayedModel} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} previewZoom={previewZoom} url={url} scrollProgress={scrollProgress}><ResultImage image={activePreview.image} alt={`${activePreview.label} checkpoint at ${activePreview.width}px`} retryLabel={`Retry ${activePreview.width}px capture`} retrying={retryingViewport?.kind === "checkpoint" && retryingViewport.width === activePreview.width} onRetry={() => viewportRetryMutation.mutate({ kind: "checkpoint", width: activePreview.width, routePath: activePreview.routePath, browserEngine: activeBrowserEngine })} /></DeviceFrame>
@@ -911,7 +1226,7 @@ export function BreakscopeWorkspace() {
           : <WorkspaceEmpty routeCount={selectedRoutes.length} minWidth={minWidth} maxWidth={maxWidth} disabled={!selectedRoutes.length} onRun={() => void scan()} />}
         </div>
       </section>
-      <aside className="bk-inspector bk-context-inspector" aria-live="polite"><div className="bk-inspector-resizer" role="separator" aria-label="Resize issue inspector" aria-orientation="vertical" aria-valuemin={320} aria-valuemax={620} aria-valuenow={inspectorWidth} tabIndex={0} onPointerDown={beginInspectorResize} onPointerMove={moveInspectorResize} onPointerUp={endInspectorResize} onPointerCancel={endInspectorResize} onKeyDown={resizeInspectorWithKeyboard}><span /></div><div className="bk-inspector-content">
+      {workspaceMode === "audit" && <aside className="bk-inspector bk-context-inspector" aria-live="polite"><div className="bk-inspector-resizer" role="separator" aria-label="Resize issue inspector" aria-orientation="vertical" aria-valuemin={320} aria-valuemax={620} aria-valuenow={inspectorWidth} tabIndex={0} onPointerDown={beginInspectorResize} onPointerMove={moveInspectorResize} onPointerUp={endInspectorResize} onPointerCancel={endInspectorResize} onKeyDown={resizeInspectorWithKeyboard}><span /></div><div className="bk-inspector-content">
         {scanning ? <div className="bk-activity-view bk-live-scan">
           <header className="bk-live-scan-header">
             <div><span><i /> Live responsive analysis</span><output aria-label={`${Math.round(scanPercent)} percent complete`}>{Math.round(scanPercent)}%</output></div>
@@ -924,17 +1239,24 @@ export function BreakscopeWorkspace() {
             <small>Continuous width sweep</small>
           </section>
           <dl className="bk-scan-telemetry">
-            <div><dt>Page section</dt><dd>{scanSection}<span>/8</span></dd></div>
-            <div><dt>Browser captures</dt><dd>{readyCheckpointCount}<span>/{checkpointTotal}</span></dd></div>
-            <div><dt>Route</dt><dd>{Math.max(1, selectedRoutes.indexOf(progress.route) + 1)}<span>/{Math.max(1, selectedRoutes.length)}</span></dd></div>
+            {scanStage === 4 ? <>
+              <div><dt>Evidence</dt><dd>{progress.evidenceCompleted ?? 0}<span>/{progress.evidenceTotal ?? 0}</span></dd></div>
+              <div><dt>Agent active</dt><dd>{agentHealth?.activeCaptures ?? 0}<span> capture</span></dd></div>
+              <div><dt>Elapsed</dt><dd className="bk-elapsed-value">{formatElapsed(scanElapsedSeconds)}</dd></div>
+            </> : <>
+              <div><dt>Page section</dt><dd>{scanSection}<span>/8</span></dd></div>
+              <div><dt>Browser captures</dt><dd>{readyCheckpointCount}<span>/{checkpointTotal}</span></dd></div>
+              <div><dt>Route</dt><dd>{Math.max(1, selectedRoutes.indexOf(progress.route) + 1)}<span>/{Math.max(1, selectedRoutes.length)}</span></dd></div>
+            </>}
           </dl>
-          <div className="bk-pipeline-heading"><span>Analysis pipeline</span><b>{Math.min(scanStage, activitySteps.length)}/{activitySteps.length}</b></div>
+          {scanStage === 4 && <div className="bk-scan-debug" role="status"><span><b>Current request</b>{progress.evidenceTarget ?? "Preparing capture plan"}</span><span><b>Agent total</b>{agentHealth?.completedCaptures ?? 0} completed this session</span><small>If the active count stays at 1, the target page is still rendering. A capture timeout will stop the scan with the exact route, browser, and width.</small></div>}
+          <div className="bk-pipeline-heading"><span>Analysis pipeline</span><b>{Math.min(scanStage + 1, activitySteps.length)}/{activitySteps.length}</b></div>
           <ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : index === scanStage ? "active" : ""}><i>{step.done ? <Check size={13} /> : index === scanStage ? <span className="bk-pipeline-loader"><ScanSearch size={14} /></span> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol>
           <button type="button" className="bs-cancel" onClick={() => scanController.current?.abort()}><CircleStop size={16} /><span>Cancel test</span><small>Progress will be saved</small></button>
-        </div> : hasScanned ? <ViewportIssueInspector width={displayedWidth} checkpointWidths={deviceWidths} routePath={reviewedRoute ?? "/"} issues={viewportIssues} pageWideIssues={pageWideIssues} selectedIssue={activeIssue} aiAnalysis={activeIssue ? aiReviews[activeIssue.fingerprint] : undefined} aiPending={aiIssueMutation.isPending} aiError={aiIssueError} url={url} onSelect={selectIssue} onClearSelection={clearSelectedIssue} onAnalyze={(issue, mode) => aiIssueMutation.mutate({ issue, mode })} /> : <div className="bk-activity-view"><h2>Ready to inspect</h2><p>{`${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"} · ${minWidth}–${maxWidth}px`}</p><ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : ""}><i>{step.done ? <Check size={13} /> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol></div>}
-      </div></aside>
+        </div> : hasScanned ? <ViewportIssueInspector width={displayedWidth} routePath={reviewedRoute ?? "/"} issues={viewportIssues} pageWideIssues={pageWideIssues} baselineIssues={baselineIssues} baselineAvailable={Boolean(baselineRun)} selectedIssue={activeIssue} aiAnalysis={activeIssue ? aiReviews[activeIssue.fingerprint] : undefined} aiPending={aiIssueMutation.isPending} aiError={aiIssueError} retesting={targetedRetestMutation.isPending} url={url} onSelect={selectIssue} onClearSelection={clearSelectedIssue} onRetest={() => targetedRetestMutation.mutate({ width: displayedWidth, routePath: reviewedRoute ?? "/", browserEngine: activeBrowserEngine })} onAnalyze={(issue, mode) => aiIssueMutation.mutate({ issue, mode })} /> : <div className="bk-activity-view"><h2>Ready to inspect</h2><p>{`${selectedRoutes.length} route${selectedRoutes.length === 1 ? "" : "s"} · ${minWidth}–${maxWidth}px`}</p><ol>{activitySteps.map((step, index) => <li key={step.label} className={step.done ? "done" : ""}><i>{step.done ? <Check size={13} /> : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>)}</ol></div>}
+      </div></aside>}
     </section> : <section className="bk-no-target"><ScanSearch size={36} /><h1>No test configured</h1><p>Choose a URL and routes before opening the workspace.</p><Link href="/"><ArrowRight size={17} /> Go to setup</Link></section>}
-    {shortcutsOpen && <aside className="bk-shortcut-reference" aria-label="Keyboard shortcuts"><header><Keyboard size={16} /><b>Keyboard shortcuts</b><button type="button" aria-label="Close keyboard shortcuts" onClick={() => setShortcutsOpen(false)}><X size={14} /></button></header><dl><div><dt>Previous / next checkpoint</dt><dd><kbd>[</kbd> <kbd>]</kbd></dd></div><div><dt>Next browser</dt><dd><kbd>B</kbd></dd></div><div><dt>Previous / next issue</dt><dd><kbd>⌥←</kbd> <kbd>⌥→</kbd></dd></div><div><dt>Clear selected issue</dt><dd><kbd>Esc</kbd></dd></div><div><dt>Run test</dt><dd><kbd>⌘↵</kbd></dd></div></dl></aside>}
+    {shortcutsOpen && <div className="bk-shortcut-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShortcutsOpen(false); }}><section className="bk-shortcut-reference" role="dialog" aria-modal="true" aria-labelledby="shortcut-dialog-title"><header><span><Keyboard size={18} /><b id="shortcut-dialog-title">Keyboard shortcuts</b></span><button type="button" aria-label="Close keyboard shortcuts" onClick={() => setShortcutsOpen(false)}><X size={16} /></button></header><p>Move through checkpoints and findings without leaving the canvas.</p><dl><div><i><Monitor size={16} /></i><dt>Previous / next checkpoint</dt><dd><kbd aria-label="Left bracket">[</kbd><kbd aria-label="Right bracket">]</kbd></dd></div><div><i><RefreshCw size={16} /></i><dt>Next browser</dt><dd><kbd>B</kbd></dd></div><div><i><ChevronLeft size={16} /><ChevronRight size={16} /></i><dt>Previous / next issue</dt><dd><kbd className="combo" aria-label="Option and left arrow"><Option size={13} /><ArrowLeft size={14} /></kbd><kbd className="combo" aria-label="Option and right arrow"><Option size={13} /><ArrowRight size={14} /></kbd></dd></div><div><i><X size={16} /></i><dt>Clear selected issue</dt><dd><kbd className="escape">Esc</kbd></dd></div><div><i><ScanSearch size={16} /></i><dt>Run test</dt><dd><kbd className="combo command-return" aria-label="Command and Return"><Command size={13} /><CornerDownLeft size={14} /></kbd></dd></div></dl></section></div>}
     <footer className="bs-footer"><span>Breakscope beta</span><button type="button" onClick={() => setShortcutsOpen((open) => !open)}><Keyboard size={12} /> ? shortcuts</button><span>{fixed.length ? `${fixed.length} fixed · ` : ""}{suppressedCount ? `${suppressedCount} suppressed · ` : ""}{browserLabels[activeBrowserEngine]} · Reduced motion</span></footer>
   </main>;
 }
