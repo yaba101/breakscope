@@ -26,7 +26,7 @@ function draft(type: ResponsiveIssueType, sample: ViewportSample, element: Eleme
     ...(element?.sourceHint ? { sourceHint: element.sourceHint } : {}),
     width: sample.width,
     browserEngine: sample.browserEngine ?? "chromium",
-    interactionState: sample.interactionState,
+    ...(sample.interactionState ? { interactionState: sample.interactionState } : {}),
   };
 }
 

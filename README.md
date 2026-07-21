@@ -225,3 +225,9 @@ pnpm preview
 ## Status
 
 Breakscope is an actively developed local beta. The current focus is capture stability, authenticated local capture, page diagnostics, safe interaction recipes, and additional accessibility display modes. A hosted version with accounts and persistent projects is planned separately; the local beta remains the working product described in this README.
+
+## License
+
+Breakscope is open source under the [Apache License 2.0](LICENSE). You may use, modify, and distribute the project under its terms. Apache 2.0 also includes an explicit patent license from contributors and preserves attribution requirements for redistributed work.
+
+Copyright 2026 Breakscope contributors.
