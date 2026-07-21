@@ -380,7 +380,7 @@ function ExploreViewportGrid({ previews, issues, browserEngine, routePath, onFoc
         const responsiveFamilies = groupIssueFamilies(issues.filter((issue) => (issue.browserEngine ?? "chromium") === browserEngine && issue.routePath === routePath && responsiveBlockerTypes.has(issue.type) && issueAffectsWidth(issue, preview.width)));
         const issueCount = responsiveFamilies.length;
         return <article className="bk-explore-pane" key={`${browserEngine}-${preview.width}`}>
-          <header><span><b>{preview.label}</b><small>{preview.width}px</small></span><span className={issueCount ? "has-issues" : "passed"}>{issueCount ? `${issueCount} issue${issueCount === 1 ? "" : "s"}` : "Passed"}</span><button type="button" onClick={() => onFocus(preview.width)}>Focus <ArrowRight size={13} /></button></header>
+          <header><span><b>{preview.label}</b><small>{preview.width}px</small></span><span className={issueCount ? "has-issues" : "passed"}>{issueCount ? `${issueCount} issue${issueCount === 1 ? "" : "s"}` : "Passed"}</span><button type="button" onClick={() => onFocus(preview.width)}>Focus <ChevronRight size={14} /></button></header>
           <div className="bk-explore-pane-scroll" aria-label={`Scrollable ${preview.label} capture at ${preview.width}px`} tabIndex={0} ref={(node) => { if (node) paneRefs.current.set(preview.width, node); else paneRefs.current.delete(preview.width); }} onScroll={() => synchronize(preview.width)}>
             <ResultImage image={preview.image} alt={`${preview.label} overview at ${preview.width}px`} />
           </div>
