@@ -5,6 +5,7 @@ import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard
 import { useMemo, useState, useEffect, type CSSProperties, type ReactNode } from "react";
 import { DEVICE_PRESETS, DeviceFrame as BezelDeviceFrame, type DeviceName, type DeviceOrientation, type DevicePreset } from "react-device-bezels";
 import type { BrowserEngine, ResponsiveIssue, TestTarget } from "@breakscope/shared";
+import { capturedImageMimeType } from "@/lib/captured-image";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
 
 const deviceMaker = (preset: DevicePreset) => preset.platform === "ios" ? "Apple" : preset.name.startsWith("pixel") ? "Google" : preset.name.startsWith("galaxy") ? "Samsung" : preset.name.startsWith("oneplus") ? "OnePlus" : preset.name.startsWith("xiaomi") ? "Xiaomi" : "Android";
@@ -118,7 +119,7 @@ function ResultImage({ image, alt }: { image?: ArrayBuffer | string; alt: string
       queueMicrotask(() => { if (!disposed) setUrl(""); });
       return;
     }
-    const blobUrl = URL.createObjectURL(new Blob([image], { type: "image/png" }));
+    const blobUrl = URL.createObjectURL(new Blob([image], { type: capturedImageMimeType(image) }));
     queueMicrotask(() => { if (!disposed) setUrl(blobUrl); });
     return () => { disposed = true; URL.revokeObjectURL(blobUrl); };
   }, [image]);

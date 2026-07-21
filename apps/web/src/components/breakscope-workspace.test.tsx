@@ -488,7 +488,49 @@ describe("BreakscopeWorkspace", () => {
     const captureLabel = await screen.findByText("Browser captures");
     await waitFor(() => expect(captureLabel.closest("div")).toHaveTextContent("12/12"));
     expect(screen.getByRole("heading", { name: "Sweeping responsive range" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /checkpoint at \d+px/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Cancel test/i })).toHaveTextContent("Progress will be saved");
+  });
+
+  it("keeps the latest laptop preview visible while the wide checkpoint is being captured", async () => {
+    loadBreakscopeState.mockResolvedValue({
+      target: { ...target, selectedRoutes: ["/"], browserEngines: ["chromium"] },
+      availableRoutes: ["/"],
+      latestIssues: [],
+      latestPreviews: [],
+      scanRequest: { id: "wide-preview-run-1", requestedAt: 2, source: "setup" },
+      updatedAt: 2,
+    });
+    capturePageLocally.mockImplementation(({ width }: { width: number }) => width === 1440
+      ? new Promise(() => undefined)
+      : Promise.resolve({ image: { arrayBuffer: vi.fn().mockResolvedValue(new Uint8Array([width % 255]).buffer) }, snapshot: { documentHeight: 900 } }));
+
+    renderWorkspace();
+
+    await waitFor(() => expect(capturePageLocally).toHaveBeenCalledTimes(4));
+    expect(screen.getByRole("img", { name: "Laptop checkpoint at 1280px" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Wide 1440px" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("does not report the local agent as offline when a fresh health check is online", async () => {
+    loadBreakscopeState.mockResolvedValue({
+      target: { ...target, selectedRoutes: ["/"], deviceWidths: [375], browserEngines: ["chromium"] },
+      availableRoutes: ["/"],
+      latestIssues: [],
+      latestPreviews: [],
+      scanRequest: { id: "online-scan-failure-1", requestedAt: 2, source: "setup" },
+      updatedAt: 2,
+    });
+    capturePageLocally.mockResolvedValue({ image: { arrayBuffer: vi.fn().mockResolvedValue(new Uint8Array([1]).buffer) }, snapshot: { documentHeight: 900 } });
+    scanRouteLocally.mockRejectedValue(new Error("Responsive scanner is offline. Start Breakscope with pnpm dev:local and try again."));
+
+    renderWorkspace();
+
+    const alert = await screen.findByRole("alert");
+    await waitFor(() => expect(alert).toHaveTextContent("local capture agent is still online"));
+    expect(alert).not.toHaveTextContent("Start Breakscope");
+    expect(screen.getByLabelText("Local capture agent online")).toBeInTheDocument();
+    expect(getLocalCaptureHealth).toHaveBeenCalledTimes(3);
   });
 
   it("deduplicates evidence captures shared by multiple findings", async () => {

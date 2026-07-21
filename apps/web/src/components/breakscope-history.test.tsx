@@ -36,4 +36,19 @@ describe("BreakscopeHistory", () => {
     expect(await screen.findByRole("button", { name: "Baseline" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Review changes" })).toBeInTheDocument();
   });
+
+  it("restores every saved checkpoint before opening a historical scan", async () => {
+    const previews = [375, 768, 1280, 1440].map((width) => ({ width, label: String(width), routePath: "/", browserEngine: "chromium" as const, image: new ArrayBuffer(8) }));
+    const completeRun = { ...current, target: { ...target, deviceWidths: previews.map((preview) => preview.width) }, previews };
+    loadBreakscopeState.mockResolvedValue({ latestIssues: [], scanHistory: [completeRun], updatedAt: 2 });
+    render(<QueryClientProvider client={new QueryClient()}><BreakscopeHistory /></QueryClientProvider>);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Open scan/i }));
+
+    await waitFor(() => expect(saveBreakscopeState).toHaveBeenCalledWith(expect.objectContaining({
+      target: expect.objectContaining({ deviceWidths: [375, 768, 1280, 1440] }),
+      latestPreviews: previews,
+    })));
+    expect(push).toHaveBeenCalledWith("/workspace");
+  });
 });

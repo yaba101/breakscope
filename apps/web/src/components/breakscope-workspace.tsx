@@ -13,6 +13,7 @@ import { isCaptureUrl } from "@breakscope/validation";
 import { capturePageLocally, discoverRoutesLocally, getLocalCaptureHealth, scanRouteLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys, workspaceStateQueryOptions } from "@/lib/breakscope-queries";
 import { clearBreakscopeState, loadBreakscopeState, saveBreakscopeState, type BreakscopeState, type LocalScanRun, type PersistedScanJob, type PersistedViewportPreview, type RuntimeDiagnosticSample, type TestProfile } from "@/lib/breakscope-workspace";
+import { capturedImageMimeType } from "@/lib/captured-image";
 import { BreakscopeLogo, deviceChoices } from "./breakscope-brand";
 
 const defaultWidths = [320, 390, 480, 600, 768, 900, 1024, 1280, 1440];
@@ -158,7 +159,7 @@ function imageDataUrl(image?: ArrayBuffer) {
     const reader = new FileReader();
     reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : undefined);
     reader.onerror = () => reject(reader.error ?? new Error("Could not read screenshot evidence"));
-    reader.readAsDataURL(new Blob([image], { type: "image/png" }));
+    reader.readAsDataURL(new Blob([image], { type: capturedImageMimeType(image) }));
   });
 }
 
@@ -189,7 +190,7 @@ function downloadLocalReport(format: "md" | "json" | "html", state: BreakscopeSt
   const findings = state.latestIssues; const title = `Breakscope report — ${new URL(target.url).host}`;
   const markdown = `# ${title}\n\nGenerated ${new Date().toLocaleString()}\n\n- Routes: ${target.selectedRoutes.join(", ")}\n- Range: ${target.minWidth}–${target.maxWidth}px\n- Findings: ${findings.length}\n\n${findings.map((issue, index) => `${index + 1}. **${issue.title}** — ${issue.routePath} at ${issue.evidenceWidth}px\n   - ${issue.description}\n   - Target: \`${issue.selector}\``).join("\n") || "No findings."}`;
   const serializable = { title, generatedAt: new Date().toISOString(), target, findings: findings.map(({ screenshot: _screenshot, passingScreenshot: _passing, ...issue }) => issue) };
-  const html = `<!doctype html><meta charset="utf-8"><title>${title}</title><style>body{font:16px/1.55 system-ui;max-width:960px;margin:48px auto;padding:0 24px;color:#151923}article{border:1px solid #d8d2c7;padding:20px;margin:16px 0}code{background:#f2efe9;padding:2px 5px}img{max-width:100%;border:1px solid #ddd}</style><h1>${title}</h1><p>${new Date().toLocaleString()} · ${findings.length} findings · ${target.minWidth}–${target.maxWidth}px</p>${findings.map((issue) => `<article><h2>${issue.title}</h2><p>${issue.description}</p><p><b>${issue.routePath}</b> at ${issue.evidenceWidth}px</p><code>${issue.selector}</code>${issue.screenshot ? `<p><img alt="Evidence for ${issue.title}" src="data:image/png;base64,${arrayBufferBase64(issue.screenshot)}"></p>` : ""}</article>`).join("") || "<p>No findings.</p>"}`;
+  const html = `<!doctype html><meta charset="utf-8"><title>${title}</title><style>body{font:16px/1.55 system-ui;max-width:960px;margin:48px auto;padding:0 24px;color:#151923}article{border:1px solid #d8d2c7;padding:20px;margin:16px 0}code{background:#f2efe9;padding:2px 5px}img{max-width:100%;border:1px solid #ddd}</style><h1>${title}</h1><p>${new Date().toLocaleString()} · ${findings.length} findings · ${target.minWidth}–${target.maxWidth}px</p>${findings.map((issue) => `<article><h2>${issue.title}</h2><p>${issue.description}</p><p><b>${issue.routePath}</b> at ${issue.evidenceWidth}px</p><code>${issue.selector}</code>${issue.screenshot ? `<p><img alt="Evidence for ${issue.title}" src="data:${capturedImageMimeType(issue.screenshot)};base64,${arrayBufferBase64(issue.screenshot)}"></p>` : ""}</article>`).join("") || "<p>No findings.</p>"}`;
   const content = format === "json" ? JSON.stringify(serializable, null, 2) : format === "html" ? html : markdown;
   const href = URL.createObjectURL(new Blob([content], { type: format === "json" ? "application/json" : format === "html" ? "text/html" : "text/markdown" }));
   const link = document.createElement("a"); link.href = href; link.download = `breakscope-${new URL(target.url).host}.${format}`; link.click(); URL.revokeObjectURL(href);
@@ -235,7 +236,7 @@ function ResultImage({ image, alt, retryLabel, retrying, onRetry, onReady, child
       queueMicrotask(() => { if (!disposed) setSource({ image, url: "" }); });
       return () => { disposed = true; };
     }
-    const url = URL.createObjectURL(new Blob([image], { type: "image/png" }));
+    const url = URL.createObjectURL(new Blob([image], { type: capturedImageMimeType(image) }));
     queueMicrotask(() => { if (!disposed) setSource({ image, url }); });
     return () => { disposed = true; URL.revokeObjectURL(url); };
   }, [image]);
@@ -625,6 +626,13 @@ export function BreakscopeWorkspace() {
   const scanMutation = useMutation({ mutationKey: breakscopeQueryKeys.scan(), mutationFn: runScanWorkflow });
   const scanning = scanMutation.isPending;
 
+  async function confirmCaptureOffline(reason: unknown) {
+    if (!captureServiceUnavailable(reason)) return false;
+    const health = await getLocalCaptureHealth().catch(() => ({ online: false, activeCaptures: 0, completedCaptures: 0 }));
+    setAgentHealth(health);
+    return !health.online;
+  }
+
   useEffect(() => {
     let active = true;
     const refreshAgentHealth = async () => {
@@ -918,11 +926,11 @@ export function BreakscopeWorkspace() {
             setActivePreviewWidth(width);
           } catch (reason) {
             if (reason instanceof DOMException && reason.name === "AbortError") break;
-            if (captureServiceUnavailable(reason)) {
+            if (await confirmCaptureOffline(reason)) {
               setAgentHealth({ online: false, activeCaptures: 0, completedCaptures: initialHealth.completedCaptures });
               throw new Error(`Local capture went offline after ${scanJob.completedCheckpoints.length} of ${checkpointQueue.length} checkpoints. Start Breakscope with pnpm dev:local, then retry to continue.`);
             }
-            const detail = reason instanceof Error ? reason.message : "Capture failed";
+            const detail = captureServiceUnavailable(reason) ? "The checkpoint request failed, but the local capture agent is still online. Retry the failed capture." : reason instanceof Error ? reason.message : "Capture failed";
             routeErrors.push(`${browserLabels[browserEngine]} ${selectedRoutes[0]} at ${width}px: ${detail.split("\n")[0]?.slice(0, 180)}`);
           }
         }
@@ -947,11 +955,11 @@ export function BreakscopeWorkspace() {
           await persistJob();
           settled.push({ status: "fulfilled", value: routeSamples });
         } catch (reason) {
-          if (captureServiceUnavailable(reason)) {
+          if (await confirmCaptureOffline(reason)) {
             setAgentHealth({ online: false, activeCaptures: 0, completedCaptures: initialHealth.completedCaptures });
             throw new Error(`Local capture went offline while analyzing ${routePath}. Start Breakscope with pnpm dev:local, then retry to continue.`);
           }
-          settled.push({ status: "rejected", reason });
+          settled.push({ status: "rejected", reason: captureServiceUnavailable(reason) ? new Error("The responsive scan request failed, but the local capture agent is still online. Retry the failed captures.") : reason });
         }
       }
       settled.forEach((settledResult, index) => {
@@ -1037,6 +1045,9 @@ export function BreakscopeWorkspace() {
   }
 
   const activePreview = previews.find((preview) => preview.width === activePreviewWidth && (preview.browserEngine ?? "chromium") === activeBrowserEngine);
+  const liveScanPreview = scanning
+    ? activePreview ?? [...previews].reverse().find((preview) => preview.routePath === selectedRoutes[0] && (preview.browserEngine ?? "chromium") === activeBrowserEngine)
+    : undefined;
   const displayedWidth = activeIssue
     ? comparisonMode === "passing" && activeIssue.lastWorkingWidth
       ? activeIssue.lastWorkingWidth
@@ -1218,7 +1229,7 @@ export function BreakscopeWorkspace() {
         <div className="bk-preview-toolbar"><div className="bk-environment-controls"><DevicePicker activeModel={displayedModel} orientation={deviceOrientation} recentIds={recentDeviceIds} pinnedIds={pinnedDeviceIds} onModelSelect={selectModel} onOrientationChange={setDeviceOrientation} onTogglePin={togglePin} /><BrowserSwitcher engines={browserEngines} activeEngine={activeBrowserEngine} activeWidth={activePreviewWidth} routePath={selectedRoutes[0] ?? "/"} previews={previews} issues={issues} onSelect={(engine) => { setActiveBrowserEngine(engine); setIssueDisplayWidth(undefined); setResult((current) => ({ ...current, activeIssue: undefined })); setComparisonMode("failing"); }} /></div><div className="bk-preview-scale"><span>Preview</span><div role="group" aria-label="Preview scale mode"><button type="button" className={previewScaleMode === "fit-device" ? "active" : ""} aria-pressed={previewScaleMode === "fit-device"} onClick={() => setPreviewScaleMode("fit-device")}><Maximize2 size={14} /> Fit device</button><button type="button" className={previewScaleMode === "fit-screen" ? "active" : ""} aria-pressed={previewScaleMode === "fit-screen"} onClick={() => setPreviewScaleMode("fit-screen")}>Fit screen</button><button type="button" className={previewScaleMode === "actual" ? "active" : ""} aria-pressed={previewScaleMode === "actual"} onClick={() => setPreviewScaleMode("actual")}>100%</button></div><div className="bk-zoom-stepper"><button type="button" aria-label="Zoom out" onClick={() => { setPreviewScaleMode("custom"); setPreviewZoom((value) => Math.max(40, value - 10)); }}><Minus size={14} /></button><output>{previewScaleMode === "actual" ? 100 : previewScaleMode === "custom" ? previewZoom : previewScaleMode === "fit-screen" ? "Fill" : "Fit"}</output><button type="button" aria-label="Zoom in" onClick={() => { setPreviewScaleMode("custom"); setPreviewZoom((value) => Math.min(140, value + 10)); }}><Plus size={14} /></button></div></div></div>
         <div className="bk-stage-canvas checkpoint-grid">
           {workspaceMode === "explore" && !scanning && previews.length ? <ExploreViewportGrid previews={previews} issues={issues} browserEngine={activeBrowserEngine} routePath={selectedRoutes[0] ?? "/"} onFocus={(width) => { setActivePreviewWidth(width); setActiveDeviceModelId(modelForWidth(width).id); setWorkspaceMode("audit"); setResult((current) => ({ ...current, activeIssue: undefined })); }} />
-          : scanning && activePreview ? <DeviceFrame model={displayedModel} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} previewZoom={previewZoom} url={url} scanning previewRef={scanPreviewRef} scrollProgress={scrollProgress} onScroll={updatePreviewProgress} onUserInteraction={pauseStagedScan}><ResultImage image={activePreview.image} alt={`${activePreview.label} checkpoint at ${activePreview.width}px`} /></DeviceFrame>
+          : scanning && liveScanPreview ? <DeviceFrame model={modelForWidth(liveScanPreview.width)} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} previewZoom={previewZoom} url={url} scanning previewRef={scanPreviewRef} scrollProgress={scrollProgress} onScroll={updatePreviewProgress} onUserInteraction={pauseStagedScan}><ResultImage image={liveScanPreview.image} alt={`${liveScanPreview.label} checkpoint at ${liveScanPreview.width}px`} /></DeviceFrame>
           : scanning ? <DeviceFrame model={displayedModel} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} previewZoom={previewZoom} url={url} scanning scrollProgress={0}><DeviceScanPlaceholder phase={scanHeadline} width={progress.width || minWidth} kind={displayedDevice} /></DeviceFrame>
           : activeIssue ? <div className="bk-evidence-view"><div className="bk-evidence-bar"><span className={comparisonMode}>{comparisonMode === "passing" ? <Check size={14} /> : <AlertTriangle size={14} />}{comparisonMode === "passing" ? `Passing · ${activeIssue.lastWorkingWidth}px` : `Failing · ${displayedWidth}px`}<small>{issueTargetDescription(activeIssue)}</small></span><div className="bk-issue-stepper" aria-label={`Issue ${activeIssueIndex + 1} of ${navigableIssues.length}`}><button type="button" aria-label="Previous issue" onClick={() => stepIssue(-1)}><ChevronLeft size={15} /></button><em><span>Issue</span> {activeIssueIndex + 1} of {navigableIssues.length}</em><button type="button" aria-label="Next issue" onClick={() => stepIssue(1)}><ChevronRight size={15} /></button></div>{activeIssue.passingScreenshot && <div><button className={comparisonMode === "failing" ? "active" : ""} onClick={() => setComparisonMode("failing")}>Failing</button><button className={comparisonMode === "passing" ? "active" : ""} onClick={() => setComparisonMode("passing")}>Passing</button></div>}</div><DeviceFrame model={displayedModel} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} previewZoom={previewZoom} url={url} previewRef={issuePreviewRef} scrollProgress={scrollProgress} issuePosition={comparisonMode === "failing" ? ((activeIssue.elementRect?.y ?? 0) + (activeIssue.elementRect?.height ?? 40) / 2) / Math.max(1, activeIssue.documentHeight ?? 900) : undefined}><ResultImage image={issueImage} alt={`${comparisonMode} evidence for ${activeIssue.title}`} retryLabel={`Retry ${displayedWidth}px capture`} retrying={retryingViewport?.kind === "issue" && retryingViewport.issueFingerprint === activeIssue.fingerprint && retryingViewport.evidenceMode === comparisonMode} onReady={revealActiveIssue} onRetry={() => viewportRetryMutation.mutate({ kind: "issue", width: displayedWidth, routePath: activeIssue.routePath, issueFingerprint: activeIssue.fingerprint, evidenceMode: comparisonMode })}>{comparisonMode === "failing" && issueImage && activeIssue.elementRect && <span key={activeIssue.fingerprint} className="bs-highlight pulse" aria-label={`Highlighted target: ${issueTargetDescription(activeIssue)}`} style={{ left: `${Math.max(0, activeIssue.elementRect.x / activeIssue.evidenceWidth * 100)}%`, top: `${Math.max(0, activeIssue.elementRect.y / Math.max(1, activeIssue.documentHeight ?? 900) * 100)}%`, width: `${Math.min(100, activeIssue.elementRect.width / activeIssue.evidenceWidth * 100)}%`, height: `${Math.min(100, activeIssue.elementRect.height / Math.max(1, activeIssue.documentHeight ?? 900) * 100)}%` }}><b>{issueTargetDescription(activeIssue)}</b><i /></span>}</ResultImage></DeviceFrame></div>
           : activePreview ? <DeviceFrame model={displayedModel} browserEngine={activeBrowserEngine} orientation={deviceOrientation} scaleMode={previewScaleMode} previewZoom={previewZoom} url={url} scrollProgress={scrollProgress}><ResultImage image={activePreview.image} alt={`${activePreview.label} checkpoint at ${activePreview.width}px`} retryLabel={`Retry ${activePreview.width}px capture`} retrying={retryingViewport?.kind === "checkpoint" && retryingViewport.width === activePreview.width} onRetry={() => viewportRetryMutation.mutate({ kind: "checkpoint", width: activePreview.width, routePath: activePreview.routePath, browserEngine: activeBrowserEngine })} /></DeviceFrame>

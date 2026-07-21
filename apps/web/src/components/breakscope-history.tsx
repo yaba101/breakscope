@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { compareRgba } from "@breakscope/comparison-engine";
 import { breakscopeQueryKeys } from "@/lib/breakscope-queries";
 import { loadBreakscopeState, saveBreakscopeState, type BreakscopeState, type LocalScanRun } from "@/lib/breakscope-workspace";
+import { capturedImageMimeType } from "@/lib/captured-image";
 import { BreakscopeLogo } from "./breakscope-brand";
 
 interface VisualRunComparison { changedRatio: number; previous: string; current: string; diff: string; width: number }
@@ -16,7 +17,7 @@ async function compareRunPreviews(current: LocalScanRun, baselineRun: LocalScanR
   const candidate = current.previews.find((preview) => baselineRun.previews.some((item) => item.width === preview.width && item.routePath === preview.routePath && (item.browserEngine ?? "chromium") === (preview.browserEngine ?? "chromium")));
   if (!candidate) throw new Error("No matching checkpoint exists in the selected baseline.");
   const baseline = baselineRun.previews.find((item) => item.width === candidate.width && item.routePath === candidate.routePath && (item.browserEngine ?? "chromium") === (candidate.browserEngine ?? "chromium"))!;
-  const [beforeBitmap, afterBitmap] = await Promise.all([createImageBitmap(new Blob([baseline.image], { type: "image/png" })), createImageBitmap(new Blob([candidate.image], { type: "image/png" }))]);
+  const [beforeBitmap, afterBitmap] = await Promise.all([createImageBitmap(new Blob([baseline.image], { type: capturedImageMimeType(baseline.image) })), createImageBitmap(new Blob([candidate.image], { type: capturedImageMimeType(candidate.image) }))]);
   const width = Math.min(beforeBitmap.width, afterBitmap.width); const height = Math.min(beforeBitmap.height, afterBitmap.height);
   const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height; const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) throw new Error("Canvas comparison is unavailable.");
@@ -24,7 +25,7 @@ async function compareRunPreviews(current: LocalScanRun, baselineRun: LocalScanR
   context.clearRect(0, 0, width, height); context.drawImage(afterBitmap, 0, 0, width, height); const after = context.getImageData(0, 0, width, height);
   const comparison = compareRgba(before.data, after.data, width, height); const diff = new ImageData(Uint8ClampedArray.from(comparison.diff), width, height); context.putImageData(diff, 0, 0);
   const diffUrl = canvas.toDataURL("image/png");
-  const toUrl = (image: ArrayBuffer) => { const bytes = new Uint8Array(image); let binary = ""; for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000)); return `data:image/png;base64,${btoa(binary)}`; };
+  const toUrl = (image: ArrayBuffer) => { const bytes = new Uint8Array(image); let binary = ""; for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000)); return `data:${capturedImageMimeType(image)};base64,${btoa(binary)}`; };
   beforeBitmap.close(); afterBitmap.close();
   return { changedRatio: comparison.changedRatio, previous: toUrl(baseline.image), current: toUrl(candidate.image), diff: diffUrl, width: candidate.width };
 }

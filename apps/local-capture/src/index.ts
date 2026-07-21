@@ -429,10 +429,9 @@ async function captureWithBrowser(
       cumulativeLayoutShift: Math.round(shifts.filter((shift) => !shift.hadRecentInput).reduce((total, shift) => total + (shift.value ?? 0), 0) * 1000) / 1000,
     };
   });
-  // The workspace presents captures inside a scrollable device screen. A viewport-only
-  // image creates a false bottom at the initial browser height, so retain the full page
-  // and let the workspace evidence budget decide which captures remain persisted.
-  const png = includeImage ? await page.screenshot({ fullPage: true, animations: "disabled", type: "png" }) : undefined;
+  // Raw full-page PNGs can exceed the evidence budget and evict whole checkpoints
+  // from History. JPEG retains the full page at a practical size for every viewport.
+  const image = includeImage ? await page.screenshot({ fullPage: true, animations: "disabled", type: "jpeg", quality: 84 }) : undefined;
   const finalUrl = page.url();
   const snapshot: PageSnapshot = {
     ...snapshotData,
@@ -445,7 +444,7 @@ async function captureWithBrowser(
   };
   await context.close();
   return {
-    ...(png ? { image: `data:image/png;base64,${png.toString("base64")}` } : {}),
+    ...(image ? { image: `data:image/jpeg;base64,${image.toString("base64")}` } : {}),
     finalUrl,
     statusCode: navigation.status(),
     durationMs: Date.now() - startedAt,
