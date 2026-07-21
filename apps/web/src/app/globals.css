@@ -140,6 +140,9 @@
   box-shadow: 0 8px 8px rgb(17 24 39 / 18%);
 }
 .bk-browser-frame.laptop-display {
+  /* The full-page image remains scrollable inside the screen, but must not
+     contribute its multi-thousand-pixel intrinsic height to the stage grid. */
+  contain: size;
   overflow: visible;
   border-width: 9px 9px 16px;
   border-color: #2b3038;
@@ -5302,7 +5305,9 @@ button {
 }
 .bk-browser-frame.scale-fit-device {
   width: min(92%, 1180px);
-  height: min(92%, 760px);
+  /* A percentage height forms a cyclic dependency with the frame's 100%-height
+     preview children and collapses desktop fallbacks to zero during capture. */
+  height: clamp(360px, calc(100dvh - 250px), 760px);
 }
 .bk-browser-frame.scale-fit-screen {
   width: 100%;

@@ -492,7 +492,7 @@ describe("BreakscopeWorkspace", () => {
     expect(screen.getByRole("button", { name: /Cancel test/i })).toHaveTextContent("Progress will be saved");
   });
 
-  it("keeps the latest laptop preview visible while the wide checkpoint is being captured", async () => {
+  it("keeps the latest preview visible in the active device shell while the next checkpoint is being captured", async () => {
     loadBreakscopeState.mockResolvedValue({
       target: { ...target, selectedRoutes: ["/"], browserEngines: ["chromium"] },
       availableRoutes: ["/"],
@@ -510,6 +510,7 @@ describe("BreakscopeWorkspace", () => {
     await waitFor(() => expect(capturePageLocally).toHaveBeenCalledTimes(4));
     expect(screen.getByRole("img", { name: "Laptop checkpoint at 1280px" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Wide 1440px" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Desktop 1440 in Chrome")).toBeInTheDocument();
   });
 
   it("does not report the local agent as offline when a fresh health check is online", async () => {
