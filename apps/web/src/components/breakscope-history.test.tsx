@@ -3,8 +3,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BreakscopeHistory } from "./breakscope-history";
 
-const { loadBreakscopeState, saveBreakscopeState, push } = vi.hoisted(() => ({ loadBreakscopeState: vi.fn(), saveBreakscopeState: vi.fn(), push: vi.fn() }));
-vi.mock("@/lib/breakscope-workspace", () => ({ loadBreakscopeState, saveBreakscopeState }));
+const { loadBreakscopeState, loadScanRunArtifacts, saveBreakscopeState, push } = vi.hoisted(() => ({ loadBreakscopeState: vi.fn(), loadScanRunArtifacts: vi.fn(), saveBreakscopeState: vi.fn(), push: vi.fn() }));
+vi.mock("@/lib/breakscope-workspace", () => ({ loadBreakscopeState, loadScanRunArtifacts, saveBreakscopeState }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 const target = { id: "current", name: "example.com", url: "https://example.com", selectedRoutes: ["/"], minWidth: 320, maxWidth: 1440, executionMode: "local" as const, deviceWidths: [375], browserEngines: ["chromium" as const], createdAt: 1, updatedAt: 1 };
@@ -16,6 +16,7 @@ describe("BreakscopeHistory", () => {
     vi.clearAllMocks();
     loadBreakscopeState.mockResolvedValue({ latestIssues: [], scanHistory: [current, older], updatedAt: 2 });
     saveBreakscopeState.mockResolvedValue(undefined);
+    loadScanRunArtifacts.mockResolvedValue(undefined);
   });
 
   it("lets the user choose an explicit baseline and compares later runs to it", async () => {
@@ -40,6 +41,7 @@ describe("BreakscopeHistory", () => {
   it("restores every saved checkpoint before opening a historical scan", async () => {
     const previews = [375, 768, 1280, 1440].map((width) => ({ width, label: String(width), routePath: "/", browserEngine: "chromium" as const, image: new ArrayBuffer(8) }));
     const completeRun = { ...current, target: { ...target, deviceWidths: previews.map((preview) => preview.width) }, previews };
+    loadScanRunArtifacts.mockResolvedValue(completeRun);
     loadBreakscopeState.mockResolvedValue({ latestIssues: [], scanHistory: [completeRun], updatedAt: 2 });
     render(<QueryClientProvider client={new QueryClient()}><BreakscopeHistory /></QueryClientProvider>);
 

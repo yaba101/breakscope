@@ -23,6 +23,8 @@ export const viewportProfiles: Record<ViewportId, ViewportProfile> = {
 };
 
 export type BrowserEngine = "chromium" | "firefox" | "webkit";
+export type TestProfile = "responsive" | "accessibility" | "performance" | "full";
+export type ScanStrategy = "balanced" | "exhaustive" | "quick";
 
 export interface CaptureProfile {
   browserEngine: BrowserEngine;
@@ -54,6 +56,7 @@ export interface TestTarget {
   executionMode?: "local" | "hosted";
   deviceWidths?: number[];
   browserEngines?: BrowserEngine[];
+  scanStrategy?: ScanStrategy;
   createdAt: number;
   updatedAt: number;
 }

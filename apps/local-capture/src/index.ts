@@ -1,9 +1,9 @@
 import { createServer, type ServerResponse } from "node:http";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import { chromium, devices, firefox, webkit, type Browser, type BrowserContextOptions, type BrowserType, type Page, type Response as PlaywrightResponse } from "@playwright/test";
+import { chromium, devices, firefox, webkit, type Browser, type BrowserContext, type BrowserContextOptions, type BrowserType, type Page, type Response as PlaywrightResponse } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { viewportProfiles, type BrowserEngine, type CaptureProfile, type PageSnapshot, type ViewportId, type ViewportSample } from "@breakscope/shared";
+import { viewportProfiles, type BrowserEngine, type CaptureProfile, type PageSnapshot, type TestProfile, type ViewportId, type ViewportSample } from "@breakscope/shared";
 import { isCaptureUrl, isLocalPreviewUrl } from "@breakscope/validation";
 
 const port = Number(process.env.BREAKSCOPE_CAPTURE_PORT ?? 4317);
@@ -15,10 +15,75 @@ const allowedOrigins = new Set([
 ]);
 let activeCaptures = 0;
 let completedCaptures = 0;
+let browserLaunches = 0;
+let peakActiveCaptures = 0;
+const browserIdleMs = Number(process.env.BREAKSCOPE_BROWSER_IDLE_MS ?? 30_000);
+const browserPool = new Map<BrowserEngine, { browser: Promise<Browser>; idleTimer?: NodeJS.Timeout }>();
+const captureWaiters: Array<() => void> = [];
+const maxConcurrentCaptures = 2;
+
+async function acquireCaptureSlot() {
+  if (activeCaptures >= maxConcurrentCaptures) await new Promise<void>((resolve) => captureWaiters.push(resolve));
+  activeCaptures += 1;
+  peakActiveCaptures = Math.max(peakActiveCaptures, activeCaptures);
+}
+
+function releaseCaptureSlot() {
+  activeCaptures = Math.max(0, activeCaptures - 1);
+  captureWaiters.shift()?.();
+}
+
+async function pooledBrowser(engine: BrowserEngine) {
+  const existing = browserPool.get(engine);
+  if (existing) {
+    if (existing.idleTimer) clearTimeout(existing.idleTimer);
+    return existing.browser;
+  }
+  browserLaunches += 1;
+  const browser = browserType(engine).launch({ headless: true });
+  const entry: { browser: Promise<Browser>; idleTimer?: NodeJS.Timeout } = { browser };
+  browserPool.set(engine, entry);
+  void browser.then((instance) => instance.on("disconnected", () => {
+    if (browserPool.get(engine)?.browser === browser) browserPool.delete(engine);
+  })).catch(() => browserPool.delete(engine));
+  return browser;
+}
+
+function releasePooledBrowser(engine: BrowserEngine) {
+  const entry = browserPool.get(engine);
+  if (!entry) return;
+  entry.idleTimer = setTimeout(() => {
+    if (browserPool.get(engine) !== entry) return;
+    browserPool.delete(engine);
+    void entry.browser.then((browser) => browser.close()).catch(() => undefined);
+  }, browserIdleMs);
+  entry.idleTimer.unref?.();
+}
+
+async function withPooledBrowser<T>(engine: BrowserEngine, task: (browser: Browser) => Promise<T>) {
+  await acquireCaptureSlot();
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const browser = await pooledBrowser(engine);
+      try {
+        return await task(browser);
+      } catch (error) {
+        const disconnected = !browser.isConnected() || /Target page, context or browser has been closed|browser has disconnected/i.test(error instanceof Error ? error.message : String(error));
+        if (!disconnected || attempt === 1) throw error;
+        browserPool.delete(engine);
+      }
+    }
+    throw new Error("Browser capture could not be restarted");
+  } finally {
+    releasePooledBrowser(engine);
+    releaseCaptureSlot();
+    completedCaptures += 1;
+  }
+}
 
 function runtimeStats() {
   const memory = process.memoryUsage();
-  return { activeCaptures, completedCaptures, rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, externalBytes: memory.external };
+  return { activeCaptures, completedCaptures, browserLaunches, peakActiveCaptures, pooledEngines: browserPool.size, rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, externalBytes: memory.external };
 }
 
 interface CapturePageRequest {
@@ -28,6 +93,7 @@ interface CapturePageRequest {
   width?: number;
   height?: number;
   profile?: CaptureProfile;
+  testProfile?: TestProfile;
 }
 
 interface ScanRouteRequest {
@@ -36,19 +102,12 @@ interface ScanRouteRequest {
   widths: number[];
   height?: number;
   profile?: CaptureProfile;
+  testProfile?: TestProfile;
+  auditWidths?: number[];
 }
 
 interface RouteDiscoveryRequest {
   url: string;
-}
-
-interface CapturePageResponse {
-  image?: string;
-  finalUrl?: string;
-  statusCode?: number;
-  durationMs?: number;
-  snapshot?: PageSnapshot;
-  error?: string;
 }
 
 interface ScanRouteResponse {
@@ -65,6 +124,20 @@ interface RouteDiscoveryResponse {
 function send(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, { "Content-Type": "application/json" });
   response.end(JSON.stringify(body));
+}
+
+function sendImage(response: ServerResponse, result: { image?: Buffer; finalUrl: string; statusCode: number; durationMs: number; documentHeight: number }) {
+  if (!result.image) return send(response, 500, { error: "Capture did not produce an image" });
+  response.writeHead(200, {
+    "Content-Type": "image/jpeg",
+    "Content-Length": result.image.byteLength,
+    "Cache-Control": "no-store",
+    "X-Breakscope-Final-Url": encodeURIComponent(result.finalUrl),
+    "X-Breakscope-Status": String(result.statusCode),
+    "X-Breakscope-Duration-Ms": String(result.durationMs),
+    "X-Breakscope-Document-Height": String(result.documentHeight),
+  });
+  response.end(result.image);
 }
 
 function targetUrl(origin: string, routePath: string) {
@@ -187,6 +260,37 @@ async function settlePageForCapture(page: Page) {
   });
 }
 
+async function settleResizedPage(page: Page) {
+  const quiet = await page.evaluate(async () => {
+    const delay = (duration: number) => new Promise<void>((resolve) => window.setTimeout(resolve, duration));
+    const root = document.documentElement;
+    let lastHeight = root.scrollHeight;
+    let lastWidth = root.scrollWidth;
+    let stablePasses = 0;
+    let mutations = 0;
+    const observer = new MutationObserver(() => { mutations += 1; });
+    observer.observe(document, { attributes: true, childList: true, subtree: true, characterData: true });
+    try {
+      for (let pass = 0; pass < 8; pass += 1) {
+        const beforeMutations = mutations;
+        await delay(100);
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        const stable = root.scrollHeight === lastHeight && root.scrollWidth === lastWidth && mutations === beforeMutations;
+        stablePasses = stable ? stablePasses + 1 : 0;
+        lastHeight = root.scrollHeight;
+        lastWidth = root.scrollWidth;
+        if (stablePasses >= 2) return true;
+      }
+      return false;
+    } finally {
+      observer.disconnect();
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }
+  }).catch(() => false);
+  await page.waitForLoadState("networkidle", { timeout: 800 }).catch(() => undefined);
+  if (!quiet) await settlePageForCapture(page);
+}
+
 function contextOptions(profile: { width: number; height: number }, captureProfile?: CaptureProfile): BrowserContextOptions {
   const descriptor = captureProfile?.deviceName ? devices[captureProfile.deviceName] : undefined;
   return {
@@ -203,6 +307,22 @@ function contextOptions(profile: { width: number; height: number }, captureProfi
   };
 }
 
+interface CaptureSession {
+  context: BrowserContext;
+  page: Page;
+  navigation?: PlaywrightResponse | null;
+  initialized: boolean;
+}
+
+interface CaptureResult {
+  image?: Buffer;
+  finalUrl: string;
+  statusCode: number;
+  durationMs: number;
+  documentHeight: number;
+  snapshot?: PageSnapshot;
+}
+
 async function captureWithBrowser(
   browser: Browser,
   url: string,
@@ -211,40 +331,63 @@ async function captureWithBrowser(
   height?: number,
   includeImage = true,
   captureProfile?: CaptureProfile,
-  interactionState?: "expanded"
-) {
+  interactionState?: "expanded",
+  testProfile: TestProfile = "responsive",
+  session?: CaptureSession,
+  includeSnapshot = true,
+): Promise<CaptureResult> {
   const startedAt = Date.now();
   const profile = captureViewport(viewport, width, height);
-  const context = await browser.newContext(contextOptions(profile, captureProfile));
+  const ownsContext = !session;
+  const context = session?.context ?? await browser.newContext(contextOptions(profile, captureProfile));
+  try {
   const allowLocal = isLocalPreviewUrl(url);
   const checkedHosts = new Set<string>();
-  await context.route("**/*", async (route) => {
-    try {
-      const requested = new URL(route.request().url());
-      if (!["http:", "https:"].includes(requested.protocol)) return route.continue();
-      if (!checkedHosts.has(requested.hostname)) {
-        await assertPublicHostname(requested.hostname, allowLocal);
-        checkedHosts.add(requested.hostname);
+  if (!session?.initialized) {
+    await context.route("**/*", async (route) => {
+      try {
+        const requested = new URL(route.request().url());
+        if (!["http:", "https:"].includes(requested.protocol)) return route.continue();
+        if (!checkedHosts.has(requested.hostname)) {
+          await assertPublicHostname(requested.hostname, allowLocal);
+          checkedHosts.add(requested.hostname);
+        }
+        return route.continue();
+      } catch {
+        return route.abort("blockedbyclient");
       }
-      return route.continue();
-    } catch {
-      return route.abort("blockedbyclient");
-    }
-  });
-  const page = await context.newPage();
-  const navigation = await navigateForCapture(page, url);
+    });
+  }
+  const page = session?.page ?? await context.newPage();
+  if (session?.initialized) {
+    await page.setViewportSize(profile);
+    await settleResizedPage(page);
+  }
+  const navigation = session?.initialized ? session.navigation ?? null : await navigateForCapture(page, url);
   if (!navigation?.ok()) throw new Error(`Page returned ${navigation?.status() ?? "no response"} for ${url}`);
   const contentType = navigation.headers()["content-type"] ?? "";
   if (!contentType.includes("text/html")) throw new Error("URL did not return an HTML page");
-  await page.evaluate("globalThis.__name = (target) => target");
-  await settlePageForCapture(page);
-  const interactionCandidates = await page.locator("details:not([open]), button[aria-expanded='false'][aria-controls]:not([type='submit']), [role='button'][aria-expanded='false'][aria-controls]").count();
+  if (!session?.initialized) {
+    await page.evaluate("globalThis.__name = (target) => target");
+    await settlePageForCapture(page);
+    if (session) {
+      session.navigation = navigation;
+      session.initialized = true;
+    }
+  }
+  const interactionCandidates = includeSnapshot ? await page.locator("details:not([open]), button[aria-expanded='false'][aria-controls]:not([type='submit']), [role='button'][aria-expanded='false'][aria-controls]").count() : 0;
   if (interactionState === "expanded" && interactionCandidates) {
     await page.evaluate(() => {
       document.querySelectorAll("details:not([open])").forEach((element) => element.setAttribute("open", ""));
       document.querySelectorAll<HTMLElement>("button[aria-expanded='false'][aria-controls]:not([type='submit']), [role='button'][aria-expanded='false'][aria-controls]").forEach((element) => element.click());
     });
     await settlePageForCapture(page);
+  }
+  if (!includeSnapshot) {
+    const documentHeight = await page.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0));
+    const image = includeImage ? await page.screenshot({ fullPage: true, animations: "disabled", type: "jpeg", quality: 84 }) : undefined;
+    const result: CaptureResult = { ...(image ? { image } : {}), finalUrl: page.url(), statusCode: navigation.status(), durationMs: Date.now() - startedAt, documentHeight };
+    return result;
   }
   let snapshotData: Omit<PageSnapshot, "url" | "capturedAt"> | undefined;
   for (let attempt = 0; attempt < 3 && !snapshotData; attempt += 1) {
@@ -409,15 +552,15 @@ async function captureWithBrowser(
     }
   }
   if (!snapshotData) throw new Error("Unable to read the settled page snapshot");
-  const accessibilityViolations = await new AxeBuilder({ page }).analyze().then((result) => result.violations.map((violation) => ({
+  const accessibilityViolations = testProfile === "accessibility" || testProfile === "full" ? await new AxeBuilder({ page }).analyze().then((result) => result.violations.map((violation) => ({
     id: violation.id,
     impact: violation.impact ?? null,
     help: violation.help,
     helpUrl: violation.helpUrl,
     tags: violation.tags,
     nodes: violation.nodes.map((node) => ({ selector: node.target.map(String).join(" "), html: node.html.slice(0, 500), failureSummary: node.failureSummary ?? violation.description })),
-  }))).catch(() => []);
-  const performanceSnapshot = await page.evaluate(() => {
+  }))).catch(() => []) : undefined;
+  const performanceSnapshot = testProfile === "performance" || testProfile === "full" ? await page.evaluate(() => {
     const navigation = window.performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
     const resources = window.performance.getEntriesByType("resource") as PerformanceResourceTiming[];
     const largest = [...resources].sort((left, right) => (right.transferSize || right.encodedBodySize) - (left.transferSize || left.encodedBodySize))[0];
@@ -428,50 +571,50 @@ async function captureWithBrowser(
       largestResourceBytes: largest ? largest.transferSize || largest.encodedBodySize : 0, largestResourceUrl: largest?.name ?? "",
       cumulativeLayoutShift: Math.round(shifts.filter((shift) => !shift.hadRecentInput).reduce((total, shift) => total + (shift.value ?? 0), 0) * 1000) / 1000,
     };
-  });
+  }) : undefined;
   // Raw full-page PNGs can exceed the evidence budget and evict whole checkpoints
   // from History. JPEG retains the full page at a practical size for every viewport.
   const image = includeImage ? await page.screenshot({ fullPage: true, animations: "disabled", type: "jpeg", quality: 84 }) : undefined;
   const finalUrl = page.url();
   const snapshot: PageSnapshot = {
     ...snapshotData,
-    accessibilityViolations,
+    ...(accessibilityViolations ? { accessibilityViolations } : {}),
     interactionCandidates,
-    performance: performanceSnapshot,
+    ...(performanceSnapshot ? { performance: performanceSnapshot } : {}),
     ...(interactionState ? { interactionState } : {}),
     url: finalUrl,
     capturedAt: Date.now(),
   };
-  await context.close();
   return {
-    ...(image ? { image: `data:image/jpeg;base64,${image.toString("base64")}` } : {}),
+    ...(image ? { image } : {}),
     finalUrl,
     statusCode: navigation.status(),
     durationMs: Date.now() - startedAt,
+    documentHeight: snapshot.documentHeight,
     snapshot,
   };
+  } finally {
+    if (ownsContext) await context.close().catch(() => undefined);
+  }
 }
 
-async function capture(url: string, viewport: ViewportId, width?: number, height?: number, includeImage = true, profile?: CaptureProfile) {
-  const browser = await browserType(profile?.browserEngine).launch({ headless: true });
-  activeCaptures += 1;
-  try {
-    return await captureWithBrowser(browser, url, viewport, width, height, includeImage, profile);
-  } finally {
-    await browser.close();
-    activeCaptures -= 1;
-    completedCaptures += 1;
-  }
+async function capture(url: string, viewport: ViewportId, width?: number, height?: number, profile?: CaptureProfile, testProfile: TestProfile = "responsive", includeSnapshot = true) {
+  const engine = profile?.browserEngine ?? "chromium";
+  return withPooledBrowser(engine, (browser) => captureWithBrowser(browser, url, viewport, width, height, true, profile, undefined, testProfile, undefined, includeSnapshot));
 }
 
 async function scanRoute(input: ScanRouteRequest) {
   const widths = [...new Set(input.widths)].sort((a, b) => a - b);
   if (!widths.length || widths.length > 32) throw new Error("Scan requires between 1 and 32 viewport widths");
-  const browser = await browserType(input.profile?.browserEngine).launch({ headless: true });
-  activeCaptures += 1;
-  try {
+  const engine = input.profile?.browserEngine ?? "chromium";
+  return withPooledBrowser(engine, async (browser) => {
+    const firstWidth = widths[0]!;
+    const context = await browser.newContext(contextOptions({ width: firstWidth, height: input.height ?? 900 }, input.profile));
+    const session: CaptureSession = { context, page: await context.newPage(), initialized: false };
+    try {
     const samples = [];
     for (const width of widths) {
+      const widthProfile = input.auditWidths?.includes(width) ? input.testProfile ?? "responsive" : "responsive";
       const captureResult = await captureWithBrowser(
         browser,
         targetUrl(input.url, input.routePath),
@@ -480,7 +623,11 @@ async function scanRoute(input: ScanRouteRequest) {
         input.height ?? 900,
         false,
         input.profile,
+        undefined,
+        widthProfile,
+        session,
       );
+      if (!captureResult.snapshot) throw new Error("Responsive scan did not return a page snapshot");
       samples.push({
         width,
         height: input.height ?? 900,
@@ -489,16 +636,16 @@ async function scanRoute(input: ScanRouteRequest) {
         browserEngine: input.profile?.browserEngine ?? "chromium",
       });
       if (captureResult.snapshot.interactionCandidates) {
-        const expanded = await captureWithBrowser(browser, targetUrl(input.url, input.routePath), width <= 600 ? "mobile" : "desktop", width, input.height ?? 900, false, input.profile, "expanded");
+        const expanded = await captureWithBrowser(browser, targetUrl(input.url, input.routePath), width <= 600 ? "mobile" : "desktop", width, input.height ?? 900, false, input.profile, "expanded", widthProfile);
+        if (!expanded.snapshot) throw new Error("Expanded responsive scan did not return a page snapshot");
         samples.push({ width, height: input.height ?? 900, snapshot: expanded.snapshot, durationMs: expanded.durationMs, browserEngine: input.profile?.browserEngine ?? "chromium", interactionState: "expanded" });
       }
     }
     return { routePath: input.routePath, samples };
-  } finally {
-    await browser.close();
-    activeCaptures -= 1;
-    completedCaptures += 1;
-  }
+    } finally {
+      await context.close();
+    }
+  });
 }
 
 const assetPath = /\.(?:avif|css|gif|ico|jpe?g|js|json|map|mp4|pdf|png|svg|webm|webp|woff2?|xml|zip)$/i;
@@ -603,7 +750,7 @@ const server = createServer((request, response) => {
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   if (request.method === "OPTIONS") return response.writeHead(204).end();
   if (request.method === "GET" && request.url === "/health") return send(response, 200, { ok: true, ...runtimeStats() });
-  if (request.method !== "POST" || !["/capture-page", "/discover-routes", "/scan-route"].includes(request.url ?? "")) {
+  if (request.method !== "POST" || !["/capture-page", "/capture-image", "/discover-routes", "/scan-route"].includes(request.url ?? "")) {
     return send(response, 404, { error: "Not found" });
   }
   if (origin && !allowedOrigins.has(origin)) return send(response, 403, { error: "Origin is not allowed" });
@@ -623,7 +770,7 @@ const server = createServer((request, response) => {
         return send(response, 200, await scanRoute(input));
       }
 
-      if (request.url === "/capture-page") {
+      if (request.url === "/capture-page" || request.url === "/capture-image") {
         const input = JSON.parse(raw) as CapturePageRequest;
         if (!isCaptureUrl(input.url)) {
           return send(response, 400, { error: "Use a public HTTPS URL or localhost" });
@@ -632,7 +779,10 @@ const server = createServer((request, response) => {
           return send(response, 400, { error: "Invalid route or viewport" });
         }
         if (!validProfile(input.profile)) return send(response, 400, { error: "Invalid browser engine" });
-        return send(response, 200, await capture(targetUrl(input.url, input.routePath), input.viewport, input.width, input.height, true, input.profile));
+        const result = await capture(targetUrl(input.url, input.routePath), input.viewport, input.width, input.height, input.profile, input.testProfile, request.url === "/capture-page");
+        if (request.url === "/capture-image") return sendImage(response, result as { image?: Buffer; finalUrl: string; statusCode: number; durationMs: number; documentHeight: number });
+        const legacy = result as { image?: Buffer; finalUrl: string; statusCode: number; durationMs: number; snapshot: PageSnapshot };
+        return send(response, 200, { ...legacy, image: legacy.image ? `data:image/jpeg;base64,${legacy.image.toString("base64")}` : undefined });
       }
 
       if (request.url === "/discover-routes") {

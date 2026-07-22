@@ -7,7 +7,7 @@ import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock3, Flag, Images
 import { useQueryClient } from "@tanstack/react-query";
 import { compareRgba } from "@breakscope/comparison-engine";
 import { breakscopeQueryKeys } from "@/lib/breakscope-queries";
-import { loadBreakscopeState, saveBreakscopeState, type BreakscopeState, type LocalScanRun } from "@/lib/breakscope-workspace";
+import { loadBreakscopeState, loadScanRunArtifacts, saveBreakscopeState, type BreakscopeState, type LocalScanRun } from "@/lib/breakscope-workspace";
 import { capturedImageMimeType } from "@/lib/captured-image";
 import { BreakscopeLogo } from "./breakscope-brand";
 
@@ -46,8 +46,9 @@ export function BreakscopeHistory() {
   }, []);
 
   async function openRun(run: LocalScanRun) {
+    const hydratedRun = await loadScanRunArtifacts(run.id) ?? run;
     const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
-    const next: BreakscopeState = { ...stored, target: run.target, testProfile: run.profile ?? stored.testProfile ?? "responsive", latestIssues: run.issues, latestPreviews: run.previews, scanJob: undefined, updatedAt: Date.now() };
+    const next: BreakscopeState = { ...stored, target: hydratedRun.target, testProfile: hydratedRun.profile ?? stored.testProfile ?? "responsive", latestIssues: hydratedRun.issues, latestPreviews: hydratedRun.previews, scanJob: undefined, updatedAt: Date.now() };
     queryClient.setQueryData(breakscopeQueryKeys.workspace(), next);
     await saveBreakscopeState(next);
     router.push("/workspace");
@@ -75,7 +76,11 @@ export function BreakscopeHistory() {
 
   async function compareRun(run: LocalScanRun, baseline: LocalScanRun) {
     setComparingId(run.id);
-    try { const result = await compareRunPreviews(run, baseline); setComparisons((current) => ({ ...current, [run.id]: result })); }
+    try {
+      const [hydratedRun, hydratedBaseline] = await Promise.all([loadScanRunArtifacts(run.id), loadScanRunArtifacts(baseline.id)]);
+      const result = await compareRunPreviews(hydratedRun ?? run, hydratedBaseline ?? baseline);
+      setComparisons((current) => ({ ...current, [run.id]: result }));
+    }
     catch (reason) { setComparisons((current) => ({ ...current, [run.id]: reason instanceof Error ? reason.message : "Could not compare these runs." })); }
     finally { setComparingId(""); }
   }

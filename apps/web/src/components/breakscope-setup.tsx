@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import type { BrowserEngine, TestTarget } from "@breakscope/shared";
+import type { BrowserEngine, ScanStrategy, TestTarget } from "@breakscope/shared";
 import { isCaptureUrl } from "@breakscope/validation";
 import { discoverRoutesLocally } from "@/lib/local-capture";
 import { breakscopeQueryKeys } from "@/lib/breakscope-queries";
@@ -19,6 +19,11 @@ const testProfiles: { id: TestProfile; label: string; description: string; icon:
   { id: "performance", label: "Performance Signals", description: "Responsive plus loading signals", icon: Gauge },
   { id: "full", label: "Full Audit", description: "Every available detector", icon: ListChecks },
 ];
+const scanStrategies: { id: ScanStrategy; label: string; description: string; icon: typeof MoveHorizontal }[] = [
+  { id: "balanced", label: "Balanced", description: "Full Chromium sweep, targeted Firefox and Safari verification", icon: Gauge },
+  { id: "exhaustive", label: "Exhaustive", description: "Full responsive sweep in every selected browser", icon: ListChecks },
+  { id: "quick", label: "Quick", description: "Chromium sweep only", icon: MoveHorizontal },
+];
 
 export function BreakscopeSetup() {
   const router = useRouter();
@@ -30,6 +35,7 @@ export function BreakscopeSetup() {
   const [deviceWidths, setDeviceWidths] = useState<number[]>([]);
   const [browserEngines, setBrowserEngines] = useState<BrowserEngine[]>(allBrowserEngines);
   const [profile, setProfile] = useState<TestProfile>("responsive");
+  const [scanStrategy, setScanStrategy] = useState<ScanStrategy>("balanced");
   const [ready, setReady] = useState(false);
   const [opening, setOpening] = useState(false);
   const [rediscovering, setRediscovering] = useState(false);
@@ -52,6 +58,7 @@ export function BreakscopeSetup() {
       setDeviceWidths(state.draft.deviceWidths);
       setBrowserEngines(state.draft.browserEngines?.length ? state.draft.browserEngines : state.target?.browserEngines?.length ? state.target.browserEngines : allBrowserEngines);
       setProfile(state.draft.profile ?? state.testProfile ?? "responsive");
+      setScanStrategy(state.draft.scanStrategy ?? state.scanStrategy ?? state.target?.scanStrategy ?? "balanced");
       setSelectedRoutes(state.draft.routes.includes("/") ? ["/"] : state.draft.routes.slice(0, 1));
       setReady(true);
     }).catch(() => router.replace("/"));
@@ -94,7 +101,7 @@ export function BreakscopeSetup() {
       await saveBreakscopeState({
         ...previous,
         availableRoutes: discoveredRoutes,
-        draft: { url: value, routes: discoveredRoutes, deviceWidths, browserEngines, profile, discoveredAt: now },
+        draft: { url: value, routes: discoveredRoutes, deviceWidths, browserEngines, profile, scanStrategy, discoveredAt: now },
         updatedAt: now,
       });
       setUrl(value);
@@ -126,6 +133,7 @@ export function BreakscopeSetup() {
       executionMode: "local",
       deviceWidths,
       browserEngines,
+      scanStrategy,
       createdAt: previous.target?.url === url ? previous.target.createdAt : now,
       updatedAt: now,
     };
@@ -135,6 +143,7 @@ export function BreakscopeSetup() {
       draft: undefined,
       target,
       testProfile: profile,
+      scanStrategy,
       scanRequest: { id: crypto.randomUUID(), requestedAt: now, source: "setup" },
       updatedAt: now,
     } as const;
@@ -211,8 +220,13 @@ export function BreakscopeSetup() {
             <div className="bk-test-profiles" role="group" aria-label="Testing profile">{testProfiles.map(({ id, label, description, icon: Icon }) => <button type="button" key={id} aria-pressed={profile === id} onClick={() => setProfile(id)}><Icon size={17} /><span><b>{label}</b><small>{description}</small></span>{profile === id && <Check size={13} />}</button>)}</div>
           </section>
 
+          <section className="bk-setup-panel bk-setup-profiles-panel" aria-labelledby="setup-strategy-title">
+            <div className="bk-setup-section-heading"><div><h2 id="setup-strategy-title">Scan strategy</h2><p>Choose how deeply secondary browsers should sweep responsive widths.</p></div></div>
+            <div className="bk-test-profiles" role="group" aria-label="Scan strategy">{scanStrategies.map(({ id, label, description, icon: Icon }) => <button type="button" key={id} aria-pressed={scanStrategy === id} onClick={() => setScanStrategy(id)}><Icon size={17} /><span><b>{label}</b><small>{description}</small></span>{scanStrategy === id && <Check size={13} />}</button>)}</div>
+          </section>
+
           <footer className="bk-setup-action">
-            <div><strong>Ready to inspect</strong><span>{selectedRoutes.length} {selectedRoutes.length === 1 ? "page" : "pages"} · {deviceWidths.length} viewports · {browserEngines.length} browsers · {testProfiles.find((item) => item.id === profile)!.label}</span></div>
+            <div><strong>Ready to inspect</strong><span>{selectedRoutes.length} {selectedRoutes.length === 1 ? "page" : "pages"} · {deviceWidths.length} viewports · {browserEngines.length} browsers · {scanStrategies.find((item) => item.id === scanStrategy)!.label}</span></div>
             <button type="button" disabled={opening} onClick={() => void openWorkspace()}>{opening ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}{opening ? "Opening canvas..." : "Open testing canvas"}</button>
           </footer>
         </div>

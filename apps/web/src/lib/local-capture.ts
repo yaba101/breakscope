@@ -1,4 +1,4 @@
-import type { CaptureProfile, PageSnapshot, ViewportId } from "@breakscope/shared";
+import type { CaptureProfile, PageSnapshot, TestProfile, ViewportId } from "@breakscope/shared";
 
 interface CapturePageResponse {
   image?: string;
@@ -36,10 +36,11 @@ export async function capturePageLocally(input: {
   width?: number;
   height?: number;
   profile?: CaptureProfile;
+  testProfile?: TestProfile;
 }, signal?: AbortSignal) {
   let response: Response;
   try {
-    response = await fetch("/api/local-capture/page", {
+    response = await fetch("/api/local-capture/image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -50,20 +51,23 @@ export async function capturePageLocally(input: {
     const detail = error instanceof Error ? ` (${error.message})` : "";
     throw new Error(`The capture request could not reach the Breakscope web API.${detail}`);
   }
-  const payload = (await response.json()) as CapturePageResponse;
-  if (!response.ok || !payload.image || !payload.snapshot) {
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as CapturePageResponse;
     throw new Error(payload.error ?? "Local browser capture failed");
   }
+  const image = await response.blob();
+  const finalUrlHeader = response.headers.get("x-breakscope-final-url");
+  const documentHeight = Number(response.headers.get("x-breakscope-document-height") ?? input.height ?? 900);
   return {
-    image: dataUrlToBlob(payload.image),
-    finalUrl: payload.finalUrl ?? new URL(input.routePath, input.url).toString(),
-    statusCode: payload.statusCode ?? 200,
-    durationMs: payload.durationMs ?? 0,
-    snapshot: payload.snapshot,
+    image,
+    finalUrl: finalUrlHeader ? decodeURIComponent(finalUrlHeader) : new URL(input.routePath, input.url).toString(),
+    statusCode: Number(response.headers.get("x-breakscope-status") ?? 200),
+    durationMs: Number(response.headers.get("x-breakscope-duration-ms") ?? 0),
+    snapshot: { documentHeight } as PageSnapshot,
   };
 }
 
-export async function scanRouteLocally(input: { url: string; routePath: string; widths: number[]; height?: number; profile?: CaptureProfile }, signal?: AbortSignal) {
+export async function scanRouteLocally(input: { url: string; routePath: string; widths: number[]; height?: number; profile?: CaptureProfile; testProfile?: TestProfile; auditWidths?: number[] }, signal?: AbortSignal) {
   const response = await fetch("/api/local-capture/scan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -73,12 +77,4 @@ export async function scanRouteLocally(input: { url: string; routePath: string; 
   const payload = await response.json() as { routePath?: string; samples?: Array<{ width: number; height: number; snapshot: PageSnapshot; durationMs: number }>; error?: string };
   if (!response.ok || !payload.samples) throw new Error(payload.error ?? "Responsive scan failed");
   return payload.samples.map((sample) => ({ routePath: input.routePath, width: sample.width, height: sample.height, snapshot: sample.snapshot, browserEngine: input.profile?.browserEngine ?? "chromium", ...(sample.snapshot.interactionState ? { interactionState: sample.snapshot.interactionState } : {}) }));
-}
-
-function dataUrlToBlob(value: string) {
-  const [header, encoded] = value.split(",");
-  if (!header || !encoded) throw new Error("Capture returned an invalid image");
-  const type = header.match(/data:(.*?);/)?.[1] ?? "image/png";
-  const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
-  return new Blob([bytes], { type });
 }

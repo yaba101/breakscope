@@ -83,6 +83,24 @@ function captureProfile(model: DeviceModel, browserEngine = model.browserEngine)
   return { browserEngine, deviceName: browserEngine === model.browserEngine ? model.playwrightDevice : undefined, isMobile: model.kind !== "desktop", hasTouch: model.kind !== "desktop", deviceScaleFactor: model.kind === "desktop" ? 1 : 2, colorScheme: "light" };
 }
 
+async function settleWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T, index: number) => Promise<R>) {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      try {
+        results[index] = { status: "fulfilled", value: await worker(items[index]!, index) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
 interface ResultState {
   issues: ResponsiveIssue[];
   fixed: ResponsiveIssue[];
@@ -197,18 +215,18 @@ function downloadLocalReport(format: "md" | "json" | "html", state: BreakscopeSt
 }
 
 function DevRuntimePanel({ retainedBytes, history, onSample }: { retainedBytes: number; history: RuntimeDiagnosticSample[]; onSample: (sample: RuntimeDiagnosticSample) => void }) {
-  const [stats, setStats] = useState<{ app?: { rssBytes: number; heapUsedBytes: number }; capture?: { activeCaptures?: number; completedCaptures?: number; rssBytes?: number; heapUsedBytes?: number; ok?: boolean } }>({});
+  const [stats, setStats] = useState<{ app?: { rssBytes: number; heapUsedBytes: number }; capture?: { activeCaptures?: number; completedCaptures?: number; browserLaunches?: number; peakActiveCaptures?: number; pooledEngines?: number; rssBytes?: number; heapUsedBytes?: number; ok?: boolean } }>({});
   const lastRecordedAt = useRef(0);
   const onSampleRef = useRef(onSample);
   useEffect(() => { onSampleRef.current = onSample; }, [onSample]);
   useEffect(() => {
-    const refresh = () => void fetch("/api/dev/runtime").then((response) => response.ok ? response.json() : undefined).then((data) => { if (data) { setStats(data); if (Date.now() - lastRecordedAt.current >= 30_000) { lastRecordedAt.current = Date.now(); onSampleRef.current({ id: crypto.randomUUID(), capturedAt: Date.now(), retainedBytes, appHeapBytes: data.app?.heapUsedBytes ?? 0, appRssBytes: data.app?.rssBytes ?? 0, captureHeapBytes: data.capture?.heapUsedBytes ?? 0, captureRssBytes: data.capture?.rssBytes ?? 0, completedCaptures: data.capture?.completedCaptures ?? 0 }); } } }).catch(() => undefined);
+    const refresh = () => void fetch("/api/dev/runtime").then((response) => response.ok ? response.json() : undefined).then((data) => { if (data) { setStats(data); if (Date.now() - lastRecordedAt.current >= 30_000) { lastRecordedAt.current = Date.now(); onSampleRef.current({ id: crypto.randomUUID(), capturedAt: Date.now(), retainedBytes, appHeapBytes: data.app?.heapUsedBytes ?? 0, appRssBytes: data.app?.rssBytes ?? 0, captureHeapBytes: data.capture?.heapUsedBytes ?? 0, captureRssBytes: data.capture?.rssBytes ?? 0, completedCaptures: data.capture?.completedCaptures ?? 0, browserLaunches: data.capture?.browserLaunches ?? 0, peakActiveCaptures: data.capture?.peakActiveCaptures ?? 0 }); } } }).catch(() => undefined);
     refresh();
     const timer = window.setInterval(refresh, 5_000);
     return () => window.clearInterval(timer);
   }, [retainedBytes]);
   const oldest = history.at(-1); const latest = history[0];
-  return <aside className="bk-dev-runtime" aria-label="Development runtime diagnostics"><b>Runtime diagnostics</b><span>Browser evidence retained: <strong>{formatBytes(retainedBytes)}</strong></span><span>Next heap / RSS: <strong>{formatBytes(stats.app?.heapUsedBytes)} / {formatBytes(stats.app?.rssBytes)}</strong></span><span>Capture active / completed: <strong>{stats.capture?.activeCaptures ?? "—"} / {stats.capture?.completedCaptures ?? "—"}</strong></span><span>Capture heap / RSS: <strong>{formatBytes(stats.capture?.heapUsedBytes)} / {formatBytes(stats.capture?.rssBytes)}</strong></span>{latest && <span>Stored trend ({history.length}): <strong>{oldest ? `${formatBytes(oldest.appHeapBytes)} → ` : ""}{formatBytes(latest.appHeapBytes)} heap</strong></span>}</aside>;
+  return <aside className="bk-dev-runtime" aria-label="Development runtime diagnostics"><b>Runtime diagnostics</b><span>Browser evidence retained: <strong>{formatBytes(retainedBytes)}</strong></span><span>Next heap / RSS: <strong>{formatBytes(stats.app?.heapUsedBytes)} / {formatBytes(stats.app?.rssBytes)}</strong></span><span>Capture active / completed: <strong>{stats.capture?.activeCaptures ?? "—"} / {stats.capture?.completedCaptures ?? "—"}</strong></span><span>Browser launches / peak workers: <strong>{stats.capture?.browserLaunches ?? "—"} / {stats.capture?.peakActiveCaptures ?? "—"}</strong></span><span>Capture heap / RSS: <strong>{formatBytes(stats.capture?.heapUsedBytes)} / {formatBytes(stats.capture?.rssBytes)}</strong></span>{latest && <span>Stored trend ({history.length}): <strong>{oldest ? `${formatBytes(oldest.appHeapBytes)} → ` : ""}{formatBytes(latest.appHeapBytes)} heap</strong></span>}</aside>;
 }
 
 function WorkspaceControls({ retainedBytes, diagnosticsHistory, disabled, onExport, onDiagnosticSample, onClearEvidence, onClearPreferences, onResetWorkspace }: { retainedBytes: number; diagnosticsHistory: RuntimeDiagnosticSample[]; disabled: boolean; onExport: (format: "md" | "json" | "html") => void; onDiagnosticSample: (sample: RuntimeDiagnosticSample) => void; onClearEvidence: () => void; onClearPreferences: () => void; onResetWorkspace: () => void }) {
@@ -855,7 +873,7 @@ export function BreakscopeWorkspace() {
   function pauseStagedScan() { manualPauseUntil.current = Date.now() + 3500; }
   function toggleRoute(route: string) { setSelectedRoutes((current) => current.includes(route) ? current.filter((item) => item !== route) : current.length < 5 ? [...current, route] : current); }
 
-  async function refineBoundaries(routePath: string, initial: ViewportSample[], signal: AbortSignal, profile: CaptureProfile) {
+  async function refineBoundaries(routePath: string, initial: ViewportSample[], signal: AbortSignal, profile: CaptureProfile, testProfile: TestProfile) {
     const samples = [...initial];
     let ranges = samples.slice(0, -1).map((left, index) => ({ left, right: samples[index + 1]! })).filter(({ left, right }) => sampleSignature(left) !== sampleSignature(right));
     for (let iteration = 0; iteration < 10 && ranges.some(({ left, right }) => right.width - left.width > 2); iteration += 1) {
@@ -863,7 +881,7 @@ export function BreakscopeWorkspace() {
       const widths = [...new Set(active.map(({ left, right }) => Math.floor((left.width + right.width) / 2)))];
       setScanStage((current) => Math.max(current, 3));
       setProgress((current) => ({ ...current, width: widths[0] ?? current.width, route: routePath, phase: "Refining breakpoints" }));
-      const middleSamples = await scanRouteLocally({ url, routePath, widths, height: 900, profile }, signal);
+      const middleSamples = await scanRouteLocally({ url, routePath, widths, height: 900, profile, testProfile }, signal);
       samples.push(...middleSamples);
       const middleByWidth = new Map(middleSamples.map((sample) => [sample.width, sample]));
       ranges = ranges.map((range) => {
@@ -886,8 +904,10 @@ export function BreakscopeWorkspace() {
     const controller = new AbortController(); scanController.current = controller;
     try {
       const stored = queryClient.getQueryData<BreakscopeState>(breakscopeQueryKeys.workspace()) ?? await loadBreakscopeState();
-      const resumable = stored.scanJob && ["running", "paused", "failed"].includes(stored.scanJob.status) && stored.scanJob.url === url && stored.scanJob.routes.join("|") === selectedRoutes.join("|") && stored.scanJob.browserEngines.join("|") === browserEngines.join("|");
-      let scanJob: PersistedScanJob = resumable ? { ...stored.scanJob!, status: "running", errors: [], updatedAt: Date.now() } : { id: crypto.randomUUID(), status: "running", url, routes: selectedRoutes, widths: deviceWidths, browserEngines, completedCheckpoints: [], completedRouteScans: [], samples: [], errors: [], createdAt: Date.now(), updatedAt: Date.now() };
+      const testProfile = stored.testProfile ?? "responsive";
+      const scanStrategy = stored.scanStrategy ?? stored.target?.scanStrategy ?? "balanced";
+      const resumable = stored.scanJob && ["running", "paused", "failed"].includes(stored.scanJob.status) && stored.scanJob.url === url && stored.scanJob.routes.join("|") === selectedRoutes.join("|") && stored.scanJob.browserEngines.join("|") === browserEngines.join("|") && (stored.scanJob.testProfile ?? "responsive") === testProfile && (stored.scanJob.scanStrategy ?? "balanced") === scanStrategy;
+      let scanJob: PersistedScanJob = resumable ? { ...stored.scanJob!, status: "running", errors: [], updatedAt: Date.now() } : { id: crypto.randomUUID(), status: "running", url, routes: selectedRoutes, widths: deviceWidths, browserEngines, testProfile, scanStrategy, completedCheckpoints: [], completedRouteScans: [], samples: [], errors: [], createdAt: Date.now(), updatedAt: Date.now() };
       let persistChain = Promise.resolve();
       const persistJob = () => {
         scanJob = { ...scanJob, updatedAt: Date.now() };
@@ -906,26 +926,24 @@ export function BreakscopeWorkspace() {
       setProgress({ current: 0, total: selectedRoutes.length, width: minWidth, route: selectedRoutes[0]!, phase: resumable ? "Resuming scan" : "Sweeping geometry" }); setPreviews(capturedPreviews);
       const previewTask = (async () => {
         const checkpointQueue = deviceWidths.flatMap((width) => browserEngines.map((browserEngine) => ({ width, browserEngine })));
-        for (const { width, browserEngine } of checkpointQueue) {
-          if (controller.signal.aborted) break;
+        const previewResults = await settleWithConcurrency(checkpointQueue, 2, async ({ width, browserEngine }) => {
+          if (controller.signal.aborted) throw new DOMException("Scan cancelled", "AbortError");
           const checkpointKey = `${browserEngine}:${selectedRoutes[0]}:${width}`;
-          if (scanJob.completedCheckpoints.includes(checkpointKey)) continue;
+          if (scanJob.completedCheckpoints.includes(checkpointKey)) return;
           setActivePreviewWidth(width);
           setActiveBrowserEngine(browserEngine);
           setProgress((current) => ({ ...current, width, phase: `Rendering ${browserLabels[browserEngine]} at ${width}px` }));
           try {
             const model = modelForWidth(width);
-            const captured = await capturePageLocally({ url, routePath: selectedRoutes[0]!, viewport: width <= 600 ? "mobile" : "desktop", width, height: 900, profile: captureProfile(model, browserEngine) }, controller.signal);
+            const captured = await capturePageLocally({ url, routePath: selectedRoutes[0]!, viewport: width <= 600 ? "mobile" : "desktop", width, height: 900, profile: captureProfile(model, browserEngine), testProfile }, controller.signal);
             const preview = { width, label: deviceChoices.find((device) => device.width === width)?.label ?? "Custom", routePath: selectedRoutes[0]!, browserEngine, deviceModelId: model.id, image: await captured.image.arrayBuffer() };
             capturedPreviews.push(preview);
             const nextPreviews = [...capturedPreviews].sort((a, b) => a.width - b.width);
             setPreviews(nextPreviews);
             queryClient.setQueryData<BreakscopeState>(breakscopeQueryKeys.workspace(), (current) => current ? { ...current, latestPreviews: nextPreviews } : current);
             scanJob = { ...scanJob, completedCheckpoints: [...scanJob.completedCheckpoints, checkpointKey] };
-            await persistJob();
-            setActivePreviewWidth(width);
           } catch (reason) {
-            if (reason instanceof DOMException && reason.name === "AbortError") break;
+            if (reason instanceof DOMException && reason.name === "AbortError") throw reason;
             if (await confirmCaptureOffline(reason)) {
               setAgentHealth({ online: false, activeCaptures: 0, completedCaptures: initialHealth.completedCaptures });
               throw new Error(`Local capture went offline after ${scanJob.completedCheckpoints.length} of ${checkpointQueue.length} checkpoints. Start Breakscope with pnpm dev:local, then retry to continue.`);
@@ -933,48 +951,61 @@ export function BreakscopeWorkspace() {
             const detail = captureServiceUnavailable(reason) ? "The checkpoint request failed, but the local capture agent is still online. Retry the failed capture." : reason instanceof Error ? reason.message : "Capture failed";
             routeErrors.push(`${browserLabels[browserEngine]} ${selectedRoutes[0]} at ${width}px: ${detail.split("\n")[0]?.slice(0, 180)}`);
           }
-        }
+        });
+        const fatal = previewResults.find((result) => result.status === "rejected");
+        if (fatal?.status === "rejected") throw fatal.reason;
+        await persistJob();
       })();
-      const routeTasks = selectedRoutes.flatMap((routePath, index) => browserEngines.map((browserEngine) => ({ browserEngine, routePath, index })));
       await previewTask;
       setActivePreviewWidth(deviceWidths[0] ?? minWidth);
       setActiveBrowserEngine(browserEngines[0] ?? "chromium");
       setScanStage(2);
-      const settled: PromiseSettledResult<ViewportSample[]>[] = [];
-      for (const { browserEngine, routePath, index } of routeTasks) {
-        try {
+      const primaryEngine = browserEngines.includes("chromium") ? "chromium" : browserEngines[0]!;
+      const primaryWidths = [...new Set([...widths, ...deviceWidths])].sort((a, b) => a - b);
+      const runRouteTasks = async (routeTasks: Array<{ browserEngine: BrowserEngine; routePath: string; index: number }>, sampledWidths: (routePath: string) => number[], refine: boolean) => settleWithConcurrency(routeTasks, 2, async ({ browserEngine, routePath, index }) => {
           const routeKey = `${browserEngine}:${routePath}`;
           if (scanJob.completedRouteScans.includes(routeKey)) {
-            settled.push({ status: "fulfilled", value: [] });
-            continue;
+            return [];
           }
           setProgress({ current: index, total: selectedRoutes.length, width: minWidth, route: routePath, phase: "Sweeping geometry" });
           const profile = captureProfile(modelForWidth(minWidth), browserEngine);
-          const routeSamples = await refineBoundaries(routePath, await scanRouteLocally({ url, routePath, widths, height: 900, profile }, controller.signal), controller.signal, profile);
+          const initial = await scanRouteLocally({ url, routePath, widths: sampledWidths(routePath), height: 900, profile, testProfile, auditWidths: deviceWidths }, controller.signal);
+          const routeSamples = refine ? await refineBoundaries(routePath, initial, controller.signal, profile, testProfile) : initial;
           scanJob = { ...scanJob, completedRouteScans: [...scanJob.completedRouteScans, routeKey], samples: [...scanJob.samples, ...routeSamples] };
-          await persistJob();
-          settled.push({ status: "fulfilled", value: routeSamples });
-        } catch (reason) {
-          if (await confirmCaptureOffline(reason)) {
-            setAgentHealth({ online: false, activeCaptures: 0, completedCaptures: initialHealth.completedCaptures });
-            throw new Error(`Local capture went offline while analyzing ${routePath}. Start Breakscope with pnpm dev:local, then retry to continue.`);
-          }
-          settled.push({ status: "rejected", reason: captureServiceUnavailable(reason) ? new Error("The responsive scan request failed, but the local capture agent is still online. Retry the failed captures.") : reason });
-        }
-      }
-      settled.forEach((settledResult, index) => {
+          return routeSamples;
+      });
+      const collectSettled = async (settled: PromiseSettledResult<ViewportSample[]>[], tasks: Array<{ browserEngine: BrowserEngine; routePath: string; index: number }>) => {
+        for (let index = 0; index < settled.length; index += 1) {
+          const settledResult = settled[index]!;
         if (settledResult.status === "fulfilled") samples.push(...settledResult.value);
         else {
-          const task = routeTasks[index]!;
-          const detail = settledResult.reason instanceof Error ? settledResult.reason.message : "Capture failed";
+            if (await confirmCaptureOffline(settledResult.reason)) {
+              setAgentHealth({ online: false, activeCaptures: 0, completedCaptures: initialHealth.completedCaptures });
+              throw new Error(`Local capture went offline while analyzing ${tasks[index]!.routePath}. Start Breakscope with pnpm dev:local, then retry to continue.`);
+            }
+          const task = tasks[index]!;
+          const detail = captureServiceUnavailable(settledResult.reason) ? "The responsive scan request failed, but the local capture agent is still online. Retry the failed captures." : settledResult.reason instanceof Error ? settledResult.reason.message : "Capture failed";
           routeErrors.push(`${browserLabels[task.browserEngine]} ${task.routePath}: ${detail.split("\n")[0]?.slice(0, 220)}`);
         }
-      });
+        }
+      };
+      const primaryTasks = selectedRoutes.map((routePath, index) => ({ browserEngine: primaryEngine, routePath, index }));
+      await collectSettled(await runRouteTasks(primaryTasks, () => primaryWidths, true), primaryTasks);
+      if (scanStrategy !== "quick") {
+        const secondaryEngines = browserEngines.filter((engine) => engine !== primaryEngine);
+        const secondaryTasks = selectedRoutes.flatMap((routePath, index) => secondaryEngines.map((browserEngine) => ({ browserEngine, routePath, index })));
+        const boundaryWidths = (routePath: string) => {
+          if (scanStrategy === "exhaustive") return primaryWidths;
+          const primary = samples.filter((sample) => sample.routePath === routePath && sample.browserEngine === primaryEngine && !sample.interactionState).sort((left, right) => left.width - right.width);
+          const boundaries = primary.slice(0, -1).flatMap((left, index) => sampleSignature(left) === sampleSignature(primary[index + 1]!) ? [] : [left.width, primary[index + 1]!.width]);
+          return [...new Set([...deviceWidths, ...boundaries])].sort((a, b) => a - b);
+        };
+        await collectSettled(await runRouteTasks(secondaryTasks, boundaryWidths, scanStrategy === "exhaustive"), secondaryTasks);
+      }
       scanJob = { ...scanJob, errors: routeErrors };
       await persistJob();
       if (controller.signal.aborted) throw new DOMException("Scan cancelled", "AbortError");
       const analysis = analyzeResponsiveSamples(samples, previous.map((issue) => issue.fingerprint));
-      const testProfile = stored.testProfile ?? "responsive";
       const includedIssues = analysis.issues.filter((issue) => profileAllowsIssue(testProfile, issue.type));
       const includedAllIssues = analysis.allIssues.filter((issue) => profileAllowsIssue(testProfile, issue.type));
       setScanStage(4);
@@ -988,19 +1019,15 @@ export function BreakscopeWorkspace() {
       const evidenceResults = new Map<string, { image: ArrayBuffer; documentHeight: number }>();
       const requests = [...evidenceRequests.entries()];
       setProgress({ current: selectedRoutes.length, total: selectedRoutes.length, width: requests[0]?.[1].width ?? minWidth, route: requests[0]?.[1].routePath ?? selectedRoutes[0]!, phase: "Preparing evidence captures", evidenceCompleted: 0, evidenceTotal: requests.length });
-      for (const [key, request] of requests) {
+      const evidenceSettled = await settleWithConcurrency(requests, 2, async ([key, request]) => {
         const completed = evidenceResults.size;
         setProgress({ current: selectedRoutes.length, total: selectedRoutes.length, width: request.width, route: request.routePath, phase: `Capturing evidence ${completed + 1} of ${requests.length}`, evidenceCompleted: completed, evidenceTotal: requests.length, evidenceTarget: `${browserLabels[request.browserEngine]} · ${request.width}px` });
         const profile = captureProfile(modelForWidth(request.width), request.browserEngine);
-        try {
-          const captured = await capturePageLocally({ url, routePath: request.routePath, viewport: request.width <= 600 ? "mobile" : "desktop", width: request.width, height: 900, profile }, controller.signal);
-          evidenceResults.set(key, { image: await captured.image.arrayBuffer(), documentHeight: captured.snapshot.documentHeight });
-        } catch (reason) {
-          if (reason instanceof DOMException && reason.name === "AbortError") throw reason;
-          const detail = reason instanceof Error ? reason.message : "Capture failed";
-          throw new Error(`Evidence capture failed for ${browserLabels[request.browserEngine]} ${request.routePath} at ${request.width}px: ${detail}`);
-        }
-      }
+        const captured = await capturePageLocally({ url, routePath: request.routePath, viewport: request.width <= 600 ? "mobile" : "desktop", width: request.width, height: 900, profile, testProfile }, controller.signal);
+        evidenceResults.set(key, { image: await captured.image.arrayBuffer(), documentHeight: captured.snapshot.documentHeight });
+      });
+      const evidenceFailure = evidenceSettled.find((result) => result.status === "rejected");
+      if (evidenceFailure?.status === "rejected") throw evidenceFailure.reason;
       setProgress((current) => ({ ...current, phase: "Finalizing findings", evidenceCompleted: requests.length, evidenceTotal: requests.length, evidenceTarget: "Capture plan complete" }));
       const withEvidence = includedIssues.map((issue) => {
         const browserEngine = issue.browserEngine ?? "chromium";
@@ -1017,12 +1044,12 @@ export function BreakscopeWorkspace() {
       setWorkspaceMode("explore");
       setInspectorTab(firstIssue ? "issue" : "checks"); setComparisonMode("failing");
       const now = Date.now();
-      const target: TestTarget = { id: "current", name: new URL(url).host, url, selectedRoutes, minWidth, maxWidth, executionMode: "local", deviceWidths, browserEngines, createdAt: stored.target?.createdAt ?? now, updatedAt: now };
+      const target: TestTarget = { id: "current", name: new URL(url).host, url, selectedRoutes, minWidth, maxWidth, executionMode: "local", deviceWidths, browserEngines, scanStrategy, createdAt: stored.target?.createdAt ?? now, updatedAt: now };
       scanJob = { ...scanJob, status: routeErrors.length ? "failed" : "completed", errors: routeErrors, updatedAt: now };
       const finalPreviews = boundedPreviews(capturedPreviews);
       setPreviews(finalPreviews);
       const run: LocalScanRun = { id: crypto.randomUUID(), createdAt: now, target, issues: withEvidence, previews: finalPreviews, suppressedCount: analysis.suppressedCount + analysis.issues.length - includedIssues.length, profile: testProfile };
-      const nextState: BreakscopeState = { ...stored, availableRoutes: routes, target, latestIssues: withEvidence, latestManifest: includedAllIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), latestPreviews: finalPreviews, scanHistory: [run, ...(stored.scanHistory ?? [])].slice(0, 5), scanJob, ui: { selectedDeviceModelId: activeDeviceModelId, deviceOrientation, recentDeviceIds, pinnedDeviceIds, previewScaleMode, previewZoom, activeBrowserEngine }, updatedAt: now };
+      const nextState: BreakscopeState = { ...stored, availableRoutes: routes, target, testProfile, scanStrategy, latestIssues: withEvidence, latestManifest: includedAllIssues.map((issue) => ({ ...issue, screenshot: undefined, passingScreenshot: undefined })), latestPreviews: finalPreviews, scanHistory: [run, ...(stored.scanHistory ?? [])].slice(0, 5), scanJob, ui: { selectedDeviceModelId: activeDeviceModelId, deviceOrientation, recentDeviceIds, pinnedDeviceIds, previewScaleMode, previewZoom, activeBrowserEngine }, updatedAt: now };
       queryClient.setQueryData(breakscopeQueryKeys.workspace(), nextState);
       await saveBreakscopeState(nextState);
       if (routeErrors.length) setError(`Some routes could not be scanned: ${routeErrors.join(" · ")}`);
